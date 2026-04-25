@@ -43,6 +43,7 @@ Reglas:
 - No sustituyas estos outputs por un solo Data Model narrativo.
 - No produzcas otro output principal por default.
 - No uses los templates empaquetados en `references/template-*.md` como fuente principal; trátalos solo como material legacy de respaldo si los templates vivos no estuvieran disponibles.
+- **Secciones excluidas explícitamente del Spec:** no generes secciones de "Obligatoriedad" / "Obligatorio / opcional / condicional", "Qué bloquea si falta" ni "Uso en pruebas", aunque aparezcan en templates legacy. El template vivo ya las omite.
 
 ## Inputs requeridos
 
@@ -60,6 +61,24 @@ Si hay SOP, úsalo como fuente fuerte de contexto.
 Si no hay SOP, no te detengas por eso: continúa apoyándote en los ejemplos, el contexto de carpetas, nombres de archivo, documentos hermanos y preguntas mínimas de aclaración.
 
 ## Flujo de trabajo
+
+### Fase 0: Verificación de derivabilidad
+
+**Antes de empezar Fase 1, pregunta:** ¿esta información se puede **derivar** de algún DOC-* ya fichado, o de un output canónico de una prueba existente?
+
+Casos típicos donde aplica:
+- El usuario menciona un "control" o "kárdex" que en realidad rastrea info que ya está en otro DOC más completo.
+- Un "papel de trabajo" que es output de una prueba previa, no fuente raw del cliente.
+- Información que se infiere de un descuento, importe o agregación de otro doc ya modelado.
+
+Si la respuesta es sí (es derivable):
+- **No fiches el doc.** Documenta la derivación como nota y avísalo al usuario.
+- Si el doc es **opcional/condicional** (solo aporta valor cuando existe), fichado puede esperar a que aparezca un caso real.
+
+Si la respuesta es no (es genuino raw o catálogo externo no derivable):
+- Continúa con Fase 1.
+
+Esta verificación evita inflar el catálogo con docs frágiles que en la práctica nunca aparecen o cuya información ya vive en otro lugar.
 
 ### Fase 1: Entender el documento
 
@@ -136,6 +155,42 @@ Después de generar o actualizar los archivos, enlázalos en la respuesta y escr
 - Si hay algo que el usuario debería revisar con atención
 
 ## Convenciones técnicas
+
+### Schema multi-tabla por default
+
+La mayoría de docs reales tienen **múltiples conceptos relacionados pero distintos** (cabecera + detalle, identidad + movimientos, catálogo + aplicación). Modelar como **N tablas con foreign keys** en vez de una tabla flat es lo correcto en estos casos.
+
+Reglas para decidir:
+- **Una sola tabla** si el doc es un snapshot homogéneo (ej: un catálogo de empleados, una balanza).
+- **Múltiples tablas** si el doc combina:
+  - cabecera + lista de items (ej: comprobante + percepciones + deducciones)
+  - identidad + movimientos a lo largo del tiempo (ej: trabajador + sus pagos por periodo)
+  - catálogo + mapping + roster aplicado (ej: tabla de factor + puestos + roster)
+
+Cuando uses N tablas:
+- Define grain de cada una explícitamente.
+- Define PK y FK explícitamente.
+- Documenta la relación en la sección "Relaciones con otras tablas" del Schema.
+
+Defaults de naming:
+- Tabla principal: nombre del concepto en singular o plural según corresponda.
+- Tablas anidadas: `<doc_slug>_<sub_concepto>` (ej: `cfdi_nomina_percepciones`).
+
+### Convenciones globales de identificadores
+
+Para todo campo de identificador (NSS, RFC, CURP, clave_trabajador, registro_patronal, etc.) **sigue el anexo compartido**:
+
+- `../_shared/conventions-identificadores.md`
+
+No redefinas la convención por doc. La sección de Normalizaciones del Parser config debe **referirse** al anexo, no replicarlo.
+
+### Workflow de batch paralelo
+
+Cuando el usuario trae varios docs en una misma sesión, **usa el workflow del anexo compartido**:
+
+- `../_shared/workflow-batch-paralelo.md`
+
+Tres fases: Intake → Alineación → Ejecución paralela. Reduce iteraciones.
 
 ### IDs internos de reglas y casos
 

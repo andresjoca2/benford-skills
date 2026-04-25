@@ -15,10 +15,41 @@ description: >-
 
 Esta skill aterriza una prueba IMSS en dos capas:
 
-1. el `delivery`, que explica cómo se llena la pestaña oficial del dictamen IMSS
-2. el `reconciliation`, que explica cómo una oficina concreta hace el amarre y qué evidencia deja
+1. el `delivery`, que explica cómo se llena la pestaña oficial del dictamen IMSS (o, en pruebas globales, qué outputs canónicos produce sin llenar pestaña directa).
+2. el `reconciliation`, que **describe el algoritmo data-first sobre los schemas canónicos** — operaciones tipo SQL/CTE explícitas sobre tablas DOC-*. **NO replica la metodología Excel del auditor; la reemplaza.**
 
-La unidad de trabajo es siempre una sola prueba a la vez.
+La unidad de trabajo es siempre una sola prueba a la vez (salvo cuando el usuario activa workflow de batch paralelo — ver anexo compartido).
+
+### Diferencia crítica: data-first vs traducción de SOP
+
+El reconciliation **no** es:
+- una traducción paso a paso de lo que hace el auditor en Excel
+- una descripción narrativa del flujo del SOP
+- una réplica con wiki-links de las celdas del workbook del auditor
+
+El reconciliation **sí** es:
+- el algoritmo que genera los mismos resultados que el auditor, pero usando los schemas canónicos como entrada
+- operaciones explícitas: tablas intermedias, joins, agregaciones, comparaciones
+- una "segunda capa" sobre los DOC-*: cómo nuestro sistema replica el resultado del SOP
+
+El SOP del auditor se usa como **referencia para entender el resultado esperado**, no como receta a copiar.
+
+## Pruebas globales (no llenan pestaña directa)
+
+Algunas pruebas son **globales** — no llenan una pestaña específica del dictamen, sino que producen una base certificada que alimenta otras pruebas downstream y/o soporta el PDF final del cliente.
+
+Cuando reconozcas una prueba global:
+- En el frontmatter del delivery, marca `es_prueba_global: true` y `pestaña_excel: "n/a (prueba global)"`.
+- Documenta los outputs canónicos como datasets que alimentan downstream.
+- Lista explícitamente qué reconciliations downstream consumen estos outputs (`feeds_downstream`).
+
+## Lenguaje neutro obligatorio
+
+**Nunca uses números de prueba** como `5.10`, `5.6.0`, `5.6.1`, etc. en el contenido de los archivos generados.
+
+- Usa el **nombre completo de la prueba** (ej: "Prestaciones otorgadas a los trabajadores", "Conciliación de nóminas, contabilidad, balanza, dictamen y CFDI").
+- Cuando referencies otras pruebas downstream/upstream, usa también nombre o descripción funcional, no número.
+- Los nombres literales de archivos del auditor (`5.10.2.1.xlsx`, etc.) pueden mencionarse 1-2 veces como "equivalente operativo" pero **no como ciudadano principal**.
 
 ## Integración con Benford AI Audit
 
@@ -139,12 +170,62 @@ Nunca describas esa lógica con coordenadas de Excel.
 
 ### Fase 6: Redactar los artefactos
 
-Cuando ya exista suficiente contexto, prepara estos dos documentos:
+Cuando ya exista suficiente contexto, prepara los archivos según el patrón aplicable.
 
-- `delivery_<firma>_<oficina>.md`
-- `reconciliation_<firma>-<oficina>.md`
+#### Patrón A — Una pestaña, un procedimiento (delivery + 1 reconciliation)
 
-Usa como base los templates vivos del vault. No sustituyas estos outputs con una sola nota narrativa.
+```
+delivery_<firma>_<oficina>.md
+reconciliation_<firma>-<oficina>.md
+```
+
+#### Patrón B — Una pestaña, múltiples procedimientos (delivery + N reconciliations)
+
+Cuando una sola pestaña del dictamen requiere varios procedimientos distintos para alimentarla (ej: "Prestaciones otorgadas" requiere factor de integración + aguinaldo + vacaciones + prima vacacional + comedor + despensa + ...):
+
+```
+delivery_<firma>_<oficina>.md
+reconciliation_<procedimiento1>_<firma>-<oficina>.md
+reconciliation_<procedimiento2>_<firma>-<oficina>.md
+...
+```
+
+`<procedimiento>` es slug corto del procedimiento (ej: `factor-integracion`, `aguinaldo`, `vacaciones`).
+
+Cada reconciliation tiene su propio frontmatter `depends_on` para reflejar dependencias entre procedimientos del mismo delivery.
+
+#### Patrón C — Prueba global (delivery sin pestaña + reconciliations transversales)
+
+Para pruebas globales, el delivery existe pero `pestaña_excel: "n/a"` y describe los outputs canónicos. Los reconciliations típicamente alimentan otras pruebas downstream.
+
+#### Estructura data-first del reconciliation (obligatoria)
+
+Sigue la estructura recomendada (sustituye las narrativas paso a paso del auditor):
+
+1. **Objetivo** y unidad de control
+2. **Inputs canónicos** (tabla por DOC-*, con preferencia por outputs canónicos de pruebas upstream cuando existan)
+3. **Algoritmo paso a paso** — operaciones tipo SQL/CTE explícitas. Cada paso define una tabla intermedia con su lógica.
+4. **Tabla resultado canónica** — la(s) tabla(s) finales, con mapeo a las columnas del PT del auditor para trazabilidad
+5. **Reglas de validación** (cierre)
+6. **Casos especiales**
+7. **Outputs derivados** — qué tablas produce esta reconciliation que otras consumen (cross-link bidireccional)
+8. **Notas de mantenimiento**
+
+Cada paso del algoritmo se documenta como pseudo-código SQL/CTE:
+
+```
+nombre_tabla :=
+  SELECT ...
+  FROM ...
+  JOIN ...
+  WHERE ...
+```
+
+Las columnas se referencian con wiki-links: `[[DOC-<slug>/02 - Schema#<tabla>.<columna>]]`.
+
+#### Templates vivos como base estructural
+
+Usa los templates vivos del vault como base de **estructura del frontmatter y headings**. No sustituyas los outputs con una sola nota narrativa. Cuando el template vivo aún no refleje el patrón data-first completo, **adáptalo** sin perder los headings clave.
 
 ### Fase 7: Confirmación antes de escribir en Obsidian
 
@@ -185,6 +266,14 @@ No pidas confirmación de subida a Obsidian hasta poder explicar con claridad:
 - avanzar con documentos no aprobados por el usuario
 - seguir si falta `Spec` o `Schema`
 - referenciar celdas de Excel
+- **traducir el SOP paso a paso en lugar de generar el algoritmo data-first** (ver "Diferencia crítica" arriba)
+- **usar números de prueba** (5.10, 5.6.x, etc.) en el contenido
+- **modelar reconciliations como narrativa de Excel del auditor** en lugar de operaciones sobre tablas canónicas
 - hacer demasiadas preguntas de golpe sin necesidad
 - repetirle al usuario lo ya entendido en exceso
 - escribir en Obsidian sin confirmación explícita
+
+## Anexos compartidos con `imss-document-spec-builder`
+
+- `../_shared/conventions-identificadores.md` — convenciones globales para NSS, RFC, CURP, claves, etc.
+- `../_shared/workflow-batch-paralelo.md` — workflow Fase A/B/C cuando el usuario trae varios reconciliations en una sesión.
