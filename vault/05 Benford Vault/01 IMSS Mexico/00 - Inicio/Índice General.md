@@ -1,0 +1,87 @@
+# Índice General
+
+## Propósito
+Concentrar los accesos principales del sistema de `Auditoría del IMSS`.
+
+## Navegación de inicio
+- [[Home]]
+- [[Mapa General del Proyecto]]
+- [[Cómo usar este Obsidian]]
+- [[Estado Actual]]
+- [[Resumen del Proyecto]]
+
+## Secciones principales
+- [[../01 - Pruebas IMSS]]
+- [[../02 - Documentos y Ejemplos/Índice de Documentos|Índice de Documentos]]
+- [[../02 - Documentos y Ejemplos/Tabla de documentos en pruebas|Tabla de documentos en pruebas]]
+- [[../03 - Sesiones/Índice de Sesiones|Índice de Sesiones]]
+- [[../04 - Sistema del Agente/OBSIDIAN_STRUCTURE|Sistema del Agente]]
+- [[../05 - Entregables Finales/Mapa global de pruebas a entregables|Entregables Finales]]
+
+## Pruebas IMSS
+- [[../01 - Pruebas IMSS/5.1 - Vaciado de liquidaciones/00 - Resumen de la Prueba|5.1 - Vaciado de liquidaciones]]
+- [[../01 - Pruebas IMSS/5.10 - Conciliación de nóminas, contabilidad, balanza, dictamen y CFDI/00 - Resumen de la Prueba|5.10 - Conciliación de nóminas, contabilidad, balanza, dictamen y CFDI]]
+- [[../01 - Pruebas IMSS/5.11 - Razonabilidad de las cuotas y las aportaciones/00 - Resumen de la Prueba|5.11 - Razonabilidad de las cuotas y las aportaciones]]
+- [[../01 - Pruebas IMSS/5.12 - Variables no cotizables por baja y o finiquito/00 - Resumen de la Prueba|5.12 - Variables no cotizables por baja y o finiquito]]
+- [[../01 - Pruebas IMSS/5.2 - Excedentes de salario tope/00 - Resumen de la Prueba|5.2 - Excedentes de salario tope]]
+- [[../01 - Pruebas IMSS/5.3 - Prima de riesgo de trabajo y siniestralidad/00 - Resumen de la Prueba|5.3 - Prima de riesgo de trabajo y siniestralidad]]
+- [[../01 - Pruebas IMSS/5.4 - Movimientos de afiliación y conciliación de trabajadores/00 - Resumen de la Prueba|5.4 - Movimientos de afiliación y conciliación de trabajadores]]
+- [[../01 - Pruebas IMSS/5.5 - Análisis de percepciones y salario base de cotización/00 - Resumen de la Prueba|5.5 - Análisis de percepciones y salario base de cotización]]
+- [[../01 - Pruebas IMSS/5.6 - Análisis de remuneraciones y prestaciones/00 - Resumen de la Prueba|5.6 - Análisis de remuneraciones y prestaciones]]
+- [[../01 - Pruebas IMSS/5.7 - Catálogo de trabajadores/00 - Resumen de la Prueba|5.7 - Catálogo de trabajadores]]
+- [[../01 - Pruebas IMSS/5.8 - Revisión de la cuota obrera/00 - Resumen de la Prueba|5.8 - Revisión de la cuota obrera]]
+- [[../01 - Pruebas IMSS/5.9 - Análisis del personal externo/00 - Resumen de la Prueba|5.9 - Análisis del personal externo]]
+
+## Entregables finales
+- [[../05 - Entregables Finales/Entregable final - Portal IMSS Excel/00 - Overview del entregable|Portal IMSS Excel]]
+- [[../05 - Entregables Finales/Entregable final - Dictamen PDF/00 - Overview del entregable|Dictamen PDF]]
+
+## Biblioteca documental
+- [[../02 - Documentos y Ejemplos/Alta del seguro/Alta del seguro|Alta del seguro]]
+- [[../02 - Documentos y Ejemplos/Anexos del dictamen fiscal federal/Anexos del dictamen fiscal federal|Anexos del dictamen fiscal federal]]
+- [[../02 - Documentos y Ejemplos/Auxiliares de gastos/Auxiliares de gastos|Auxiliares de gastos]]
+- [[../02 - Documentos y Ejemplos/Balanza de comprobacion/Balanza de comprobacion|Balanza de comprobacion]]
+- [[../02 - Documentos y Ejemplos/CFDI de nomina/CFDI de nomina|CFDI de nomina]]
+- [[../02 - Documentos y Ejemplos/COPs/COPs|COPs]]
+- [[../02 - Documentos y Ejemplos/CURP/CURP|CURP]]
+- [[../02 - Documentos y Ejemplos/Catalogo de trabajadores/Catalogo de trabajadores|Catalogo de trabajadores]]
+- [[../02 - Documentos y Ejemplos/Cedula de determinacion del salario base de cotizacion y o aportacion/Cedula de determinacion del salario base de cotizacion y o aportacion|Cedula de determinacion del salario base de cotizacion y o aportacion]]
+- [[../02 - Documentos y Ejemplos/Cedula resumen de pagos a personas fisicas/Cedula resumen de pagos a personas fisicas|Cedula resumen de pagos a personas fisicas]]
+- [[../02 - Documentos y Ejemplos/Comprobantes de pago IMSS/Comprobantes de pago IMSS|Comprobantes de pago IMSS]]
+- [[../02 - Documentos y Ejemplos/Contrato colectivo/Contrato colectivo|Contrato colectivo]]
+- [[../02 - Documentos y Ejemplos/Contrato de prestacion de servicios profesionales/Contrato de prestacion de servicios profesionales|Contrato de prestacion de servicios profesionales]]
+- [[../02 - Documentos y Ejemplos/Contrato individual/Contrato individual|Contrato individual]]
+- [[../02 - Documentos y Ejemplos/Declaracion anual ISR/Declaracion anual ISR|Declaracion anual ISR]]
+- [[../02 - Documentos y Ejemplos/Declaracion de prima de riesgos de trabajo/Declaracion de prima de riesgos de trabajo|Declaracion de prima de riesgos de trabajo]]
+- [[../02 - Documentos y Ejemplos/Declaracion informativa de clientes y proveedores/Declaracion informativa de clientes y proveedores|Declaracion informativa de clientes y proveedores]]
+- [[../02 - Documentos y Ejemplos/Declaraciones de pagos y retenciones/Declaraciones de pagos y retenciones|Declaraciones de pagos y retenciones]]
+- [[../02 - Documentos y Ejemplos/Discos de pago SUA/Discos de pago SUA|Discos de pago SUA]]
+- [[../02 - Documentos y Ejemplos/Emision IDSE/Emision IDSE|Emision IDSE]]
+- [[../02 - Documentos y Ejemplos/Entregables de servicios/Entregables de servicios|Entregables de servicios]]
+- [[../02 - Documentos y Ejemplos/Estado de cuenta bancario/Estado de cuenta bancario|Estado de cuenta bancario]]
+- [[../02 - Documentos y Ejemplos/Factores de integracion/Factores de integracion|Factores de integracion]]
+- [[../02 - Documentos y Ejemplos/Facturas de servicios externos/Facturas de servicios externos|Facturas de servicios externos]]
+- [[../02 - Documentos y Ejemplos/Facturas de servicios y prestaciones/Facturas de servicios y prestaciones|Facturas de servicios y prestaciones]]
+- [[../02 - Documentos y Ejemplos/ICSOE/ICSOE|ICSOE]]
+- [[../02 - Documentos y Ejemplos/Liquidaciones pagadas/Liquidaciones pagadas|Liquidaciones pagadas]]
+- [[../02 - Documentos y Ejemplos/Listados de entrega o pago/Listados de entrega o pago|Listados de entrega o pago]]
+- [[../02 - Documentos y Ejemplos/Nomina/Nomina|Nomina]]
+- [[../02 - Documentos y Ejemplos/Plan de prestaciones/Plan de prestaciones|Plan de prestaciones]]
+- [[../02 - Documentos y Ejemplos/Plantilla Informacion Patronal v10.1 2/Plantilla Informacion Patronal v10.1 2|Plantilla Informacion Patronal v10.1 2]]
+- [[../02 - Documentos y Ejemplos/Politicas por escrito de prestaciones/Politicas por escrito de prestaciones|Politicas por escrito de prestaciones]]
+- [[../02 - Documentos y Ejemplos/Poliza contable/Poliza contable|Poliza contable]]
+- [[../02 - Documentos y Ejemplos/Porcentajes de seguros IMSS/Porcentajes de seguros IMSS|Porcentajes de seguros IMSS]]
+- [[../02 - Documentos y Ejemplos/REPSE/REPSE|REPSE]]
+- [[../02 - Documentos y Ejemplos/RFC/RFC|RFC]]
+- [[../02 - Documentos y Ejemplos/Recibos de honorarios/Recibos de honorarios|Recibos de honorarios]]
+- [[../02 - Documentos y Ejemplos/Recibos timbrados de nomina/Recibos timbrados de nomina|Recibos timbrados de nomina]]
+- [[../02 - Documentos y Ejemplos/Resumen de finiquitos y bajas/Resumen de finiquitos y bajas|Resumen de finiquitos y bajas]]
+- [[../02 - Documentos y Ejemplos/SBC/SBC|SBC]]
+- [[../02 - Documentos y Ejemplos/SISUB/SISUB|SISUB]]
+- [[../02 - Documentos y Ejemplos/SUA IMSS/SUA IMSS|SUA IMSS]]
+- [[../02 - Documentos y Ejemplos/SUA INFONAVIT/SUA INFONAVIT|SUA INFONAVIT]]
+- [[../02 - Documentos y Ejemplos/UMA/UMA|UMA]]
+
+## Hubs adicionales
+- [[../01 - Pruebas IMSS/Índice de Pruebas IMSS|Índice de Pruebas IMSS]]
+- [[../05 - Entregables Finales/Home - Entregables Finales|Home - Entregables Finales]]

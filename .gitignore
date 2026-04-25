@@ -1,0 +1,23 @@
+.DS_Store
+**/.DS_Store
+
+# Obsidian local UI state
+**/.obsidian/workspace.json
+**/.obsidian/workspace-mobile.json
+**/.obsidian/cache/
+**/.trash/
+
+# Client evidence and generated/binary audit files stay out of Git.
+vault/02 Client Delivery/
+vault/90 Archive/
+vault/**/*.pdf
+vault/**/*.PDF
+vault/**/*.xls
+vault/**/*.xlsx
+vault/**/*.xlsm
+vault/**/*.zip
+vault/**/*.SUA
+vault/**/*.sua
+vault/**/*.png
+vault/**/*.csv
+vault/**/*.CSV

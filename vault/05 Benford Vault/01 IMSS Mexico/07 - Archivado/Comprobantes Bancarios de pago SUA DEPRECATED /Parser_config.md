@@ -1,0 +1,49 @@
+# Parser Config
+
+- Estrategia de parsing
+  - Extraer texto del PDF o acuse bancario.
+  - Detectar si pertenece a la familia de comprobantes bancarios de pago SUA.
+  - Extraer campos mínimos y opcionales por variante.
+- Tipo de input
+  - PDF bancario
+  - acuse exportado
+  - comprobante de aplicación de pago
+- Hojas / secciones / bloques esperados
+  - No aplica por hojas.
+  - Buscar encabezado, cuerpo transaccional y campos visibles de operación.
+- Patrones de reconocimiento
+  - Presencia de logotipo o nombre de banco
+  - SUA
+  - pago de cuotas obrero patronales
+  - IMSS
+  - INFONAVIT
+  - línea de captura
+  - folio SUA
+  - total de pago
+- Mapeo origen -> destino
+  - `Importe Total` / `Total de Pago` -> `importe_pagado`
+  - `Fecha de Pago` / `Fecha y Hora` / `Fecha de aplicación` -> `fecha_pago`
+  - logotipo o razón social bancaria -> `banco_emisor`
+  - identificador visible útil -> `referencia_visible`
+  - `Folio SUA` -> `folio_sua`
+  - `Periodo de Pago` / `Periodo de Pago IMSS` / `Mes + Año` -> `periodo_pago`
+  - `Línea de Captura` -> `linea_captura`
+  - `Razón Social` -> `razon_social`
+  - `Folio de Pago` / `Folio de Internet` / `Número de Operación` -> `identificador_operacion`
+- Normalizaciones
+  - Normalizar banco emisor a nombre corto cuando sea evidente.
+  - Normalizar fecha a formato ISO cuando sea posible.
+  - Limpiar importes eliminando símbolos de moneda.
+- Heurísticas
+  - Si existe logotipo de banco o nombre bancario visible, usarlo como señal fuerte de clasificación.
+  - Si hay varios identificadores, priorizar número de operación, folio de pago o folio de internet como `identificador_operacion`.
+- Fallbacks
+  - Si no existe `folio_sua`, no bloquear el parseo.
+  - Si no existe `periodo_pago`, dejarlo vacío.
+- Errores comunes
+  - Confundir un comprobante de otro mes o de otro pago.
+  - Capturar mal fecha de pago.
+  - Capturar mal importe.
+- Notas por variante
+  - Variante Banorte / IXE
+  - Variante BBVA

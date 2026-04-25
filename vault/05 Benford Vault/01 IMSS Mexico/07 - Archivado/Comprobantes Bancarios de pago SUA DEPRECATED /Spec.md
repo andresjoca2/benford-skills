@@ -1,0 +1,50 @@
+# Spec
+
+
+- Overview
+  - Tipo documental bancario usado como soporte de pago del SUA.
+- Qué es
+  - Es un comprobante bancario o acuse de pago asociado al pago de cuotas obrero patronales / SUA.
+- Para qué sirve
+  - Sirve para validar que lo determinado o acumulado en SUA / ACUMSUA coincide con lo efectivamente pagado.
+  - Sirve como soporte documental en pruebas como vaciado de liquidaciones, ACUMSUA y DGE.
+- Cómo lo reconoce el auditor
+  - Suele traer logotipo de banco.
+  - Suele contener lenguaje como pago SUA, cuotas obrero patronales, IMSS, INFONAVIT, línea de captura o folio SUA.
+- Nombres alternos / aliases
+  - Comprobante bancario de pago SUA
+  - Comprobante de pago
+  - Recibo bancario SUA
+  - Comprobante de aplicación del pago de cuotas obrero patronales
+- Formato esperado
+  - PDF
+  - impresión bancaria o acuse exportado
+- Origen y periodicidad
+  - Origen: banco / portal bancario / acuse de pago
+  - Periodicidad: mensual o bimestral, según el pago que soporta
+- Alcance
+  - 1 fila por comprobante
+- Obligatorio / opcional / condicional
+  - Condicional según la prueba.
+- Qué bloquea si falta
+  - Debilita la validación contra pago real.
+  - Puede dejar pendiente la fecha de pago o la confirmación del soporte bancario.
+- Uso en pruebas
+  - RSM Mazatlán 5.1 - Vaciado de liquidaciones
+  - RSM Mérida - Vaciado de liquidaciones
+  - Traust / ACUMSUA
+  - Traust / DGE
+  - Traust / Confronta
+- Riesgos que cubre
+  - Riesgo de no poder soportar documentalmente el pago real.
+  - Riesgo de error de captura de fecha, periodo, importe o RP.
+- Reglas de validación
+  - El importe pagado debe poder identificarse de forma directa.
+  - La fecha de pago debe poder identificarse cuando exista.
+  - El banco emisor debe poder reconocerse por logotipo, razón social o texto bancario.
+  - El periodo de pago debe capturarse siempre que exista.
+- Casos límite y variantes
+  - Variante por banco.
+  - Variante por canal o formato.
+  - Algunos comprobantes traen folio SUA y otros no.
+  - Algunos traen desglose de importes y otros solo total.
