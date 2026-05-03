@@ -2,6 +2,20 @@
 
 Portable Benford skills and deterministic local engines.
 
+## Vault Location
+
+This repo must not contain a `vault/` copy. The source of truth is each user's
+local Google Drive / Drive-synced `Benford Vault V3` folder.
+
+Use this repo for:
+
+- Codex skills
+- deterministic engines
+- tests and fixtures
+- operational wrappers
+
+Do not use this repo for canonical Benford Brain content.
+
 ## Benford Router Engine
 
 The router is a deterministic CLI for Benford Vault V3 proposal queues. The code lives in this repo; each user points it at their own local `Benford Vault V3` folder.
@@ -27,6 +41,11 @@ bun run router -- run --all-draft --write
 You can also skip local config and use `BENFORD_VAULT_ROOT` or pass `--vault-root` on every command.
 
 The engine only writes operational files inside the processed `PROP-*` package and only moves proposal folders between proposal queues. It does not write to canonical Benford Brain folders.
+
+In normal use, humans should not need to run these commands manually. Skills and
+agents should invoke the CLI through `src/benford-router-engine/SKILL.md`,
+using dry-run first and `--write` only when the user has approved the queue move
+or when a trusted backoffice action triggers it.
 
 ## Validation
 
