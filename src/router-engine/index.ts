@@ -1,5 +1,10 @@
 export { evaluateProposal } from "./evaluate"
-export { listDraftProposalIds, loadProposalPackage } from "./load-proposal"
+export {
+  listDraftProposalIds,
+  listProposalIds,
+  loadProposalPackage,
+} from "./load-proposal"
+export { assertVaultRoot, resolveRouterConfig } from "./paths"
 export { checkRouter, runRouterForAllDraft, runRouterForProposal } from "./run"
 export type {
   ProposalPackage,
