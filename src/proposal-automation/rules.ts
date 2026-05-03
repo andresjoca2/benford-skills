@@ -20,7 +20,7 @@ export const AUTOMATION_RULES: Record<ProposalQueue, QueueAutomationRule> = {
     queue: "03 Approved for Editor",
     action: "invoke_skill",
     description:
-      "Invoke the canonical editor skill once it exists, then move the PROP to Applied.",
+      "Invoke the canonical editor skill, then move the PROP to Applied.",
     skillName: "benford-canonical-editor",
     writePolicy: "manual_only",
   },

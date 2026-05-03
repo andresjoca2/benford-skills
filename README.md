@@ -57,8 +57,7 @@ Current rules:
 
 - `02 Proposals/01 Draft` -> run the deterministic Router Engine.
 - `02 Proposals/02 Needs Human Decision` -> wait for a human decision.
-- `02 Proposals/03 Approved for Editor` -> hand off to `benford-canonical-editor`
-  once that skill exists.
+- `02 Proposals/03 Approved for Editor` -> hand off to `benford-canonical-editor`.
 - `02 Proposals/04 Applied` and `02 Proposals/05 Rejected` -> terminal queues.
 
 Humans should normally interact through `src/benford-proposal-automation/SKILL.md`.

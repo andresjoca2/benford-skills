@@ -27,7 +27,7 @@ Flujo:
 |---|---|---|
 | `01 Draft` | `route_draft` | usar `benford-router-engine` |
 | `02 Needs Human Decision` | `wait_for_human` | pedir decision humana |
-| `03 Approved for Editor` | `invoke_skill` | usar `benford-canonical-editor` cuando exista |
+| `03 Approved for Editor` | `invoke_skill` | usar `benford-canonical-editor` |
 | `04 Applied` | `no_op` | terminal |
 | `05 Rejected` | `no_op` | terminal |
 
@@ -41,8 +41,8 @@ Flujo:
 4. Ejecuta `run` en dry-run para mostrar eventos.
 5. Usa `--write` solo cuando el usuario pidio automatizar/mover propuestas en
    esta sesion o cuando venga de una accion confiable del backoffice.
-6. Si un evento pide una skill futura, reportalo como `pending_manual`; no
-   inventes el trabajo.
+6. Si un evento pide una accion manual, reportalo como `pending_manual`; no
+   inventes el trabajo de otra skill.
 
 ## Comandos
 
@@ -62,15 +62,14 @@ Solo por medio de handlers seguros:
 - `01 Draft`: puede llamar al Router Engine con `--write`, que escribe archivos
   operativos y mueve la PROP a su cola destino.
 
-## No puede escribir todavia
+## No puede escribir directamente
 
 - Canónicos del Benford Brain.
 - `04 Applied`.
 - `decision_record.md`.
 - `applied_record.md`.
 
-Cuando exista `benford-canonical-editor`, esta skill debe actualizarse para
-delegar a esa skill las PROPs en `03 Approved for Editor`.
+Para PROPs en `03 Approved for Editor`, delega a `benford-canonical-editor`.
 
 ## Validacion final
 

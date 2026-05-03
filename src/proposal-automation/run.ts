@@ -75,7 +75,7 @@ export function runProposalAutomations(
       action: "invoke_skill",
       status: "pending_manual",
       detail:
-        "Ready for the canonical editor skill. Handler is intentionally a placeholder until that skill exists.",
+        "Ready for the canonical editor skill. Canonical writes require explicit user approval in-session.",
       nextSkill: "benford-canonical-editor",
     })
   }
