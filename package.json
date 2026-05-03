@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "router": "bun run scripts/benford-router.ts",
+    "automations": "bun run scripts/benford-automations.ts",
     "test": "bun test",
     "test:router": "bun test tests/router-engine/router-engine.test.ts",
+    "test:automations": "bun test tests/proposal-automation/proposal-automation.test.ts",
     "lint:router": "bunx biome check src/router-engine scripts/benford-router.ts tests/router-engine/router-engine.test.ts",
+    "lint:automations": "bunx biome check src/proposal-automation scripts/benford-automations.ts tests/proposal-automation/proposal-automation.test.ts",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
