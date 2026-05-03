@@ -47,10 +47,35 @@ agents should invoke the CLI through `src/benford-router-engine/SKILL.md`,
 using dry-run first and `--write` only when the user has approved the queue move
 or when a trusted backoffice action triggers it.
 
+## Proposal Automations
+
+Proposal automations are a light orchestration layer over Vault folders. They do
+not add a database. The Vault remains the source of truth, and queue membership
+drives the next action.
+
+Current rules:
+
+- `02 Proposals/01 Draft` -> run the deterministic Router Engine.
+- `02 Proposals/02 Needs Human Decision` -> wait for a human decision.
+- `02 Proposals/03 Approved for Editor` -> hand off to `benford-canonical-editor`.
+- `02 Proposals/04 Applied` and `02 Proposals/05 Rejected` -> terminal queues.
+
+Humans should normally interact through `src/benford-proposal-automation/SKILL.md`.
+The CLI is the portable mechanism that skill and backoffice actions call.
+
+```bash
+bun run automations -- check --vault-root "/path/to/Benford Vault V3"
+bun run automations -- run --vault-root "/path/to/Benford Vault V3"
+bun run automations -- run --write --vault-root "/path/to/Benford Vault V3"
+bun run automations -- watch --interval-ms 5000 --vault-root "/path/to/Benford Vault V3"
+```
+
 ## Validation
 
 ```bash
 bun run test:router
+bun run test:automations
 bun run lint:router
+bun run lint:automations
 bun run typecheck
 ```

@@ -245,6 +245,7 @@ export function evaluateProposal(
     explicitHuman,
     multiCanonical,
     reasons,
+    humanQuestions,
   )
   const toQueue = decisionToQueue(decision)
 
@@ -463,6 +464,7 @@ function decide(
   explicitHuman: "si" | "no" | "unknown",
   multiCanonical: boolean,
   reasons: string[],
+  humanQuestions: RouterEvaluation["humanQuestions"],
 ): RouterDecision {
   const failedChecks = checks.filter((check) => check.status === "fail")
   const evidenceFailed = failedChecks.some(
@@ -480,13 +482,27 @@ function decide(
 
   if (evidenceFailed) {
     reasons.push("Evidence is missing or explicitly unavailable.")
-    return "rejected"
+    humanQuestions.push({
+      question:
+        "La evidencia faltante puede recuperarse o la PROP debe rechazarse?",
+      why: "El Router no rechaza por si solo; solo escala faltantes de evidencia a decision humana.",
+      expectedAnswer:
+        "Aportar evidencia y regresar a Draft, aprobar manualmente con rationale, o rechazar.",
+    })
+    return "needs_human_decision"
   }
   if (metadataFailed || targetFailed) {
     reasons.push(
-      "The issue is structural and should be rewritten before routing again.",
+      "The issue is structural and needs human decision before routing can continue.",
     )
-    return "rewrite_required"
+    humanQuestions.push({
+      question:
+        "La PROP debe corregirse y regresar a Draft, o puede aprobarse manualmente?",
+      why: "Faltan campos, secciones o target canonico necesarios para aprobar automaticamente.",
+      expectedAnswer:
+        "Corregir/rewrite, aprobar con rationale, pedir evidencia adicional, o rechazar.",
+    })
+    return "needs_human_decision"
   }
   if (
     contradiction !== "no" ||
@@ -514,10 +530,6 @@ export function decisionToQueue(decision: RouterDecision): ProposalQueue {
       return "03 Approved for Editor"
     case "needs_human_decision":
       return "02 Needs Human Decision"
-    case "rejected":
-      return "05 Rejected"
-    case "rewrite_required":
-      return "01 Draft"
   }
 }
 

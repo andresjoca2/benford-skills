@@ -1,8 +1,4 @@
-export type RouterDecision =
-  | "approved_for_editor"
-  | "needs_human_decision"
-  | "rejected"
-  | "rewrite_required"
+export type RouterDecision = "approved_for_editor" | "needs_human_decision"
 
 export type ProposalQueue =
   | "01 Draft"

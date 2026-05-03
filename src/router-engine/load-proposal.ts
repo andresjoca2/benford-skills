@@ -40,9 +40,16 @@ export function findProposalPackage(
 }
 
 export function listDraftProposalIds(config: RouterConfig): string[] {
-  const draftRoot = queuePath(config, "01 Draft")
-  if (!existsSync(draftRoot)) return []
-  return readdirSync(draftRoot, { withFileTypes: true })
+  return listProposalIds(config, "01 Draft")
+}
+
+export function listProposalIds(
+  config: RouterConfig,
+  queue: ProposalQueue,
+): string[] {
+  const root = queuePath(config, queue)
+  if (!existsSync(root)) return []
+  return readdirSync(root, { withFileTypes: true })
     .filter(
       (entry) =>
         entry.isDirectory() && /^PROP-[A-Za-z0-9_-]+$/.test(entry.name),

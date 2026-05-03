@@ -4,54 +4,66 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { checkRouter, runRouterForProposal } from "@/router-engine"
+import {
+  checkProposalAutomations,
+  runProposalAutomations,
+} from "@/proposal-automation"
 
-describe("benford router engine", () => {
-  test("dry-run approves a complete low-risk new canonical proposal without writing", () => {
+describe("benford proposal automation", () => {
+  test("check reports proposal counts and rules for each queue", () => {
     const vaultRoot = makeVault()
-    writeProposal(
-      vaultRoot,
-      "PROP-0001",
-      completeProposal("PROP-0001", {
-        contradiction: "no",
-        risk: "low",
-        requiresHuman: "no",
-      }),
-    )
+    writeProposal(vaultRoot, "PROP-0001", completeProposal("PROP-0001"))
+    moveProposal(vaultRoot, "PROP-0001", "01 Draft", "03 Approved for Editor")
 
-    const result = runRouterForProposal("PROP-0001", {
+    const check = checkProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+    })
+
+    expect(
+      check.queues.find((entry) => entry.queue === "01 Draft")?.count,
+    ).toBe(0)
+    expect(
+      check.queues.find((entry) => entry.queue === "03 Approved for Editor")
+        ?.proposalIds,
+    ).toEqual(["PROP-0001"])
+    expect(
+      check.queues.find((entry) => entry.queue === "03 Approved for Editor")
+        ?.rule.skillName,
+    ).toBe("benford-canonical-editor")
+  })
+
+  test("dry-run routes draft proposals without writing", () => {
+    const vaultRoot = makeVault()
+    writeProposal(vaultRoot, "PROP-0002", completeProposal("PROP-0002"))
+
+    const events = runProposalAutomations({
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
     })
 
-    expect(result.dryRun).toBe(true)
-    expect(result.decision).toBe("approved_for_editor")
-    expect(result.toQueue).toBe("03 Approved for Editor")
+    expect(events).toHaveLength(1)
+    expect(events[0]?.action).toBe("route_draft")
+    expect(events[0]?.status).toBe("pending")
+    expect(events[0]?.routerResult?.toQueue).toBe("03 Approved for Editor")
     expect(
       existsSync(
-        join(vaultRoot, "02 Proposals/01 Draft/PROP-0001/router_decision.md"),
+        join(vaultRoot, "02 Proposals/01 Draft/PROP-0002/router_decision.md"),
       ),
     ).toBe(false)
   })
 
-  test("write mode moves a proposal requiring human decision and creates questions", () => {
+  test("write mode routes drafts and leaves approved proposals for canonical editor", () => {
     const vaultRoot = makeVault()
-    writeProposal(
-      vaultRoot,
-      "PROP-0002",
-      completeProposal("PROP-0002", {
-        contradiction: "si",
-        risk: "medium",
-        requiresHuman: "si",
-      }),
-    )
+    writeProposal(vaultRoot, "PROP-0003", completeProposal("PROP-0003"))
 
-    const result = runRouterForProposal("PROP-0002", {
+    const events = runProposalAutomations({
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
@@ -60,74 +72,44 @@ describe("benford router engine", () => {
 
     const movedRoot = join(
       vaultRoot,
-      "02 Proposals/02 Needs Human Decision/PROP-0002",
+      "02 Proposals/03 Approved for Editor/PROP-0003",
     )
-    expect(result.dryRun).toBe(false)
-    expect(result.decision).toBe("needs_human_decision")
-    expect(existsSync(join(movedRoot, "proposal.md"))).toBe(true)
+    expect(events[0]?.status).toBe("handled")
+    expect(events[0]?.routerResult?.dryRun).toBe(false)
     expect(existsSync(join(movedRoot, "router_decision.md"))).toBe(true)
-    expect(existsSync(join(movedRoot, "analysis_report.md"))).toBe(true)
-    expect(existsSync(join(movedRoot, "questions_for_human.md"))).toBe(true)
     expect(
       readFileSync(join(movedRoot, "router_decision.md"), "utf8"),
-    ).toContain("needs_human_decision")
-  })
+    ).toContain("approved_for_editor")
 
-  test("missing evidence is escalated to human decision", () => {
-    const vaultRoot = makeVault()
-    writeProposal(
-      vaultRoot,
-      "PROP-0003",
-      completeProposal("PROP-0003", {
-        contradiction: "no",
-        risk: "low",
-        requiresHuman: "no",
-        evidencePath: "01 Contribuciones/missing/materials/source.md",
-      }),
-    )
-
-    const result = runRouterForProposal("PROP-0003", {
+    const followUpEvents = runProposalAutomations({
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
     })
-
-    expect(result.decision).toBe("needs_human_decision")
-    expect(result.toQueue).toBe("02 Needs Human Decision")
-    expect(result.evaluation.humanQuestions[0]?.question).toContain(
-      "evidencia faltante",
-    )
-  })
-
-  test("check lists draft proposals from portable vault root", () => {
-    const vaultRoot = makeVault()
-    writeProposal(vaultRoot, "PROP-0004", completeProposal("PROP-0004"))
-
-    const result = checkRouter({
-      vaultRoot,
-      runtimeDir: join(vaultRoot, ".runtime"),
-    })
-
-    expect(result.draftProposalIds).toEqual(["PROP-0004"])
+    expect(followUpEvents).toHaveLength(1)
+    expect(followUpEvents[0]?.queue).toBe("03 Approved for Editor")
+    expect(followUpEvents[0]?.action).toBe("invoke_skill")
+    expect(followUpEvents[0]?.nextSkill).toBe("benford-canonical-editor")
+    expect(followUpEvents[0]?.status).toBe("pending_manual")
   })
 })
 
 function makeVault(): string {
-  const root = mkdtempSync(join(tmpdir(), "benford-router-test-"))
+  const root = mkdtempSync(join(tmpdir(), "benford-automation-test-"))
   mkdirSync(join(root, "00 Sistema"), { recursive: true })
   mkdirSync(
     join(root, "01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials"),
     { recursive: true },
   )
-  mkdirSync(join(root, "02 Proposals/01 Draft"), { recursive: true })
-  mkdirSync(join(root, "02 Proposals/02 Needs Human Decision"), {
-    recursive: true,
-  })
-  mkdirSync(join(root, "02 Proposals/03 Approved for Editor"), {
-    recursive: true,
-  })
-  mkdirSync(join(root, "02 Proposals/04 Applied"), { recursive: true })
-  mkdirSync(join(root, "02 Proposals/05 Rejected"), { recursive: true })
+  for (const queue of [
+    "01 Draft",
+    "02 Needs Human Decision",
+    "03 Approved for Editor",
+    "04 Applied",
+    "05 Rejected",
+  ]) {
+    mkdirSync(join(root, "02 Proposals", queue), { recursive: true })
+  }
   writeFileSync(
     join(root, "00 Sistema/contrato-metadata-minima.md"),
     "# contrato\n",
@@ -159,22 +141,19 @@ function writeProposal(
   writeFileSync(join(proposalRoot, "proposal.md"), content, "utf8")
 }
 
-function completeProposal(
+function moveProposal(
+  vaultRoot: string,
   proposalId: string,
-  options: {
-    contradiction?: "si" | "no" | "unknown"
-    risk?: "low" | "medium" | "high" | "unknown"
-    requiresHuman?: "si" | "no" | "unknown"
-    evidencePath?: string
-  } = {},
-): string {
-  const contradiction = options.contradiction ?? "no"
-  const risk = options.risk ?? "low"
-  const requiresHuman = options.requiresHuman ?? "no"
-  const evidencePath =
-    options.evidencePath ??
-    "01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/source.md"
+  fromQueue: string,
+  toQueue: string,
+): void {
+  renameSync(
+    join(vaultRoot, "02 Proposals", fromQueue, proposalId),
+    join(vaultRoot, "02 Proposals", toQueue, proposalId),
+  )
+}
 
+function completeProposal(proposalId: string): string {
   return `# ${proposalId}
 
 ## Identificacion
@@ -190,7 +169,7 @@ function completeProposal(
 | Tipo de cambio | new |
 | Target canonico ID | DOC-test |
 | Target canonico path | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/spec.md |
-| Riesgo inicial | ${risk} |
+| Riesgo inicial | low |
 
 ## Campos para routing
 | Campo | Prioridad | Valor |
@@ -201,9 +180,9 @@ function completeProposal(
 | Target canonico path | M | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/spec.md |
 | Evidencia minima disponible | M | si |
 | Toca canon existente | M | no |
-| Contradiccion detectada | M | ${contradiction} |
-| Riesgo inicial | M | ${risk} |
-| Requiere humano sugerido | D | ${requiresHuman} |
+| Contradiccion detectada | M | no |
+| Riesgo inicial | M | low |
+| Requiere humano sugerido | D | no |
 
 ## Contribution source
 | Campo | Valor |
@@ -231,12 +210,12 @@ Crear documento canonico de prueba.
 ## Evidencia usada
 | Evidencia | Ubicacion | Uso |
 |---|---|---|
-| source.md | ${evidencePath} | Evidencia fixture |
+| source.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/source.md | Evidencia fixture |
 
 ## Drafts usados
 | Draft | Ubicacion | Archivo canonico destino |
 |---|---|---|
-| spec_draft.md | ${evidencePath} | spec.md |
+| spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/source.md | spec.md |
 
 ## Canonicos relacionados
 | Canonico | Relacion |
