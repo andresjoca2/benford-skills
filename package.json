@@ -1,0 +1,18 @@
+{
+  "name": "benford-skills",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "router": "bun run scripts/benford-router.ts",
+    "test": "bun test",
+    "test:router": "bun test tests/router-engine/router-engine.test.ts",
+    "lint:router": "bunx biome check src/router-engine scripts/benford-router.ts tests/router-engine/router-engine.test.ts",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.8",
+    "@types/bun": "latest",
+    "bun-types": "^1.3.11",
+    "typescript": "^5"
+  }
+}
