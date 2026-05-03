@@ -1,5 +1,6 @@
 .DS_Store
 **/.DS_Store
+node_modules/
 
 # Obsidian local UI state
 **/.obsidian/workspace.json
@@ -21,3 +22,7 @@ vault/**/*.sua
 vault/**/*.png
 vault/**/*.csv
 vault/**/*.CSV
+
+# Local router config and runtime locks
+.benford-router.json
+.benford-runtime/
