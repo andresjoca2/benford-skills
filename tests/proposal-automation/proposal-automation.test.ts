@@ -38,6 +38,54 @@ describe("benford proposal automation", () => {
     ).toBe("benford-canonical-editor")
   })
 
+  test("detects ready contributions and requests Proposal Generator", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-ready",
+      estado: "ready_for_proposal",
+    })
+
+    const check = checkProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+    })
+
+    expect(check.contributions.count).toBe(1)
+    expect(check.contributions.contributionIds).toEqual([
+      "CONTRIBUTION-2026-05-03-ready",
+    ])
+    expect(check.contributions.rule.skillName).toBe("IMSS-Proposal-Generator")
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+    })
+
+    expect(events).toHaveLength(1)
+    expect(events[0]?.subject).toBe("contribution")
+    expect(events[0]?.contributionId).toBe("CONTRIBUTION-2026-05-03-ready")
+    expect(events[0]?.action).toBe("generate_proposal")
+    expect(events[0]?.status).toBe("pending_manual")
+    expect(events[0]?.nextSkill).toBe("IMSS-Proposal-Generator")
+  })
+
+  test("skips ready contributions that already reference generated proposals", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-done",
+      estado: "ready_for_proposal",
+      proposalId: "PROP-DOC-0001",
+    })
+
+    const check = checkProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+    })
+
+    expect(check.contributions.count).toBe(0)
+    expect(runProposalAutomations({ vaultRoot })).toHaveLength(0)
+  })
+
   test("dry-run routes draft proposals without writing", () => {
     const vaultRoot = makeVault()
     writeProposal(vaultRoot, "PROP-0002", completeProposal("PROP-0002"))
@@ -129,6 +177,35 @@ function makeVault(): string {
     "utf8",
   )
   return root
+}
+
+function writeContributionMap(
+  vaultRoot: string,
+  options: { id: string; estado: string; proposalId?: string },
+): void {
+  const contributionRoot = join(vaultRoot, "01 Contribuciones", options.id)
+  mkdirSync(contributionRoot, { recursive: true })
+  const proposalRow = options.proposalId
+    ? `| ${options.proposalId} | Draft creado |`
+    : "| Pendiente | N/A |"
+
+  writeFileSync(
+    join(contributionRoot, "contribution_map.md"),
+    `# ${options.id}
+
+## Identificacion
+| Campo | Valor |
+|---|---|
+| ID | ${options.id} |
+| Estado | ${options.estado} |
+
+## Proposals generadas
+| PROP | Estado |
+|---|---|
+${proposalRow}
+`,
+    "utf8",
+  )
 }
 
 function writeProposal(

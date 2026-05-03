@@ -5,6 +5,7 @@ import type {
 } from "@/router-engine"
 
 export type AutomationAction =
+  | "generate_proposal"
   | "route_draft"
   | "invoke_skill"
   | "wait_for_human"
@@ -24,16 +25,26 @@ export interface QueueAutomationRule {
   readonly writePolicy: "safe_auto" | "manual_only" | "none"
 }
 
+export interface ContributionAutomationRule {
+  readonly action: "generate_proposal"
+  readonly description: string
+  readonly skillName: "IMSS-Proposal-Generator"
+  readonly writePolicy: "manual_only"
+}
+
 export interface ProposalAutomationOptions extends RouterOptions {
   readonly write?: boolean
 }
 
 export interface ProposalAutomationEvent {
-  readonly proposalId: string
-  readonly queue: ProposalQueue
+  readonly id: string
+  readonly subject: "contribution" | "proposal"
   readonly action: AutomationAction
   readonly status: AutomationStatus
   readonly detail: string
+  readonly proposalId?: string
+  readonly contributionId?: string
+  readonly queue?: ProposalQueue
   readonly nextSkill?: string
   readonly routerResult?: RouteRunResult
 }
@@ -41,6 +52,11 @@ export interface ProposalAutomationEvent {
 export interface ProposalAutomationCheck {
   readonly vaultRoot: string
   readonly runtimeDir: string
+  readonly contributions: {
+    readonly count: number
+    readonly contributionIds: string[]
+    readonly rule: ContributionAutomationRule
+  }
   readonly queues: Array<{
     readonly queue: ProposalQueue
     readonly count: number

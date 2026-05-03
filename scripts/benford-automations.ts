@@ -26,6 +26,11 @@ try {
     const check = checkProposalAutomations(args)
     console.log(`Vault root: ${check.vaultRoot}`)
     console.log(`Runtime dir: ${check.runtimeDir}`)
+    console.log(`Ready contributions: ${check.contributions.count}`)
+    console.log(`  action: ${check.contributions.rule.action}`)
+    console.log(`  skill: ${check.contributions.rule.skillName}`)
+    for (const contributionId of check.contributions.contributionIds)
+      console.log(`  - ${contributionId}`)
     for (const queue of check.queues) {
       console.log(`${queue.queue}: ${queue.count}`)
       console.log(`  action: ${queue.rule.action}`)
@@ -41,6 +46,7 @@ try {
       const events = runProposalAutomations(args).filter((event) => {
         const key = [
           event.proposalId,
+          event.contributionId,
           event.queue,
           event.action,
           event.routerResult?.toQueue ?? "",
@@ -65,7 +71,8 @@ function printEvents(events: ProposalAutomationEvent[]): void {
     return
   }
   for (const event of events) {
-    console.log(`${event.proposalId}: ${event.queue}`)
+    console.log(`${event.id}: ${event.subject}`)
+    if (event.queue) console.log(`  queue: ${event.queue}`)
     console.log(`  action: ${event.action}`)
     console.log(`  status: ${event.status}`)
     console.log(`  detail: ${event.detail}`)
