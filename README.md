@@ -50,11 +50,13 @@ or when a trusted backoffice action triggers it.
 ## Proposal Automations
 
 Proposal automations are a light orchestration layer over Vault folders. They do
-not add a database. The Vault remains the source of truth, and queue membership
-drives the next action.
+not add a database. The Vault remains the source of truth, and contribution
+status plus queue membership drive the next action.
 
 Current rules:
 
+- `01 Contribuciones/**/CONTRIBUTION-*` with `Estado = ready_for_proposal`
+  and no generated PROP -> hand off to `IMSS-Proposal-Generator`.
 - `02 Proposals/01 Draft` -> run the deterministic Router Engine.
 - `02 Proposals/02 Needs Human Decision` -> wait for a human decision.
 - `02 Proposals/03 Approved for Editor` -> hand off to `benford-canonical-editor`.

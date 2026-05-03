@@ -1,5 +1,13 @@
 import type { ProposalQueue } from "@/router-engine"
-import type { QueueAutomationRule } from "./types"
+import type { ContributionAutomationRule, QueueAutomationRule } from "./types"
+
+export const CONTRIBUTION_AUTOMATION_RULE: ContributionAutomationRule = {
+  action: "generate_proposal",
+  description:
+    "Convert ready_for_proposal CONTRIBUTION-* packages into draft PROPs.",
+  skillName: "IMSS-Proposal-Generator",
+  writePolicy: "manual_only",
+}
 
 export const AUTOMATION_RULES: Record<ProposalQueue, QueueAutomationRule> = {
   "01 Draft": {
