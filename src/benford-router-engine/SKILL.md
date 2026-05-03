@@ -3,8 +3,9 @@ name: benford-router-engine
 description: >-
   Ejecuta el Router Engine deterministico de Benford Vault V3 para evaluar y
   mover PROPs entre colas. Usala cuando el usuario quiera rutear, aprobar para
-  editor, mandar a decision humana, rechazar o revisar deterministicamente
-  proposals PROP-* en 02 Proposals. Esta skill no decide por prompt: invoca el
+  editor, mandar a decision humana o revisar deterministicamente proposals
+  PROP-* en 02 Proposals. Esta skill no rechaza: si falta evidencia, metadata o
+  rewrite, manda a decision humana. Esta skill no decide por prompt: invoca el
   CLI portable `bun run router`.
 ---
 
@@ -13,6 +14,15 @@ description: >-
 ## Responsabilidad
 
 Esta skill es un wrapper operativo sobre el Router Engine deterministico.
+
+El Router solo puede producir dos destinos:
+
+- `03 Approved for Editor`
+- `02 Needs Human Decision`
+
+`05 Rejected` esta reservado para decision humana posterior. Si la PROP necesita
+rewrite, evidencia adicional o correccion estructural, el Router la manda a
+`02 Needs Human Decision`.
 
 No hagas routing con razonamiento generativo. El flujo correcto es:
 
@@ -93,4 +103,4 @@ Al terminar, reporta:
 - cola origen y cola destino;
 - archivos creados;
 - si fue dry-run o write;
-- siguiente paso: Canonical Editor, imss-tomar-decisiones, reescritura o rechazo.
+- siguiente paso: Canonical Editor o imss-tomar-decisiones.

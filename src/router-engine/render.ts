@@ -266,20 +266,13 @@ Registrar la respuesta final en \`decision_record.md\`.
 function summarizeRule(evaluation: RouterEvaluation): string {
   if (evaluation.decision === "approved_for_editor")
     return "complete_traceable_low_or_medium_risk"
-  if (evaluation.decision === "needs_human_decision")
-    return "human_judgment_required"
-  if (evaluation.decision === "rejected") return "missing_or_unusable_evidence"
-  return "structural_rewrite_required"
+  return "human_judgment_required"
 }
 
 function nextStep(decision: string): string {
   if (decision === "approved_for_editor")
     return "Canonical Editor puede aplicar la PROP aprobada."
-  if (decision === "needs_human_decision")
-    return "Ejecutar imss-tomar-decisiones para registrar decision_record.md."
-  if (decision === "rejected")
-    return "No aplicar al canon; conservar evidencia de rechazo."
-  return "Reescribir proposal.md y volver a ejecutar Router Engine."
+  return "Ejecutar imss-tomar-decisiones para registrar decision_record.md."
 }
 
 function riskJustification(evaluation: RouterEvaluation): string {
@@ -295,8 +288,5 @@ function conclusion(evaluation: RouterEvaluation): string {
   if (evaluation.decision === "needs_human_decision") {
     return "La PROP requiere decision humana antes de pasar al editor canonico."
   }
-  if (evaluation.decision === "rejected") {
-    return "La PROP queda rechazada por falta de evidencia utilizable o trazabilidad minima."
-  }
-  return "La PROP debe corregirse en Draft antes de volver a rutearse."
+  return "La PROP puede pasar a `03 Approved for Editor`."
 }

@@ -73,7 +73,7 @@ describe("benford router engine", () => {
     ).toContain("needs_human_decision")
   })
 
-  test("missing evidence is rejected deterministically", () => {
+  test("missing evidence is escalated to human decision", () => {
     const vaultRoot = makeVault()
     writeProposal(
       vaultRoot,
@@ -92,8 +92,11 @@ describe("benford router engine", () => {
       today: "2026-05-03",
     })
 
-    expect(result.decision).toBe("rejected")
-    expect(result.toQueue).toBe("05 Rejected")
+    expect(result.decision).toBe("needs_human_decision")
+    expect(result.toQueue).toBe("02 Needs Human Decision")
+    expect(result.evaluation.humanQuestions[0]?.question).toContain(
+      "evidencia faltante",
+    )
   })
 
   test("check lists draft proposals from portable vault root", () => {
