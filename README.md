@@ -59,7 +59,8 @@ Current rules:
   and no generated PROP -> hand off to `IMSS-Proposal-Generator`.
 - `02 Proposals/01 Draft` -> run the deterministic Router Engine.
 - `02 Proposals/02 Needs Human Decision` -> wait for a human decision.
-- `02 Proposals/03 Approved for Editor` -> hand off to `benford-canonical-editor`.
+- `02 Proposals/03 Approved for Editor` -> run the deterministic Canonical
+  Editor for supported approved PROPs.
 - `02 Proposals/04 Applied` and `02 Proposals/05 Rejected` -> terminal queues.
 
 Humans should normally interact through `src/benford-proposal-automation/SKILL.md`.
@@ -72,12 +73,30 @@ bun run automations -- run --write --vault-root "/path/to/Benford Vault V3"
 bun run automations -- watch --interval-ms 5000 --vault-root "/path/to/Benford Vault V3"
 ```
 
+## Canonical Editor Engine
+
+The Canonical Editor CLI applies supported approved PROPs to canonical Brain
+folders. V1 supports new `PROP-DOC` packages in `03 Approved for Editor` whose
+drafts are listed in `Drafts usados` and whose approval is recorded by
+`router_decision.md` or `decision_record.md`.
+
+```bash
+# dry-run is the default and writes nothing
+bun run canonical-editor -- run --proposal PROP-0001 --vault-root "/path/to/Benford Vault V3"
+
+# write mode creates canonical files, applied_record.md, and moves the PROP
+bun run canonical-editor -- run --proposal PROP-0001 --write --vault-root "/path/to/Benford Vault V3"
+bun run canonical-editor -- run --all-approved --write --vault-root "/path/to/Benford Vault V3"
+```
+
 ## Validation
 
 ```bash
 bun run test:router
 bun run test:automations
+bun run test:canonical-editor
 bun run lint:router
 bun run lint:automations
+bun run lint:canonical-editor
 bun run typecheck
 ```

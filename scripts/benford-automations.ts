@@ -82,6 +82,13 @@ function printEvents(events: ProposalAutomationEvent[]): void {
       console.log(`  router target: ${event.routerResult.toQueue}`)
       console.log(`  mode: ${event.routerResult.dryRun ? "dry-run" : "write"}`)
     }
+    if (event.editorResult) {
+      console.log(`  editor target: ${event.editorResult.targetCanonicalId}`)
+      console.log(`  editor path: ${event.editorResult.targetCanonicalPath}`)
+      console.log(
+        `  editor mode: ${event.editorResult.dryRun ? "dry-run" : "write"}`,
+      )
+    }
   }
 }
 

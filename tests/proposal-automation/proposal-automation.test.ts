@@ -107,7 +107,7 @@ describe("benford proposal automation", () => {
     ).toBe(false)
   })
 
-  test("write mode routes drafts and leaves approved proposals for canonical editor", () => {
+  test("write mode routes drafts and applies supported approved proposals", () => {
     const vaultRoot = makeVault()
     writeProposal(vaultRoot, "PROP-0003", completeProposal("PROP-0003"))
 
@@ -118,27 +118,23 @@ describe("benford proposal automation", () => {
       write: true,
     })
 
-    const movedRoot = join(
-      vaultRoot,
-      "02 Proposals/03 Approved for Editor/PROP-0003",
-    )
+    const appliedRoot = join(vaultRoot, "02 Proposals/04 Applied/PROP-0003")
     expect(events[0]?.status).toBe("handled")
     expect(events[0]?.routerResult?.dryRun).toBe(false)
-    expect(existsSync(join(movedRoot, "router_decision.md"))).toBe(true)
+    expect(events[1]?.status).toBe("handled")
+    expect(events[1]?.editorResult?.dryRun).toBe(false)
+    expect(existsSync(join(appliedRoot, "router_decision.md"))).toBe(true)
     expect(
-      readFileSync(join(movedRoot, "router_decision.md"), "utf8"),
+      readFileSync(join(appliedRoot, "router_decision.md"), "utf8"),
     ).toContain("approved_for_editor")
+    expect(existsSync(join(appliedRoot, "applied_record.md"))).toBe(true)
 
     const followUpEvents = runProposalAutomations({
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
     })
-    expect(followUpEvents).toHaveLength(1)
-    expect(followUpEvents[0]?.queue).toBe("03 Approved for Editor")
-    expect(followUpEvents[0]?.action).toBe("invoke_skill")
-    expect(followUpEvents[0]?.nextSkill).toBe("benford-canonical-editor")
-    expect(followUpEvents[0]?.status).toBe("pending_manual")
+    expect(followUpEvents).toHaveLength(0)
   })
 })
 

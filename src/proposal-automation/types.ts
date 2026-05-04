@@ -1,3 +1,4 @@
+import type { CanonicalEditPlan } from "@/canonical-editor"
 import type {
   ProposalQueue,
   RouteRunResult,
@@ -47,6 +48,7 @@ export interface ProposalAutomationEvent {
   readonly queue?: ProposalQueue
   readonly nextSkill?: string
   readonly routerResult?: RouteRunResult
+  readonly editorResult?: CanonicalEditPlan
 }
 
 export interface ProposalAutomationCheck {

@@ -5,11 +5,14 @@
   "scripts": {
     "router": "bun run scripts/benford-router.ts",
     "automations": "bun run scripts/benford-automations.ts",
+    "canonical-editor": "bun run scripts/benford-canonical-editor.ts",
     "test": "bun test",
     "test:router": "bun test tests/router-engine/router-engine.test.ts",
     "test:automations": "bun test tests/proposal-automation/proposal-automation.test.ts",
+    "test:canonical-editor": "bun test tests/canonical-editor/canonical-editor.test.ts",
     "lint:router": "bunx biome check src/router-engine scripts/benford-router.ts tests/router-engine/router-engine.test.ts",
     "lint:automations": "bunx biome check src/proposal-automation scripts/benford-automations.ts tests/proposal-automation/proposal-automation.test.ts",
+    "lint:canonical-editor": "bunx biome check src/canonical-editor scripts/benford-canonical-editor.ts tests/canonical-editor/canonical-editor.test.ts",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {

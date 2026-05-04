@@ -13,13 +13,13 @@ and invokes the deterministic engines in this repo.
 - Detects `02 Proposals/01 Draft/PROP-*`.
 - Runs the deterministic Router Engine in write mode for draft proposals.
 - Leaves `02 Needs Human Decision` waiting for a human.
-- Reports that `benford-canonical-editor` should run for
+- Runs the deterministic Canonical Editor for supported approved proposals in
   `03 Approved for Editor`.
 
-The runner only performs safe automatic proposal routing. It does not create
-canonical files and does not create proposal folders from contributions by
-itself, because those are Vault writes that need explicit approval in the active
-agent session.
+The runner performs safe automatic proposal routing and applies supported
+approved `PROP-DOC` packages through the deterministic Canonical Editor. It does
+not create proposal folders from contributions by itself, because those Vault
+writes still need explicit approval in the active agent session.
 
 ## Requirements
 

@@ -109,7 +109,7 @@ export function resolveVaultPathCandidates(
   config: RouterConfig,
   rawPath: string,
 ): string[] {
-  const trimmed = rawPath.trim().replace(/^`|`$/g, "")
+  const trimmed = rawPath.trim().replace(/^`+|`+$/g, "")
   if (!trimmed || trimmed === "Pendiente") return []
   if (isAbsolute(trimmed)) return [trimmed]
 

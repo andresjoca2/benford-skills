@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { applyCanonicalProposal } from "@/canonical-editor"
 import {
   assertVaultRoot,
   resolveRouterConfig,
@@ -103,16 +104,26 @@ export function runProposalAutomations(
   }
 
   for (const proposalId of listProposalIds(config, "03 Approved for Editor")) {
+    const editorResult =
+      options.write === true
+        ? applyCanonicalProposal(proposalId, {
+            ...options,
+            write: true,
+          })
+        : undefined
     events.push({
       id: proposalId,
       subject: "proposal",
       proposalId,
       queue: "03 Approved for Editor",
       action: "invoke_skill",
-      status: "pending_manual",
+      status: options.write === true ? "handled" : "pending_manual",
       detail:
-        "Ready for the canonical editor skill. Canonical writes require explicit user approval in-session.",
+        options.write === true
+          ? "Applied by deterministic Canonical Editor and moved to 04 Applied."
+          : "Ready for the canonical editor skill. Canonical writes require --write.",
       nextSkill: "benford-canonical-editor",
+      editorResult,
     })
   }
 

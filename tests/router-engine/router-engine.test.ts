@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { checkRouter, runRouterForProposal } from "@/router-engine"
 
 describe("benford router engine", () => {
@@ -99,21 +99,77 @@ describe("benford router engine", () => {
     )
   })
 
+  test("resolves evidence paths prefixed with the Drive vault root", () => {
+    const vaultRoot = makeVault()
+    writeProposal(
+      vaultRoot,
+      "PROP-0004",
+      completeProposal("PROP-0004", {
+        evidencePath:
+          "05 Benford Vault/Benford Vault V3/01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/source.md",
+      }),
+    )
+
+    const result = runRouterForProposal("PROP-0004", {
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+    })
+
+    expect(result.decision).toBe("approved_for_editor")
+    expect(
+      result.evaluation.checks.find((check) => check.name === "Evidence links")
+        ?.status,
+    ).toBe("pass")
+  })
+
+  test("resolves legacy evidence paths beside Benford Vault V3", () => {
+    const vaultRoot = makeVault()
+    mkdirSync(join(dirname(vaultRoot), "01 IMSS Mexico/legacy"), {
+      recursive: true,
+    })
+    writeFileSync(
+      join(dirname(vaultRoot), "01 IMSS Mexico/legacy/source.md"),
+      "# legacy source\n",
+      "utf8",
+    )
+    writeProposal(
+      vaultRoot,
+      "PROP-0005",
+      completeProposal("PROP-0005", {
+        evidencePath: "05 Benford Vault/01 IMSS Mexico/legacy/source.md",
+      }),
+    )
+
+    const result = runRouterForProposal("PROP-0005", {
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+    })
+
+    expect(result.decision).toBe("approved_for_editor")
+    expect(
+      result.evaluation.checks.find((check) => check.name === "Evidence links")
+        ?.status,
+    ).toBe("pass")
+  })
+
   test("check lists draft proposals from portable vault root", () => {
     const vaultRoot = makeVault()
-    writeProposal(vaultRoot, "PROP-0004", completeProposal("PROP-0004"))
+    writeProposal(vaultRoot, "PROP-0006", completeProposal("PROP-0006"))
 
     const result = checkRouter({
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
     })
 
-    expect(result.draftProposalIds).toEqual(["PROP-0004"])
+    expect(result.draftProposalIds).toEqual(["PROP-0006"])
   })
 })
 
 function makeVault(): string {
-  const root = mkdtempSync(join(tmpdir(), "benford-router-test-"))
+  const base = mkdtempSync(join(tmpdir(), "benford-router-test-"))
+  const root = join(base, "05 Benford Vault/Benford Vault V3")
   mkdirSync(join(root, "00 Sistema"), { recursive: true })
   mkdirSync(
     join(root, "01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials"),
