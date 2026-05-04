@@ -1,0 +1,7 @@
+interface:
+  display_name: "IMSS Add Task Specific"
+  short_description: "Draft IMSS METH and TEST outputs"
+  default_prompt: "Use $imss-add-task-specific to capture an IMSS methodology or test into task-specific drafts."
+
+policy:
+  allow_implicit_invocation: true
