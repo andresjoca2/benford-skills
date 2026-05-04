@@ -1,0 +1,7 @@
+interface:
+  display_name: "Benford Router Engine"
+  short_description: "Run the deterministic Benford V3 proposal router"
+  default_prompt: "Use $benford-router-engine to run the deterministic Router Engine for Benford Vault V3 proposals. Start with dry-run and only write after explicit approval."
+
+policy:
+  allow_implicit_invocation: true
