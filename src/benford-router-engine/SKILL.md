@@ -15,6 +15,11 @@ description: >-
 
 Esta skill es un wrapper operativo sobre el Router Engine deterministico.
 
+Antes de rutear, aplica la politica de decision en
+`router-decision-policy.md`. La politica separa la revision general de
+incongruencias contra documentos relacionados del vault del movimiento operativo
+entre colas.
+
 El Router solo puede producir dos destinos:
 
 - `03 Approved for Editor`
@@ -60,9 +65,11 @@ bun run router -- run --all-draft --write --vault-root "$BENFORD_VAULT_ROOT"
 1. Verifica que estas en el repo `benford-skills`.
 2. Resuelve `vaultRoot`.
 3. Ejecuta `check` para confirmar que la estructura del Vault es valida.
-4. Ejecuta primero dry-run salvo que el usuario haya pedido explicitamente escribir.
-5. Reporta la decision deterministica.
-6. Ejecuta `--write` solo si el usuario pidio o aprobo mover la PROP en esta sesion.
+4. Revisa `router-decision-policy.md` para distinguir incongruencia sustantiva,
+   correccion tecnica y ruteo.
+5. Ejecuta primero dry-run salvo que el usuario haya pedido explicitamente escribir.
+6. Reporta la decision deterministica.
+7. Ejecuta `--write` solo si el usuario pidio o aprobo mover la PROP en esta sesion.
 
 ## Puede escribir
 

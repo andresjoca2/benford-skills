@@ -63,6 +63,8 @@ Example:
 BENFORD_VAULT_ROOT=/path/to/Benford Vault V3
 BENFORD_SKILLS_ROOT=/home/openc/benford/benford-skills
 BENFORD_AUTOMATION_INTERVAL_MS=5000
+# Optional if systemd cannot find bun:
+# BUN_BIN=/root/.bun/bin/bun
 ```
 
 Test manually first:
@@ -117,3 +119,6 @@ journalctl --user -u benford-automation.service -f
 - The contribution generator should update `contribution_map.md` after creating
   a `PROP-*`; otherwise the runner will keep reporting the contribution as
   ready for proposal generation.
+- If `systemctl --user status benford-automation.service` exits with
+  `status=127`, systemd cannot find `bun`. Run `command -v bun`, then add
+  `BUN_BIN=/absolute/path/to/bun` to `~/.config/benford/automation.env`.

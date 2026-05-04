@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { isAbsolute, join, relative, resolve } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import type { ProposalQueue, RouterConfig, RouterOptions } from "./types"
 
 export const QUEUE_DIRS: Record<ProposalQueue, string> = {
@@ -91,9 +91,46 @@ export function resolveVaultPath(
   config: RouterConfig,
   rawPath: string,
 ): string {
+  return resolveVaultPathCandidates(config, rawPath)[0] ?? ""
+}
+
+export function resolveExistingVaultPath(
+  config: RouterConfig,
+  rawPath: string,
+): string {
+  return (
+    resolveVaultPathCandidates(config, rawPath).find((path) =>
+      existsSync(path),
+    ) ?? ""
+  )
+}
+
+export function resolveVaultPathCandidates(
+  config: RouterConfig,
+  rawPath: string,
+): string[] {
   const trimmed = rawPath.trim().replace(/^`|`$/g, "")
-  if (!trimmed || trimmed === "Pendiente") return ""
-  return isAbsolute(trimmed) ? trimmed : join(config.vaultRoot, trimmed)
+  if (!trimmed || trimmed === "Pendiente") return []
+  if (isAbsolute(trimmed)) return [trimmed]
+
+  const vaultParent = dirname(config.vaultRoot)
+  const workspaceRoot = dirname(vaultParent)
+  const candidates = [
+    join(config.vaultRoot, trimmed),
+    join(workspaceRoot, trimmed),
+  ]
+
+  const v3Prefix = "05 Benford Vault/Benford Vault V3/"
+  if (trimmed.startsWith(v3Prefix)) {
+    candidates.push(join(config.vaultRoot, trimmed.slice(v3Prefix.length)))
+  }
+
+  const vaultPrefix = "05 Benford Vault/"
+  if (trimmed.startsWith(vaultPrefix)) {
+    candidates.push(join(vaultParent, trimmed.slice(vaultPrefix.length)))
+  }
+
+  return [...new Set(candidates.map((candidate) => resolve(candidate)))]
 }
 
 export function proposalPackagePath(

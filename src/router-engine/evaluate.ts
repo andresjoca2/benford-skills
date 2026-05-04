@@ -1,6 +1,10 @@
 import { existsSync } from "node:fs"
 import { extractSection, parseFirstMarkdownTable } from "./markdown"
-import { resolveVaultPath, toVaultRelative } from "./paths"
+import {
+  resolveExistingVaultPath,
+  resolveVaultPath,
+  toVaultRelative,
+} from "./paths"
 import type {
   CheckResult,
   ProposalPackage,
@@ -297,10 +301,9 @@ function checkEvidenceLinks(
         .filter((value): value is string => Boolean(value)) ?? [])
     : []
   const realLocations = locations.filter((value) => !isBlank(value))
-  const missing = realLocations.filter((value) => {
-    const resolved = resolveVaultPath(config, value)
-    return resolved && !existsSync(resolved)
-  })
+  const missing = realLocations.filter(
+    (value) => !resolveExistingVaultPath(config, value),
+  )
 
   if (evidenceAvailable === "no") {
     return {
@@ -343,7 +346,7 @@ function checkEvidenceLinks(
     },
     missing: [],
     readFiles: realLocations.map((path) => ({
-      path,
+      path: toVaultRelative(config, resolveExistingVaultPath(config, path)),
       type: "evidence",
       use: "Referenced by proposal evidence table",
     })),
@@ -536,10 +539,8 @@ export function decisionToQueue(decision: RouterDecision): ProposalQueue {
 function detectMultiCanonicalImpact(proposal: ProposalPackage): boolean {
   const expected =
     extractSection(proposal.markdown, "Archivos canonicos esperados") ?? ""
-  const related =
-    extractSection(proposal.markdown, "Canonicos relacionados") ?? ""
   const ids = new Set<string>()
-  for (const match of `${expected}\n${related}`.matchAll(
+  for (const match of expected.matchAll(
     /\b(?:AIM|DICT|DOC|DVC|DOL|METH|TEST|PEOP|FIRM|FIELD)-[A-Za-z0-9_-]+\b/g,
   )) {
     ids.add(match[0])
