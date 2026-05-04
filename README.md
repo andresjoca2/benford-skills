@@ -77,9 +77,9 @@ bun run automations -- watch --interval-ms 5000 --vault-root "/path/to/Benford V
 ## Canonical Editor Engine
 
 The Canonical Editor CLI applies supported approved PROPs to canonical Brain
-folders. V1 supports new `PROP-DOC` packages in `03 Approved for Editor` whose
-drafts are listed in `Drafts usados` and whose approval is recorded by
-`router_decision.md` or `decision_record.md`.
+folders. It supports new `PROP-DOC`, `PROP-DVC`, and `PROP-DOL` packages in
+`03 Approved for Editor` whose drafts are listed in `Drafts usados` and whose
+approval is recorded by `router_decision.md` or `decision_record.md`.
 
 ```bash
 # dry-run is the default and writes nothing

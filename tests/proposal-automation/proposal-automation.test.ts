@@ -163,7 +163,7 @@ describe("benford proposal automation", () => {
     ).toContain("| PROP-0001 |")
   })
 
-  test("write mode leaves non-DOC approved proposals pending for a supported editor", () => {
+  test("write mode applies supported DVC proposals", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
       id: "CONTRIBUTION-2026-05-03-dvc-auto",
@@ -184,16 +184,19 @@ describe("benford proposal automation", () => {
       "route_draft",
       "invoke_skill",
     ])
-    expect(events[2]?.status).toBe("pending_manual")
-    expect(events[2]?.detail).toContain("does not support PROP-DVC")
+    expect(events[2]?.status).toBe("handled")
+    expect(events[2]?.editorResult?.targetCanonicalId).toBe("DVC-test")
     expect(
       existsSync(
-        join(vaultRoot, "02 Proposals/03 Approved for Editor/PROP-0001"),
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/raw_schema.md",
+        ),
       ),
     ).toBe(true)
     expect(
       existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0001")),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test("generates one PROP per pending target output in a contribution", () => {

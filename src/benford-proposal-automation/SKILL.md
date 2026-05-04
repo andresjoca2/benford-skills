@@ -81,9 +81,9 @@ Solo por medio de handlers seguros:
 Para CONTRIBUTION-* con outputs soportados, llama al `IMSS-Proposal-Generator`
 deterministico. En modo `--write`, puede crear la carpeta PROP-* dentro del Vault.
 
-Para PROPs en `03 Approved for Editor`, delega a `benford-canonical-editor` solo
-cuando el editor soporte el tipo de PROP. V1 aplica `PROP-DOC`; `PROP-DVC` y
-`PROP-DOL` quedan como `pending_manual` hasta tener handler compatible.
+Para PROPs en `03 Approved for Editor`, delega a `benford-canonical-editor`.
+El editor deterministico aplica `PROP-DOC`, `PROP-DVC` y `PROP-DOL` cuando el
+tipo de cambio es `new` y los drafts declarados existen.
 
 ## Validacion final
 
