@@ -1,6 +1,7 @@
 import { applyCanonicalProposal } from "@/canonical-editor"
 import {
   assertVaultRoot,
+  loadProposalPackage,
   resolveRouterConfig,
   runRouterForProposal,
 } from "@/router-engine"
@@ -113,6 +114,25 @@ export function runProposalAutomations(
   }
 
   for (const proposalId of listProposalIds(config, "03 Approved for Editor")) {
+    const proposal = loadProposalPackage(
+      config,
+      proposalId,
+      "03 Approved for Editor",
+    )
+    const proposalType = proposal.identification.Tipo
+    if (proposalType !== "PROP-DOC") {
+      events.push({
+        id: proposalId,
+        subject: "proposal",
+        proposalId,
+        queue: "03 Approved for Editor",
+        action: "invoke_skill",
+        status: "pending_manual",
+        detail: `Canonical Editor V1 does not support ${proposalType || "unknown proposal type"} yet.`,
+        nextSkill: "benford-canonical-editor",
+      })
+      continue
+    }
     const editorResult =
       options.write === true
         ? applyCanonicalProposal(proposalId, {

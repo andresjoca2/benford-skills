@@ -25,13 +25,17 @@ export interface ContributionPackage {
   readonly identification: Record<string, string>
 }
 
-interface DocDraftPackage {
-  readonly docId: string
+interface SupportedDraftPackage {
+  readonly canonicalType: "DOC" | "DVC" | "DOL"
+  readonly canonicalId: string
   readonly path: string
   readonly files: {
     readonly spec: string
-    readonly schema: string
-    readonly parserConfig: string
+    readonly schema?: string
+    readonly rawSchema?: string
+    readonly mapping?: string
+    readonly parserConfig?: string
+    readonly documentTranscript?: string
     readonly notes?: string
     readonly sourceManifest?: string
   }
@@ -81,17 +85,17 @@ export function generateProposalForContribution(
   contribution: ContributionPackage,
   options: { readonly write?: boolean } = {},
 ): ProposalGenerationResult {
-  const docDraft = findDocDraftPackage(contribution)
-  if (!docDraft) {
+  const draftPackage = findPendingDraftPackage(config, contribution)
+  if (!draftPackage) {
     throw new Error(
-      `No supported DOC draft package found for ${contribution.id}`,
+      `No pending supported DOC, DVC or DOL draft package found for ${contribution.id}`,
     )
   }
 
   const proposalId = nextProposalId(config)
   const proposalRoot = proposalPackagePath(config, proposalId, "01 Draft")
   const proposalPath = join(proposalRoot, "proposal.md")
-  const proposalMarkdown = renderDocProposal(config, contribution, docDraft, {
+  const proposalMarkdown = renderProposal(config, contribution, draftPackage, {
     proposalId,
   })
   const dryRun = options.write !== true
@@ -102,14 +106,16 @@ export function generateProposalForContribution(
     }
     mkdirSync(proposalRoot, { recursive: true })
     writeFileSync(proposalPath, proposalMarkdown, "utf8")
-    updateContributionMap(config, contribution, proposalId, docDraft.docId)
+    updateContributionMap(config, contribution, proposalId, draftPackage)
   }
 
   return {
     contributionId: contribution.id,
     proposalId,
     proposalPath: toVaultRelative(config, proposalPath),
-    targetCanonicalId: docDraft.docId,
+    targetCanonicalId: draftPackage.canonicalId,
+    canonicalType: draftPackage.canonicalType,
+    proposalType: `PROP-${draftPackage.canonicalType}`,
     dryRun,
   }
 }
@@ -128,26 +134,43 @@ function readContributionPackage(
     return null
   }
   const contributionPath = dirname(mapPath)
-  if (hasGeneratedProposal(config, id, markdown)) return null
-  if (!findDocDraftPackage({ path: contributionPath })) {
-    return null
-  }
-  return {
+  const contribution = {
     id,
     path: contributionPath,
     mapPath,
     markdown,
     identification,
   }
+  if (!findPendingDraftPackage(config, contribution)) {
+    return null
+  }
+  return contribution
 }
 
-function hasGeneratedProposal(
+function hasGeneratedProposalForTarget(
   config: RouterConfig,
   contributionId: string,
+  targetCanonicalId: string,
   contributionMarkdown: string,
 ): boolean {
   const proposals = extractSection(contributionMarkdown, "Proposals generadas")
-  if (proposals && /\|\s*PROP-(?:[A-Z]+-)?\d+\b/.test(proposals)) return true
+  if (proposals) {
+    const table = parseFirstMarkdownTable(proposals)
+    const hasProposalRow = /\|\s*PROP-(?:[A-Z]+-)?\d+\b/.test(proposals)
+    const targetHeader = table?.headers.find(
+      (header) => header.toLowerCase() === "target",
+    )
+    if (table && targetHeader) {
+      if (
+        table.rows.some(
+          (row) => stripTicks(row[targetHeader]) === targetCanonicalId,
+        )
+      )
+        return true
+    } else if (hasProposalRow) {
+      return true
+    }
+  }
 
   return QUEUES.some((queue) =>
     listProposalIds(config, queue).some((proposalId) => {
@@ -156,48 +179,102 @@ function hasGeneratedProposal(
         "proposal.md",
       )
       return (
-        existsSync(path) && readFileSync(path, "utf8").includes(contributionId)
+        existsSync(path) &&
+        readFileSync(path, "utf8").includes(contributionId) &&
+        readFileSync(path, "utf8").includes(targetCanonicalId)
       )
     }),
   )
 }
 
-function findDocDraftPackage(
+function findPendingDraftPackage(
+  config: RouterConfig,
+  contribution: ContributionPackage,
+): SupportedDraftPackage | null {
+  return (
+    findSupportedDraftPackages(contribution).find(
+      (draftPackage) =>
+        !hasGeneratedProposalForTarget(
+          config,
+          contribution.id,
+          draftPackage.canonicalId,
+          contribution.markdown,
+        ),
+    ) ?? null
+  )
+}
+
+function findSupportedDraftPackages(
   contribution: Pick<ContributionPackage, "path">,
-): DocDraftPackage | null {
+): SupportedDraftPackage[] {
   const explicitRoot = join(
     contribution.path,
     "skill_outputs/explicit_knowledge",
   )
-  if (!existsSync(explicitRoot)) return null
-  const docDirs = readdirSync(explicitRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith("DOC-"))
+  if (!existsSync(explicitRoot)) return []
+  return readdirSync(explicitRoot, { withFileTypes: true })
+    .filter(
+      (entry) => entry.isDirectory() && /^(?:DOC|DVC|DOL)-/.test(entry.name),
+    )
     .map((entry) => join(explicitRoot, entry.name))
     .sort()
+    .map(readSupportedDraftPackage)
+    .filter((draftPackage): draftPackage is SupportedDraftPackage =>
+      Boolean(draftPackage),
+    )
+}
 
-  for (const docPath of docDirs) {
-    const spec = join(docPath, "spec_draft.md")
-    const schema = join(docPath, "schema_draft.md")
-    const parserConfig = join(docPath, "parser_config_draft.md")
-    if (!existsSync(spec) || !existsSync(schema) || !existsSync(parserConfig)) {
-      continue
-    }
-    const notes = join(docPath, "notes.md")
-    const sourceManifest = join(docPath, "source_manifest.md")
-    return {
-      docId: basename(docPath),
-      path: docPath,
-      files: {
-        spec,
-        schema,
-        parserConfig,
-        notes: existsSync(notes) ? notes : undefined,
-        sourceManifest: existsSync(sourceManifest) ? sourceManifest : undefined,
-      },
-    }
+function readSupportedDraftPackage(path: string): SupportedDraftPackage | null {
+  const canonicalId = basename(path)
+  const canonicalType = canonicalId.split("-")[0]
+  if (
+    canonicalType !== "DOC" &&
+    canonicalType !== "DVC" &&
+    canonicalType !== "DOL"
+  ) {
+    return null
   }
 
-  return null
+  const spec = join(path, "spec_draft.md")
+  const schema = join(path, "schema_draft.md")
+  const rawSchema = join(path, "raw_schema_draft.md")
+  const mapping = join(path, "mapping_draft.md")
+  const parserConfig = join(path, "parser_config_draft.md")
+  const documentTranscript = join(path, "document_transcript_draft.md")
+  const notes = join(path, "notes.md")
+  const sourceManifest = join(path, "source_manifest.md")
+  const files = {
+    spec,
+    schema,
+    rawSchema: existsSync(rawSchema) ? rawSchema : undefined,
+    mapping: existsSync(mapping) ? mapping : undefined,
+    parserConfig,
+    documentTranscript: existsSync(documentTranscript)
+      ? documentTranscript
+      : undefined,
+    notes: existsSync(notes) ? notes : undefined,
+    sourceManifest: existsSync(sourceManifest) ? sourceManifest : undefined,
+  }
+
+  if (canonicalType === "DOC") {
+    if (!existsSync(spec) || !existsSync(schema) || !existsSync(parserConfig))
+      return null
+    return { canonicalType, canonicalId, path, files }
+  }
+
+  if (canonicalType === "DVC") {
+    if (
+      !existsSync(spec) ||
+      !files.rawSchema ||
+      !files.mapping ||
+      !existsSync(parserConfig)
+    )
+      return null
+    return { canonicalType, canonicalId, path, files }
+  }
+
+  if (!existsSync(spec) || !files.documentTranscript) return null
+  return { canonicalType, canonicalId, path, files }
 }
 
 function nextProposalId(config: RouterConfig): string {
@@ -211,14 +288,19 @@ function nextProposalId(config: RouterConfig): string {
   return `PROP-${String(max + 1).padStart(4, "0")}`
 }
 
-function renderDocProposal(
+function renderProposal(
   config: RouterConfig,
   contribution: ContributionPackage,
-  docDraft: DocDraftPackage,
+  draftPackage: SupportedDraftPackage,
   options: { readonly proposalId: string },
 ): string {
-  const targetCanonicalPath = `05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/${docDraft.docId}/`
-  const name = humanizeDocId(docDraft.docId)
+  const targetCanonicalPath = targetCanonicalFolder(draftPackage)
+  const name = humanizeCanonicalId(draftPackage.canonicalId)
+  const proposalType = `PROP-${draftPackage.canonicalType}`
+  const changeType = existsSync(join(config.vaultRoot, targetCanonicalPath))
+    ? "enrich"
+    : "new"
+  const touchesCanon = changeType === "new" ? "no" : "si"
   const contributionPath = toVaultRelative(config, contribution.path)
   const sourceInventory = join(
     contribution.path,
@@ -249,76 +331,57 @@ function renderDocProposal(
           ],
         ]
       : []),
-    ...(docDraft.files.sourceManifest
+    ...(draftPackage.files.sourceManifest
       ? [
           [
             "Source manifest",
-            toVaultRelative(config, docDraft.files.sourceManifest),
+            toVaultRelative(config, draftPackage.files.sourceManifest),
             "Manifest de fuentes usadas por la skill",
           ],
         ]
       : []),
     [
       "Spec draft",
-      toVaultRelative(config, docDraft.files.spec),
-      "Draft funcional DOC",
+      toVaultRelative(config, draftPackage.files.spec),
+      `Draft funcional ${draftPackage.canonicalType}`,
     ],
-    [
-      "Schema draft",
-      toVaultRelative(config, docDraft.files.schema),
-      "Draft de schema DOC",
-    ],
-    [
-      "Parser config draft",
-      toVaultRelative(config, docDraft.files.parserConfig),
-      "Draft de parser DOC",
-    ],
+    ...draftEvidenceRows(config, draftPackage),
   ]
   const draftRows = [
-    ["spec_draft.md", toVaultRelative(config, docDraft.files.spec), "spec.md"],
-    [
-      "schema_draft.md",
-      toVaultRelative(config, docDraft.files.schema),
-      "schema.md",
-    ],
-    [
-      "parser_config_draft.md",
-      toVaultRelative(config, docDraft.files.parserConfig),
-      "parser_config.md",
-    ],
-    ...(docDraft.files.notes
+    ...draftRowsForPackage(config, draftPackage),
+    ...(draftPackage.files.notes
       ? [
           [
             "notes.md",
-            toVaultRelative(config, docDraft.files.notes),
+            toVaultRelative(config, draftPackage.files.notes),
             "changelog.md / notas de aplicacion",
           ],
         ]
       : []),
   ]
 
-  return `# ${options.proposalId} - DOC ${name}
+  return `# ${options.proposalId} - ${draftPackage.canonicalType} ${name}
 
 ## Objetivo
-Proponer la creacion del documento fuente estable \`${docDraft.docId}\` dentro de Explicit Knowledge V3, a partir de la contribution \`${contribution.id}\`.
+Proponer la creacion o enriquecimiento del canonico \`${draftPackage.canonicalId}\` dentro de Explicit Knowledge V3, a partir de la contribution \`${contribution.id}\`.
 
 ## Identificacion
 ${renderMarkdownTable(
   ["Campo", "Valor"],
   [
     ["ID", options.proposalId],
-    ["Tipo", "PROP-DOC"],
+    ["Tipo", proposalType],
     ["Estado", "draft"],
     ["Fecha creacion", config.today],
     ["Ultima actualizacion", config.today],
     ["Owner operativo", "Proposal Builder"],
     ["Contribution origen", contribution.id],
-    ["Tipo de cambio", "new"],
-    ["Target canonico ID", docDraft.docId],
+    ["Tipo de cambio", changeType],
+    ["Target canonico ID", draftPackage.canonicalId],
     ["Target canonico path", targetCanonicalPath],
     ["Riesgo inicial", "medium"],
     ["Capa", "explicit_knowledge"],
-    ["Canonical type", "DOC"],
+    ["Canonical type", draftPackage.canonicalType],
   ],
 )}
 
@@ -327,11 +390,11 @@ ${renderMarkdownTable(
   ["Campo", "Prioridad", "Valor"],
   [
     ["Contribution origen", "M", contribution.id],
-    ["Tipo de cambio", "M", "new"],
-    ["Target canonico ID", "M", docDraft.docId],
+    ["Tipo de cambio", "M", changeType],
+    ["Target canonico ID", "M", draftPackage.canonicalId],
     ["Target canonico path", "M", targetCanonicalPath],
     ["Evidencia minima disponible", "M", "si"],
-    ["Toca canon existente", "M", "no"],
+    ["Toca canon existente", "M", touchesCanon],
     ["Contradiccion detectada", "M", "no"],
     ["Riesgo inicial", "M", "medium"],
     ["Requiere humano sugerido", "D", "no"],
@@ -355,10 +418,10 @@ ${renderMarkdownTable(
 ${renderMarkdownTable(
   ["Campo", "Valor"],
   [
-    ["Tipo", "new"],
+    ["Tipo", changeType],
     [
       "Motivo",
-      `La contribution contiene drafts DOC completos para proponer un nuevo canonico ${docDraft.docId}.`,
+      `La contribution contiene drafts ${draftPackage.canonicalType} completos para proponer cambios sobre el canonico ${draftPackage.canonicalId}.`,
     ],
   ],
 )}
@@ -366,44 +429,26 @@ ${renderMarkdownTable(
 ## Target canonico
 ${renderMarkdownTable(
   ["Campo", "Valor"],
-  [
-    ["DOC ID", docDraft.docId],
-    ["Nombre documento", name],
-    ["Carpeta destino", targetCanonicalPath],
-    [
-      "Archivos canonicos esperados",
-      "spec.md / schema.md / parser_config.md / changelog.md",
-    ],
-  ],
+  targetRowsForPackage(draftPackage, name, targetCanonicalPath),
 )}
 
 ## Cambio propuesto
-Crear un nuevo canonico \`${docDraft.docId}\` para documentar ${name} como documento fuente estable de auditoria IMSS.
+${changeDescription(draftPackage, name, changeType)}
 
-La propuesta debe crear los archivos canonicos iniciales \`spec.md\`, \`schema.md\`, \`parser_config.md\` y \`changelog.md\` a partir de los drafts de la contribution.
+La propuesta debe crear o actualizar los archivos canonicos esperados a partir de los drafts de la contribution.
 
-## Detalle DOC
+## Detalle ${draftPackage.canonicalType}
 ${renderMarkdownTable(
   ["Campo", "Valor"],
-  [
-    [
-      "Que es el documento",
-      `Documento fuente estable identificado como ${name}.`,
-    ],
-    [
-      "Como se reconoce",
-      "Ver spec_draft.md y materiales fuente de la contribution.",
-    ],
-    [
-      "Para que se usa en auditoria",
-      "Como evidencia fuente para pruebas y cruces IMSS relacionados.",
-    ],
-    ["Campos o estructura esperada", "Ver schema_draft.md."],
-  ],
+  detailRowsForPackage(draftPackage, name),
 )}
 
 ## Evidencia usada
 ${renderMarkdownTable(["Evidencia", "Ubicacion", "Uso"], evidenceRows)}
+
+${rawDocumentSection(config, contribution, draftPackage)}
+
+${canonicalMaterialsSection(draftPackage)}
 
 ## Drafts usados
 ${renderMarkdownTable(["Draft", "Ubicacion", "Archivo canonico destino"], draftRows)}
@@ -419,54 +464,394 @@ ${extractSection(contribution.markdown, "Metodologias relacionadas") ?? ""}
 ## Archivos canonicos esperados
 ${renderMarkdownTable(
   ["Accion", "Canonical ID", "Path esperado", "Nota"],
+  expectedCanonicalRows(
+    draftPackage,
+    targetCanonicalPath,
+    options.proposalId,
+    changeType,
+  ),
+)}
+`
+}
+
+function targetCanonicalFolder(draftPackage: SupportedDraftPackage): string {
+  const base = "05 Benford Brain IMSS Mexico/01 Explicit Knowledge"
+  switch (draftPackage.canonicalType) {
+    case "DOC":
+      return `${base}/DOC Documentos y Ejemplos/${draftPackage.canonicalId}/`
+    case "DVC":
+      return `${base}/DVC Documentos Variables Cliente/${draftPackage.canonicalId}/`
+    case "DOL":
+      return `${base}/DOL Documentos de Leyes/${draftPackage.canonicalId}/`
+  }
+}
+
+function draftEvidenceRows(
+  config: RouterConfig,
+  draftPackage: SupportedDraftPackage,
+): string[][] {
+  switch (draftPackage.canonicalType) {
+    case "DOC":
+      return [
+        [
+          "Schema draft",
+          toVaultRelative(config, requiredPath(draftPackage.files.schema)),
+          "Draft de schema DOC",
+        ],
+        [
+          "Parser config draft",
+          toVaultRelative(
+            config,
+            requiredPath(draftPackage.files.parserConfig),
+          ),
+          "Draft de parser DOC",
+        ],
+      ]
+    case "DVC":
+      return [
+        [
+          "Raw schema draft",
+          toVaultRelative(config, requiredPath(draftPackage.files.rawSchema)),
+          "Draft de raw schema DVC",
+        ],
+        [
+          "Mapping draft",
+          toVaultRelative(config, requiredPath(draftPackage.files.mapping)),
+          "Draft de mapping hacia DOC estable",
+        ],
+        [
+          "Parser config draft",
+          toVaultRelative(
+            config,
+            requiredPath(draftPackage.files.parserConfig),
+          ),
+          "Draft de parser DVC",
+        ],
+      ]
+    case "DOL":
+      return [
+        [
+          "Document transcript draft",
+          toVaultRelative(
+            config,
+            requiredPath(draftPackage.files.documentTranscript),
+          ),
+          "Draft de transcripcion normativa",
+        ],
+      ]
+  }
+}
+
+function draftRowsForPackage(
+  config: RouterConfig,
+  draftPackage: SupportedDraftPackage,
+): string[][] {
+  switch (draftPackage.canonicalType) {
+    case "DOC":
+      return [
+        [
+          "spec_draft.md",
+          toVaultRelative(config, draftPackage.files.spec),
+          "spec.md",
+        ],
+        [
+          "schema_draft.md",
+          toVaultRelative(config, requiredPath(draftPackage.files.schema)),
+          "schema.md",
+        ],
+        [
+          "parser_config_draft.md",
+          toVaultRelative(
+            config,
+            requiredPath(draftPackage.files.parserConfig),
+          ),
+          "parser_config.md",
+        ],
+      ]
+    case "DVC":
+      return [
+        [
+          "spec_draft.md",
+          toVaultRelative(config, draftPackage.files.spec),
+          "spec.md",
+        ],
+        [
+          "raw_schema_draft.md",
+          toVaultRelative(config, requiredPath(draftPackage.files.rawSchema)),
+          "raw_schema.md",
+        ],
+        [
+          "mapping_draft.md",
+          toVaultRelative(config, requiredPath(draftPackage.files.mapping)),
+          "mapping.md",
+        ],
+        [
+          "parser_config_draft.md",
+          toVaultRelative(
+            config,
+            requiredPath(draftPackage.files.parserConfig),
+          ),
+          "parser_config.md",
+        ],
+      ]
+    case "DOL":
+      return [
+        [
+          "spec_draft.md",
+          toVaultRelative(config, draftPackage.files.spec),
+          "spec.md",
+        ],
+        [
+          "document_transcript_draft.md",
+          toVaultRelative(
+            config,
+            requiredPath(draftPackage.files.documentTranscript),
+          ),
+          "document_transcript.md",
+        ],
+      ]
+  }
+}
+
+function targetRowsForPackage(
+  draftPackage: SupportedDraftPackage,
+  name: string,
+  targetCanonicalPath: string,
+): string[][] {
+  switch (draftPackage.canonicalType) {
+    case "DOC":
+      return [
+        ["DOC ID", draftPackage.canonicalId],
+        ["Nombre documento", name],
+        ["Carpeta destino", targetCanonicalPath],
+        [
+          "Archivos canonicos esperados",
+          "spec.md / schema.md / parser_config.md / changelog.md",
+        ],
+      ]
+    case "DVC":
+      return [
+        ["DVC ID", draftPackage.canonicalId],
+        ["Nombre documento variable", name],
+        ["Carpeta destino", targetCanonicalPath],
+        ["Variante / version", name],
+        [
+          "Archivos canonicos esperados",
+          "spec.md / raw_schema.md / mapping.md / parser_config.md / changelog.md",
+        ],
+      ]
+    case "DOL":
+      return [
+        ["DOL ID", draftPackage.canonicalId],
+        ["Ley / reglamento", name],
+        ["Articulo / seccion", "Pendiente"],
+        ["Carpeta destino", targetCanonicalPath],
+        ["Vigencia conocida", "Pendiente"],
+      ]
+  }
+}
+
+function changeDescription(
+  draftPackage: SupportedDraftPackage,
+  name: string,
+  changeType: string,
+): string {
+  const action = changeType === "new" ? "Crear un nuevo" : "Enriquecer el"
+  switch (draftPackage.canonicalType) {
+    case "DOC":
+      return `${action} canonico \`${draftPackage.canonicalId}\` para documentar ${name} como documento fuente estable de auditoria IMSS.`
+    case "DVC":
+      return `${action} canonico \`${draftPackage.canonicalId}\` para documentar la variante cliente ${name}, incluyendo raw schema, mapping y parser config.`
+    case "DOL":
+      return `${action} canonico \`${draftPackage.canonicalId}\` para documentar el fundamento normativo ${name} y su transcripcion operativa.`
+  }
+}
+
+function detailRowsForPackage(
+  draftPackage: SupportedDraftPackage,
+  name: string,
+): string[][] {
+  switch (draftPackage.canonicalType) {
+    case "DOC":
+      return [
+        [
+          "Que es el documento",
+          `Documento fuente estable identificado como ${name}.`,
+        ],
+        [
+          "Como se reconoce",
+          "Ver spec_draft.md y materiales fuente de la contribution.",
+        ],
+        [
+          "Para que se usa en auditoria",
+          "Como evidencia fuente para pruebas y cruces IMSS relacionados.",
+        ],
+        ["Campos o estructura esperada", "Ver schema_draft.md."],
+      ]
+    case "DVC":
+      return [
+        ["Que cambia por cliente/software", `Variante cliente ${name}.`],
+        [
+          "Software o formato origen",
+          "Ver spec_draft.md y materiales fuente de la contribution.",
+        ],
+        ["Raw schema esperado", "Ver raw_schema_draft.md."],
+        ["Parser config esperado", "Ver parser_config_draft.md."],
+        ["Relacion con DOC estable", "Ver mapping_draft.md."],
+      ]
+    case "DOL":
+      return [
+        ["Texto o fundamento relevante", "Ver document_transcript_draft.md."],
+        [
+          "Interpretacion auditora permitida",
+          "Ver spec_draft.md y canonicos relacionados.",
+        ],
+        ["Targets AIM relacionados", "Pendiente"],
+        ["Metodologias relacionadas", "Pendiente"],
+      ]
+  }
+}
+
+function rawDocumentSection(
+  config: RouterConfig,
+  contribution: ContributionPackage,
+  draftPackage: SupportedDraftPackage,
+): string {
+  if (draftPackage.canonicalType === "DOL") return ""
+  return `## Ejemplos raw documents
+${renderMarkdownTable(
+  [
+    "Ejemplo",
+    "Empresa / fuente",
+    "Ubicacion en contribution",
+    "Tipo / variante",
+    "Uso en el canonico",
+    "Destino canonico sugerido",
+  ],
   [
     [
-      "crear",
-      `${docDraft.docId}/spec.md`,
-      `${targetCanonicalPath}spec.md`,
-      "Contrato funcional y uso auditor del documento",
-    ],
-    [
-      "crear",
-      `${docDraft.docId}/schema.md`,
-      `${targetCanonicalPath}schema.md`,
-      "Schema inicial del documento",
-    ],
-    [
-      "crear",
-      `${docDraft.docId}/parser_config.md`,
-      `${targetCanonicalPath}parser_config.md`,
-      "Estrategia inicial de parser",
-    ],
-    [
-      "crear",
-      `${docDraft.docId}/changelog.md`,
-      `${targetCanonicalPath}changelog.md`,
-      `Registro inicial de creacion desde ${options.proposalId}`,
+      "Materiales fuente",
+      stripTicks(contribution.identification["Persona fuente"]) || "Pendiente",
+      `${toVaultRelative(config, contribution.path)}/materials/`,
+      draftPackage.canonicalType === "DVC"
+        ? "variante_cliente"
+        : "documento_fuente",
+      "evidencia_contextual",
+      `${targetCanonicalFolder(draftPackage)}Examples/`,
     ],
   ],
 )}
 `
 }
 
+function canonicalMaterialsSection(
+  draftPackage: SupportedDraftPackage,
+): string {
+  if (draftPackage.canonicalType === "DOL") return ""
+  return `## Materiales canonicos a copiar
+${renderMarkdownTable(
+  [
+    "Accion",
+    "Origen en contribution",
+    "Destino canonico esperado",
+    "Tipo",
+    "Preservar estructura",
+    "Nota",
+  ],
+  [
+    [
+      "copiar carpeta",
+      "materials/",
+      `${targetCanonicalFolder(draftPackage)}Examples/`,
+      "evidencia_contextual",
+      "si",
+      "Copiar ejemplos solo si el editor humano o handler soportado lo confirma.",
+    ],
+  ],
+)}
+`
+}
+
+function expectedCanonicalRows(
+  draftPackage: SupportedDraftPackage,
+  targetCanonicalPath: string,
+  proposalId: string,
+  changeType: string,
+): string[][] {
+  const action = changeType === "new" ? "crear" : "modificar"
+  const draftDestinations = expectedDraftDestinations(draftPackage)
+  const rows = draftDestinations.map(([draftName, destinationFile]) => [
+    action,
+    `${draftPackage.canonicalId}/${destinationFile}`,
+    `${targetCanonicalPath}${destinationFile}`,
+    `Derivado de ${draftName}`,
+  ])
+  rows.push([
+    action,
+    `${draftPackage.canonicalId}/changelog.md`,
+    `${targetCanonicalPath}changelog.md`,
+    `Registro de cambio desde ${proposalId}`,
+  ])
+  return rows
+}
+
+function expectedDraftDestinations(
+  draftPackage: SupportedDraftPackage,
+): string[][] {
+  switch (draftPackage.canonicalType) {
+    case "DOC":
+      return [
+        ["spec_draft.md", "spec.md"],
+        ["schema_draft.md", "schema.md"],
+        ["parser_config_draft.md", "parser_config.md"],
+      ]
+    case "DVC":
+      return [
+        ["spec_draft.md", "spec.md"],
+        ["raw_schema_draft.md", "raw_schema.md"],
+        ["mapping_draft.md", "mapping.md"],
+        ["parser_config_draft.md", "parser_config.md"],
+      ]
+    case "DOL":
+      return [
+        ["spec_draft.md", "spec.md"],
+        ["document_transcript_draft.md", "document_transcript.md"],
+      ]
+  }
+}
+
+function requiredPath(path: string | undefined): string {
+  if (!path) throw new Error("Missing required draft path.")
+  return path
+}
+
 function updateContributionMap(
   config: RouterConfig,
   contribution: ContributionPackage,
   proposalId: string,
-  targetCanonicalId: string,
+  draftPackage: SupportedDraftPackage,
 ): void {
-  const row = `| ${proposalId} | 02 Proposals/01 Draft/${proposalId} | PROP-DOC | ${targetCanonicalId} | draft |`
+  const row = `| ${proposalId} | 02 Proposals/01 Draft/${proposalId} | PROP-${draftPackage.canonicalType} | ${draftPackage.canonicalId} | draft |`
   let markdown = contribution.markdown
   const heading = "## Proposals generadas"
   const start = markdown.indexOf(heading)
   const nextHeading =
     start === -1 ? -1 : markdown.indexOf("\n## ", start + heading.length)
+  const existingRows =
+    extractSection(markdown, "Proposals generadas")
+      ?.split("\n")
+      .filter(
+        (line) =>
+          /^\|\s*PROP-(?:[A-Z]+-)?\d+\s*\|/.test(line) &&
+          !line.includes(`| ${proposalId} |`),
+      ) ?? []
+  const rows = [...existingRows, row].join("\n")
   const replacement = `${heading}
 Las PROPs viven en \`02 Proposals\`, no dentro de esta contribution.
 
 | PROP | Ubicacion | Tipo | Target | Estado |
 |---|---|---|---|---|
-${row}
+${rows}
 `
   if (start === -1) {
     markdown = `${markdown.trim()}
@@ -483,9 +868,9 @@ ${replacement}
   void config
 }
 
-function humanizeDocId(docId: string): string {
-  return docId
-    .replace(/^DOC-/, "")
+function humanizeCanonicalId(canonicalId: string): string {
+  return canonicalId
+    .replace(/^(?:DOC|DVC|DOL)-/, "")
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")

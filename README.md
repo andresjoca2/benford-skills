@@ -55,8 +55,9 @@ status plus queue membership drive the next action.
 
 Current rules:
 
-- `01 Contribuciones/**/CONTRIBUTION-*` with supported skill outputs and no
-  generated PROP -> run deterministic `IMSS-Proposal-Generator`.
+- `01 Contribuciones/**/CONTRIBUTION-*` with supported `DOC-*`, `DVC-*`, or
+  `DOL-*` skill outputs and no generated PROP for that target -> run
+  deterministic `IMSS-Proposal-Generator`.
 - `02 Proposals/01 Draft` -> run the deterministic Router Engine.
 - `02 Proposals/02 Needs Human Decision` -> wait for a human decision.
 - `02 Proposals/03 Approved for Editor` -> run the deterministic Canonical
