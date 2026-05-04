@@ -1,0 +1,7 @@
+interface:
+  display_name: "IMSS Add Explicit Knowledge"
+  short_description: "Guide and draft IMSS explicit knowledge for V3"
+  default_prompt: "Use $imss-add-explicit-knowledge to guide capture first; only classify and create V3 explicit-knowledge drafts after sources and writing are authorized."
+
+policy:
+  allow_implicit_invocation: true
