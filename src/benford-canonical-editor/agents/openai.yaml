@@ -1,0 +1,7 @@
+interface:
+  display_name: "Benford Canonical Editor"
+  short_description: "Apply approved Benford V3 proposals to canonical files"
+  default_prompt: "Use $benford-canonical-editor only after a PROP has been approved for editor. Explain the exact canonical files to edit and wait for explicit write approval before changing the vault."
+
+policy:
+  allow_implicit_invocation: true
