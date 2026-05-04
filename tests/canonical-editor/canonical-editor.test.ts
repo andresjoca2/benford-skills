@@ -81,6 +81,62 @@ describe("benford canonical editor", () => {
       existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0003")),
     ).toBe(true)
   })
+
+  test("write mode applies approved DVC proposals", () => {
+    const vaultRoot = makeVault()
+    writeApprovedProposal(vaultRoot, "PROP-0004", dvcProposal("PROP-0004"))
+
+    const plan = applyCanonicalProposal("PROP-0004", {
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(plan.targetCanonicalId).toBe("DVC-test")
+    expect(plan.canonicalFiles.map((file) => file.destinationPath)).toContain(
+      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/raw_schema.md",
+    )
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/mapping.md",
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0004")),
+    ).toBe(true)
+  })
+
+  test("write mode applies approved DOL proposals", () => {
+    const vaultRoot = makeVault()
+    writeApprovedProposal(vaultRoot, "PROP-0005", dolProposal("PROP-0005"))
+
+    const plan = applyCanonicalProposal("PROP-0005", {
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(plan.targetCanonicalId).toBe("DOL-test")
+    expect(plan.canonicalFiles.map((file) => file.destinationPath)).toContain(
+      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/document_transcript.md",
+    )
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/document_transcript.md",
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0005")),
+    ).toBe(true)
+  })
 })
 
 function makeVault(): string {
@@ -133,17 +189,53 @@ function makeVault(): string {
     "# Notes\n\n## Proposito\nNotes fixture.\n",
     "utf8",
   )
+  writeFileSync(
+    join(
+      root,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/raw_schema_draft.md",
+    ),
+    "# Raw Schema Draft\n\n## Proposito\nRaw schema fixture.\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(
+      root,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/mapping_draft.md",
+    ),
+    "# Mapping Draft\n\n## Proposito\nMapping fixture.\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(
+      root,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/parser_config_draft.md",
+    ),
+    "# Parser Config Draft\n\n## Proposito\nParser fixture.\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(
+      root,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/document_transcript_draft.md",
+    ),
+    "# Document Transcript Draft\n\n## Proposito\nTranscript fixture.\n",
+    "utf8",
+  )
   return root
 }
 
-function writeApprovedProposal(vaultRoot: string, proposalId: string): void {
+function writeApprovedProposal(
+  vaultRoot: string,
+  proposalId: string,
+  content = proposal(proposalId),
+): void {
   const proposalRoot = join(
     vaultRoot,
     "02 Proposals/03 Approved for Editor",
     proposalId,
   )
   mkdirSync(proposalRoot, { recursive: true })
-  writeFileSync(join(proposalRoot, "proposal.md"), proposal(proposalId), "utf8")
+  writeFileSync(join(proposalRoot, "proposal.md"), content, "utf8")
   writeFileSync(
     join(proposalRoot, "router_decision.md"),
     `# Router Decision
@@ -227,5 +319,147 @@ N/A
 | Accion | Canonical ID | Path esperado | Nota |
 |---|---|---|---|
 | crear | DOC-test/spec.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/spec.md | fixture |
+`
+}
+
+function dvcProposal(proposalId: string): string {
+  return `# ${proposalId}
+
+## Identificacion
+| Campo | Valor |
+|---|---|
+| ID | ${proposalId} |
+| Tipo | PROP-DVC |
+| Estado | approved_for_editor |
+| Fecha creacion | 2026-05-03 |
+| Ultima actualizacion | 2026-05-03 |
+| Owner operativo | Proposal Builder |
+| Contribution origen | CONTRIBUTION-2026-05-03-test |
+| Tipo de cambio | new |
+| Target canonico ID | DVC-test |
+| Target canonico path | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/ |
+| Riesgo inicial | low |
+| Capa | explicit_knowledge |
+| Canonical type | DVC |
+
+## Campos para routing
+| Campo | Prioridad | Valor |
+|---|---|---|
+| Target canonico path | M | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/ |
+
+## Contribution source
+| Campo | Valor |
+|---|---|
+| Contribution origen | CONTRIBUTION-2026-05-03-test |
+
+## Tipo de cambio
+| Campo | Valor |
+|---|---|
+| Tipo | new |
+
+## Target canonico
+| Campo | Valor |
+|---|---|
+| DVC ID | DVC-test |
+
+## Cambio propuesto
+Crear DVC-test.
+
+## Evidencia usada
+| Evidencia | Ubicacion | Uso |
+|---|---|---|
+| source | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | fixture |
+
+## Drafts usados
+| Draft | Ubicacion | Archivo canonico destino |
+|---|---|---|
+| spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | spec.md |
+| spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | README.md |
+| raw_schema_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/raw_schema_draft.md | Variante Test/raw_schema.md |
+| mapping_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/mapping_draft.md | Variante Test/mapping.md |
+| parser_config_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/parser_config_draft.md | Variante Test/parser_config.md |
+| notes.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/notes.md | changelog.md / notas de aplicacion |
+
+## Canonicos relacionados
+| Canonico | Relacion |
+|---|---|
+| N/A | N/A |
+
+## Riesgos o dudas
+N/A
+
+## Archivos canonicos esperados
+| Accion | Canonical ID | Path esperado | Nota |
+|---|---|---|---|
+| crear | DVC-test/spec.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/spec.md | fixture |
+`
+}
+
+function dolProposal(proposalId: string): string {
+  return `# ${proposalId}
+
+## Identificacion
+| Campo | Valor |
+|---|---|
+| ID | ${proposalId} |
+| Tipo | PROP-DOL |
+| Estado | approved_for_editor |
+| Fecha creacion | 2026-05-03 |
+| Ultima actualizacion | 2026-05-03 |
+| Owner operativo | Proposal Builder |
+| Contribution origen | CONTRIBUTION-2026-05-03-test |
+| Tipo de cambio | new |
+| Target canonico ID | DOL-test |
+| Target canonico path | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/ |
+| Riesgo inicial | low |
+| Capa | explicit_knowledge |
+| Canonical type | DOL |
+
+## Campos para routing
+| Campo | Prioridad | Valor |
+|---|---|---|
+| Target canonico path | M | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/ |
+
+## Contribution source
+| Campo | Valor |
+|---|---|
+| Contribution origen | CONTRIBUTION-2026-05-03-test |
+
+## Tipo de cambio
+| Campo | Valor |
+|---|---|
+| Tipo | new |
+
+## Target canonico
+| Campo | Valor |
+|---|---|
+| DOL ID | DOL-test |
+
+## Cambio propuesto
+Crear DOL-test.
+
+## Evidencia usada
+| Evidencia | Ubicacion | Uso |
+|---|---|---|
+| source | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | fixture |
+
+## Drafts usados
+| Draft | Ubicacion | Archivo canonico destino |
+|---|---|---|
+| spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | spec.md |
+| document_transcript_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/document_transcript_draft.md | document_transcript.md |
+
+## Canonicos relacionados
+| Canonico | Relacion |
+|---|---|
+| N/A | N/A |
+
+## Riesgos o dudas
+N/A
+
+## Archivos canonicos esperados
+| Accion | Canonical ID | Path esperado | Nota |
+|---|---|---|---|
+| crear | DOL-test/spec.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/spec.md | fixture |
 `
 }

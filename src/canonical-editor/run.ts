@@ -31,6 +31,14 @@ interface DraftMapping {
   readonly content: string
 }
 
+type SupportedProposalType = "PROP-DOC" | "PROP-DVC" | "PROP-DOL"
+
+const SUPPORTED_PROPOSAL_TYPES: readonly SupportedProposalType[] = [
+  "PROP-DOC",
+  "PROP-DVC",
+  "PROP-DOL",
+]
+
 export function applyCanonicalProposal(
   proposalId: string,
   options: CanonicalEditorOptions = {},
@@ -113,14 +121,14 @@ function assertApprovedForEditor(
 ): void {
   const type = proposal.identification.Tipo
   const changeType = proposal.identification["Tipo de cambio"]
-  if (type !== "PROP-DOC") {
+  if (!isSupportedProposalType(type)) {
     throw new Error(
-      `Canonical Editor V1 only supports PROP-DOC. Found: ${type}`,
+      `Canonical Editor only supports ${SUPPORTED_PROPOSAL_TYPES.join(", ")}. Found: ${type}`,
     )
   }
   if (changeType !== "new") {
     throw new Error(
-      `Canonical Editor V1 only supports new canonicals. Found: ${changeType}`,
+      `Canonical Editor only supports new canonicals. Found: ${changeType}`,
     )
   }
 
@@ -201,7 +209,7 @@ function loadDraftMappings(
         `Draft source does not exist: ${toVaultRelative(config, sourcePath)}`,
       )
     }
-    const destinationFile = parseDestinationFile(
+    const destinationFile = parseDestinationPath(
       requiredField(
         stripTicks(row[destinationHeader]),
         "Missing canonical destination filename.",
@@ -393,8 +401,14 @@ N/A
 - Los destinos canonicos no existian antes de escribir.
 
 ## Notas
-Canonical Editor V1 aplico solamente archivos DOC declarados en \`Drafts usados\`.
+Canonical Editor aplico los archivos declarados en \`Drafts usados\` para el tipo de PROP soportado.
 `
+}
+
+function isSupportedProposalType(
+  value: string | undefined,
+): value is SupportedProposalType {
+  return SUPPORTED_PROPOSAL_TYPES.includes(value as SupportedProposalType)
 }
 
 function stripFirstHeadingAndIdentification(content: string): string {
@@ -469,10 +483,24 @@ function stripTicks(value: string | undefined): string {
   return (value ?? "").trim().replace(/^`+|`+$/g, "")
 }
 
-function parseDestinationFile(value: string): string {
-  const match = stripTicks(value).match(/[A-Za-z0-9_.-]+\.md\b/)
+function parseDestinationPath(value: string): string {
+  const stripped = stripTicks(value)
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/")
+    .trim()
+  const match = stripped.match(
+    /[A-Za-z0-9_. ()-]+(?:\/[A-Za-z0-9_. ()-]+)*\.md\b/,
+  )
   if (!match?.[0]) {
     throw new Error(`Cannot parse canonical destination filename: ${value}`)
   }
-  return match[0]
+  const destinationPath = match[0]
+  const segments = destinationPath.split("/")
+  if (
+    destinationPath.startsWith("/") ||
+    segments.some((segment) => segment === "." || segment === ".." || !segment)
+  ) {
+    throw new Error(`Unsafe canonical destination filename: ${value}`)
+  }
+  return destinationPath
 }

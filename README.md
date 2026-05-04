@@ -55,8 +55,9 @@ status plus queue membership drive the next action.
 
 Current rules:
 
-- `01 Contribuciones/**/CONTRIBUTION-*` with supported skill outputs and no
-  generated PROP -> run deterministic `IMSS-Proposal-Generator`.
+- `01 Contribuciones/**/CONTRIBUTION-*` with supported `DOC-*`, `DVC-*`, or
+  `DOL-*` skill outputs and no generated PROP for that target -> run
+  deterministic `IMSS-Proposal-Generator`.
 - `02 Proposals/01 Draft` -> run the deterministic Router Engine.
 - `02 Proposals/02 Needs Human Decision` -> wait for a human decision.
 - `02 Proposals/03 Approved for Editor` -> run the deterministic Canonical
@@ -76,9 +77,14 @@ bun run automations -- watch --interval-ms 5000 --vault-root "/path/to/Benford V
 ## Canonical Editor Engine
 
 The Canonical Editor CLI applies supported approved PROPs to canonical Brain
-folders. V1 supports new `PROP-DOC` packages in `03 Approved for Editor` whose
-drafts are listed in `Drafts usados` and whose approval is recorded by
-`router_decision.md` or `decision_record.md`.
+folders. It supports new `PROP-DOC`, `PROP-DVC`, and `PROP-DOL` packages in
+`03 Approved for Editor` whose drafts are listed in `Drafts usados` and whose
+approval is recorded by `router_decision.md` or `decision_record.md`.
+
+For DVC, the canonical shape follows
+`DVC Documentos Variables Cliente/DVC-0000_template`: one parent DVC folder with
+shared `README.md`, `spec.md`, and `changelog.md`, plus one subfolder per
+variant containing `raw_schema.md`, `mapping.md`, and `parser_config.md`.
 
 ```bash
 # dry-run is the default and writes nothing

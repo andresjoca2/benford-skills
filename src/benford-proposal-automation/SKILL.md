@@ -66,8 +66,8 @@ bun run automations -- watch --interval-ms 5000 --vault-root "$BENFORD_VAULT_ROO
 
 Solo por medio de handlers seguros:
 
-- Contributions soportadas: puede crear una `PROP-DOC` en `01 Draft` y actualizar
-  `contribution_map.md`.
+- Contributions soportadas: puede crear una `PROP-DOC`, `PROP-DVC` o `PROP-DOL`
+  en `01 Draft` y actualizar `contribution_map.md`.
 - `01 Draft`: puede llamar al Router Engine con `--write`, que escribe archivos
   operativos y mueve la PROP a su cola destino.
 
@@ -82,6 +82,8 @@ Para CONTRIBUTION-* con outputs soportados, llama al `IMSS-Proposal-Generator`
 deterministico. En modo `--write`, puede crear la carpeta PROP-* dentro del Vault.
 
 Para PROPs en `03 Approved for Editor`, delega a `benford-canonical-editor`.
+El editor deterministico aplica `PROP-DOC`, `PROP-DVC` y `PROP-DOL` cuando el
+tipo de cambio es `new` y los drafts declarados existen.
 
 ## Validacion final
 

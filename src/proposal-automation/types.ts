@@ -57,6 +57,8 @@ export interface ProposalGenerationResult {
   readonly proposalId: string
   readonly proposalPath: string
   readonly targetCanonicalId: string
+  readonly canonicalType: "DOC" | "DVC" | "DOL"
+  readonly proposalType: "PROP-DOC" | "PROP-DVC" | "PROP-DOL"
   readonly dryRun: boolean
 }
 

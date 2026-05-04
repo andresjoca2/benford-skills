@@ -70,6 +70,46 @@ describe("benford proposal automation", () => {
     expect(events[0]?.proposalGeneratorResult?.proposalId).toBe("PROP-0001")
   })
 
+  test("detects DVC and DOL contribution outputs", () => {
+    const dvcVaultRoot = makeVault()
+    writeContributionMap(dvcVaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-dvc",
+      estado: "draft_generated",
+      canonicalType: "DVC",
+      outputIds: ["DVC-test"],
+    })
+
+    const dvcEvents = runProposalAutomations({
+      vaultRoot: dvcVaultRoot,
+      runtimeDir: join(dvcVaultRoot, ".runtime"),
+    })
+
+    expect(dvcEvents[0]?.proposalGeneratorResult?.canonicalType).toBe("DVC")
+    expect(dvcEvents[0]?.proposalGeneratorResult?.proposalType).toBe("PROP-DVC")
+    expect(dvcEvents[0]?.proposalGeneratorResult?.targetCanonicalId).toBe(
+      "DVC-test",
+    )
+
+    const dolVaultRoot = makeVault()
+    writeContributionMap(dolVaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-dol",
+      estado: "draft_generated",
+      canonicalType: "DOL",
+      outputIds: ["DOL-test"],
+    })
+
+    const dolEvents = runProposalAutomations({
+      vaultRoot: dolVaultRoot,
+      runtimeDir: join(dolVaultRoot, ".runtime"),
+    })
+
+    expect(dolEvents[0]?.proposalGeneratorResult?.canonicalType).toBe("DOL")
+    expect(dolEvents[0]?.proposalGeneratorResult?.proposalType).toBe("PROP-DOL")
+    expect(dolEvents[0]?.proposalGeneratorResult?.targetCanonicalId).toBe(
+      "DOL-test",
+    )
+  })
+
   test("skips ready contributions that already reference generated proposals", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
@@ -121,6 +161,100 @@ describe("benford proposal automation", () => {
         "utf8",
       ),
     ).toContain("| PROP-0001 |")
+  })
+
+  test("write mode applies supported DVC proposals", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-dvc-auto",
+      estado: "draft_generated",
+      canonicalType: "DVC",
+      outputIds: ["DVC-test"],
+    })
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "invoke_skill",
+    ])
+    expect(events[2]?.status).toBe("handled")
+    expect(events[2]?.editorResult?.targetCanonicalId).toBe("DVC-test")
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/raw_schema.md",
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0001")),
+    ).toBe(true)
+  })
+
+  test("generates one DVC PROP with multiple variant folders", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-multi-dvc",
+      estado: "draft_generated",
+      canonicalType: "DVC",
+      outputIds: ["DVC-alpha"],
+      variantNames: ["Constructora Parmol", "Servicios Administrativos"],
+    })
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "invoke_skill",
+    ])
+
+    const map = readFileSync(
+      join(
+        vaultRoot,
+        "01 Contribuciones/CONTRIBUTION-2026-05-03-multi-dvc/contribution_map.md",
+      ),
+      "utf8",
+    )
+    expect(map).toContain("| PROP-0001 |")
+    expect(map).toContain(
+      "| PROP-0001 | 02 Proposals/01 Draft/PROP-0001 | PROP-DVC | DVC-alpha | draft |",
+    )
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-alpha/Constructora Parmol/raw_schema.md",
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-alpha/Servicios Administrativos/parser_config.md",
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      checkProposalAutomations({
+        vaultRoot,
+        runtimeDir: join(vaultRoot, ".runtime"),
+      }).contributions.count,
+    ).toBe(0)
   })
 
   test("dry-run routes draft proposals without writing", () => {
@@ -214,7 +348,14 @@ function makeVault(): string {
 
 function writeContributionMap(
   vaultRoot: string,
-  options: { id: string; estado: string; proposalId?: string },
+  options: {
+    id: string
+    estado: string
+    proposalId?: string
+    canonicalType?: "DOC" | "DVC" | "DOL"
+    outputIds?: string[]
+    variantNames?: string[]
+  },
 ): void {
   const contributionRoot = join(vaultRoot, "01 Contribuciones", options.id)
   mkdirSync(contributionRoot, { recursive: true })
@@ -236,25 +377,68 @@ function writeContributionMap(
 | PROP | Estado |
 |---|---|
 ${proposalRow}
-`,
+    `,
     "utf8",
   )
-  writeDocDrafts(contributionRoot)
+  for (const outputId of options.outputIds ?? [
+    `${options.canonicalType ?? "DOC"}-test`,
+  ]) {
+    writeDrafts(contributionRoot, outputId, options.variantNames)
+  }
 }
 
-function writeDocDrafts(contributionRoot: string): void {
+function writeDrafts(
+  contributionRoot: string,
+  outputId: string,
+  variantNames: string[] = ["Variante Test"],
+): void {
   const outputRoot = join(
     contributionRoot,
-    "skill_outputs/explicit_knowledge/DOC-test",
+    "skill_outputs/explicit_knowledge",
+    outputId,
   )
   mkdirSync(outputRoot, { recursive: true })
   writeFileSync(join(outputRoot, "spec_draft.md"), "# Spec draft\n", "utf8")
-  writeFileSync(join(outputRoot, "schema_draft.md"), "# Schema draft\n", "utf8")
-  writeFileSync(
-    join(outputRoot, "parser_config_draft.md"),
-    "# Parser draft\n",
-    "utf8",
-  )
+  if (outputId.startsWith("DOC-")) {
+    writeFileSync(
+      join(outputRoot, "schema_draft.md"),
+      "# Schema draft\n",
+      "utf8",
+    )
+    writeFileSync(
+      join(outputRoot, "parser_config_draft.md"),
+      "# Parser draft\n",
+      "utf8",
+    )
+  }
+  if (outputId.startsWith("DVC-")) {
+    for (const variantName of variantNames) {
+      const variantRoot = join(outputRoot, variantName)
+      mkdirSync(variantRoot, { recursive: true })
+      writeFileSync(
+        join(variantRoot, "raw_schema_draft.md"),
+        "# Raw schema draft\n",
+        "utf8",
+      )
+      writeFileSync(
+        join(variantRoot, "mapping_draft.md"),
+        "# Mapping draft\n",
+        "utf8",
+      )
+      writeFileSync(
+        join(variantRoot, "parser_config_draft.md"),
+        "# Parser draft\n",
+        "utf8",
+      )
+    }
+  }
+  if (outputId.startsWith("DOL-")) {
+    writeFileSync(
+      join(outputRoot, "document_transcript_draft.md"),
+      "# Transcript draft\n",
+      "utf8",
+    )
+  }
   writeFileSync(join(outputRoot, "notes.md"), "# Notes\n", "utf8")
 }
 

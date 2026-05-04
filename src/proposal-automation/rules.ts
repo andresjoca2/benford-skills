@@ -4,7 +4,7 @@ import type { ContributionAutomationRule, QueueAutomationRule } from "./types"
 export const CONTRIBUTION_AUTOMATION_RULE: ContributionAutomationRule = {
   action: "generate_proposal",
   description:
-    "Convert new CONTRIBUTION-* packages with supported skill outputs into draft PROPs.",
+    "Convert new CONTRIBUTION-* packages with supported DOC, DVC or DOL skill outputs into draft PROPs.",
   skillName: "IMSS-Proposal-Generator",
   writePolicy: "safe_auto",
 }

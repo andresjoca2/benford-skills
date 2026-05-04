@@ -18,8 +18,9 @@ and invokes the deterministic engines in this repo.
   `03 Approved for Editor`.
 
 The runner performs safe automatic proposal routing and applies supported
-approved `PROP-DOC` packages through the deterministic Canonical Editor. It also
-creates supported `PROP-DOC` draft packages from contributions automatically.
+approved `PROP-DOC`, `PROP-DVC`, and `PROP-DOL` packages through the
+deterministic Canonical Editor. It also creates supported draft packages from
+contributions automatically.
 
 ## Requirements
 
