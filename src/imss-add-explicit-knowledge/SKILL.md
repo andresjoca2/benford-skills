@@ -225,12 +225,19 @@ Salida esperada:
 TYPE-slug/
 ├── spec_draft.md
 ├── schema_draft.md              # si aplica a DOC
-├── raw_schema_draft.md          # si aplica a DVC
-├── mapping_draft.md             # si aplica a DVC
 ├── parser_config_draft.md       # si aplica a DOC/DVC
 ├── document_transcript_draft.md # si aplica a DOL
+├── <Variante>/                  # si aplica a DVC
+│   ├── raw_schema_draft.md
+│   ├── mapping_draft.md
+│   └── parser_config_draft.md
 └── notes.md
 ```
+
+Para `DVC-*`, `TYPE-slug/` es el documento variable padre. No crees un
+`DVC-*` separado por variante. El DVC padre comparte `spec_draft.md` y
+`notes.md`; cada variante vive en su propia carpeta interna con
+`raw_schema_draft.md`, `mapping_draft.md` y `parser_config_draft.md`.
 
 ## Regla copy-through para documentos ya aterrizados
 
@@ -330,7 +337,7 @@ Opciones permitidas:
 | Tipo | Usar cuando |
 |---|---|
 | `DOC-*` | Documento fuente estable, reconocible y reusable. |
-| `DVC-*` | Variante por cliente, software, banco, layout, emisor o formato cambiante. |
+| `DVC-*` | Documento variable con una o mas variantes por cliente, software, banco, layout, emisor o formato cambiante. |
 | `DOL-*` | Documento legal, ley, reglamento, fundamento normativo o criterio legal. |
 
 Opciones fuera de alcance:

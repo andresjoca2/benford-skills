@@ -209,7 +209,7 @@ function loadDraftMappings(
         `Draft source does not exist: ${toVaultRelative(config, sourcePath)}`,
       )
     }
-    const destinationFile = parseDestinationFile(
+    const destinationFile = parseDestinationPath(
       requiredField(
         stripTicks(row[destinationHeader]),
         "Missing canonical destination filename.",
@@ -483,10 +483,24 @@ function stripTicks(value: string | undefined): string {
   return (value ?? "").trim().replace(/^`+|`+$/g, "")
 }
 
-function parseDestinationFile(value: string): string {
-  const match = stripTicks(value).match(/[A-Za-z0-9_.-]+\.md\b/)
+function parseDestinationPath(value: string): string {
+  const stripped = stripTicks(value)
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/")
+    .trim()
+  const match = stripped.match(
+    /[A-Za-z0-9_. ()-]+(?:\/[A-Za-z0-9_. ()-]+)*\.md\b/,
+  )
   if (!match?.[0]) {
     throw new Error(`Cannot parse canonical destination filename: ${value}`)
   }
-  return match[0]
+  const destinationPath = match[0]
+  const segments = destinationPath.split("/")
+  if (
+    destinationPath.startsWith("/") ||
+    segments.some((segment) => segment === "." || segment === ".." || !segment)
+  ) {
+    throw new Error(`Unsafe canonical destination filename: ${value}`)
+  }
+  return destinationPath
 }

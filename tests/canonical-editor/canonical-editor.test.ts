@@ -95,13 +95,13 @@ describe("benford canonical editor", () => {
 
     expect(plan.targetCanonicalId).toBe("DVC-test")
     expect(plan.canonicalFiles.map((file) => file.destinationPath)).toContain(
-      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/raw_schema.md",
+      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/raw_schema.md",
     )
     expect(
       existsSync(
         join(
           vaultRoot,
-          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/mapping.md",
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/mapping.md",
         ),
       ),
     ).toBe(true)
@@ -374,9 +374,10 @@ Crear DVC-test.
 | Draft | Ubicacion | Archivo canonico destino |
 |---|---|---|
 | spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | spec.md |
-| raw_schema_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/raw_schema_draft.md | raw_schema.md |
-| mapping_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/mapping_draft.md | mapping.md |
-| parser_config_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/parser_config_draft.md | parser_config.md |
+| spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | README.md |
+| raw_schema_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/raw_schema_draft.md | Variante Test/raw_schema.md |
+| mapping_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/mapping_draft.md | Variante Test/mapping.md |
+| parser_config_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/parser_config_draft.md | Variante Test/parser_config.md |
 | notes.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/notes.md | changelog.md / notas de aplicacion |
 
 ## Canonicos relacionados

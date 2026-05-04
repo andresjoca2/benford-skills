@@ -39,7 +39,7 @@ La salida de la skill vive dentro de una contribution:
 | Tipo | Outputs esperados |
 |---|---|
 | `DOC` | `spec_draft.md`, `schema_draft.md`, `parser_config_draft.md`, `notes.md` |
-| `DVC` | `spec_draft.md`, `raw_schema_draft.md`, `mapping_draft.md`, `parser_config_draft.md`, `notes.md` |
+| `DVC` | `spec_draft.md`, `notes.md`, y por variante: `<Variante>/raw_schema_draft.md`, `<Variante>/mapping_draft.md`, `<Variante>/parser_config_draft.md` |
 | `DOL` | `spec_draft.md`, `document_transcript_draft.md`, `notes.md` |
 
 ## Metadata minima
@@ -100,6 +100,25 @@ y placeholders del template correspondiente.
 Para DVC, `README.md` define la estructura de familia y la separacion entre
 documento variable y variante. Los outputs no tienen que crear un README draft
 salvo instruccion explicita; deben usarlo como guia estructural.
+
+La salida DVC debe preservar esa separacion:
+
+```text
+DVC-<slug-documento>/
+  spec_draft.md
+  notes.md
+  <Variante A>/
+    raw_schema_draft.md
+    mapping_draft.md
+    parser_config_draft.md
+  <Variante B>/
+    raw_schema_draft.md
+    mapping_draft.md
+    parser_config_draft.md
+```
+
+No crear `DVC-<slug>-<variante>` como canonico separado cuando las variantes
+pertenecen al mismo documento variable.
 
 ### DOL
 ```text

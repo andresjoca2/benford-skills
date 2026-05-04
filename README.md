@@ -81,6 +81,11 @@ folders. It supports new `PROP-DOC`, `PROP-DVC`, and `PROP-DOL` packages in
 `03 Approved for Editor` whose drafts are listed in `Drafts usados` and whose
 approval is recorded by `router_decision.md` or `decision_record.md`.
 
+For DVC, the canonical shape follows
+`DVC Documentos Variables Cliente/DVC-0000_template`: one parent DVC folder with
+shared `README.md`, `spec.md`, and `changelog.md`, plus one subfolder per
+variant containing `raw_schema.md`, `mapping.md`, and `parser_config.md`.
+
 ```bash
 # dry-run is the default and writes nothing
 bun run canonical-editor -- run --proposal PROP-0001 --vault-root "/path/to/Benford Vault V3"

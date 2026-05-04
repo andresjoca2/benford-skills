@@ -39,6 +39,17 @@ interface SupportedDraftPackage {
     readonly notes?: string
     readonly sourceManifest?: string
   }
+  readonly variants?: readonly DvcVariantDraft[]
+}
+
+interface DvcVariantDraft {
+  readonly name: string
+  readonly path: string
+  readonly files: {
+    readonly rawSchema: string
+    readonly mapping: string
+    readonly parserConfig: string
+  }
 }
 
 const QUEUES: readonly ProposalQueue[] = [
@@ -263,18 +274,59 @@ function readSupportedDraftPackage(path: string): SupportedDraftPackage | null {
   }
 
   if (canonicalType === "DVC") {
-    if (
-      !existsSync(spec) ||
-      !files.rawSchema ||
-      !files.mapping ||
-      !existsSync(parserConfig)
-    )
-      return null
-    return { canonicalType, canonicalId, path, files }
+    if (!existsSync(spec)) return null
+    const variants = findDvcVariantDrafts(path)
+    if (variants.length === 0) return null
+    return { canonicalType, canonicalId, path, files, variants }
   }
 
   if (!existsSync(spec) || !files.documentTranscript) return null
   return { canonicalType, canonicalId, path, files }
+}
+
+function findDvcVariantDrafts(path: string): DvcVariantDraft[] {
+  const flatRawSchema = join(path, "raw_schema_draft.md")
+  const flatMapping = join(path, "mapping_draft.md")
+  const flatParserConfig = join(path, "parser_config_draft.md")
+  if (
+    existsSync(flatRawSchema) &&
+    existsSync(flatMapping) &&
+    existsSync(flatParserConfig)
+  ) {
+    return [
+      {
+        name: humanizeCanonicalId(basename(path)),
+        path,
+        files: {
+          rawSchema: flatRawSchema,
+          mapping: flatMapping,
+          parserConfig: flatParserConfig,
+        },
+      },
+    ]
+  }
+
+  return readdirSync(path, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const variantPath = join(path, entry.name)
+      const rawSchema = join(variantPath, "raw_schema_draft.md")
+      const mapping = join(variantPath, "mapping_draft.md")
+      const parserConfig = join(variantPath, "parser_config_draft.md")
+      if (
+        !existsSync(rawSchema) ||
+        !existsSync(mapping) ||
+        !existsSync(parserConfig)
+      )
+        return null
+      return {
+        name: entry.name,
+        path: variantPath,
+        files: { rawSchema, mapping, parserConfig },
+      }
+    })
+    .filter((variant): variant is DvcVariantDraft => Boolean(variant))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 function nextProposalId(config: RouterConfig): string {
@@ -349,15 +401,7 @@ function renderProposal(
   ]
   const draftRows = [
     ...draftRowsForPackage(config, draftPackage),
-    ...(draftPackage.files.notes
-      ? [
-          [
-            "notes.md",
-            toVaultRelative(config, draftPackage.files.notes),
-            "changelog.md / notas de aplicacion",
-          ],
-        ]
-      : []),
+    ...changelogDraftRows(config, draftPackage),
   ]
 
   return `# ${options.proposalId} - ${draftPackage.canonicalType} ${name}
@@ -508,26 +552,23 @@ function draftEvidenceRows(
         ],
       ]
     case "DVC":
-      return [
+      return dvcVariants(draftPackage).flatMap((variant) => [
         [
-          "Raw schema draft",
-          toVaultRelative(config, requiredPath(draftPackage.files.rawSchema)),
+          `${variant.name} raw schema draft`,
+          toVaultRelative(config, variant.files.rawSchema),
           "Draft de raw schema DVC",
         ],
         [
-          "Mapping draft",
-          toVaultRelative(config, requiredPath(draftPackage.files.mapping)),
+          `${variant.name} mapping draft`,
+          toVaultRelative(config, variant.files.mapping),
           "Draft de mapping hacia DOC estable",
         ],
         [
-          "Parser config draft",
-          toVaultRelative(
-            config,
-            requiredPath(draftPackage.files.parserConfig),
-          ),
+          `${variant.name} parser config draft`,
+          toVaultRelative(config, variant.files.parserConfig),
           "Draft de parser DVC",
         ],
-      ]
+      ])
     case "DOL":
       return [
         [
@@ -576,23 +617,27 @@ function draftRowsForPackage(
           "spec.md",
         ],
         [
-          "raw_schema_draft.md",
-          toVaultRelative(config, requiredPath(draftPackage.files.rawSchema)),
-          "raw_schema.md",
+          "spec_draft.md",
+          toVaultRelative(config, draftPackage.files.spec),
+          "README.md",
         ],
-        [
-          "mapping_draft.md",
-          toVaultRelative(config, requiredPath(draftPackage.files.mapping)),
-          "mapping.md",
-        ],
-        [
-          "parser_config_draft.md",
-          toVaultRelative(
-            config,
-            requiredPath(draftPackage.files.parserConfig),
-          ),
-          "parser_config.md",
-        ],
+        ...dvcVariants(draftPackage).flatMap((variant) => [
+          [
+            `${variant.name}/raw_schema_draft.md`,
+            toVaultRelative(config, variant.files.rawSchema),
+            `${variant.name}/raw_schema.md`,
+          ],
+          [
+            `${variant.name}/mapping_draft.md`,
+            toVaultRelative(config, variant.files.mapping),
+            `${variant.name}/mapping.md`,
+          ],
+          [
+            `${variant.name}/parser_config_draft.md`,
+            toVaultRelative(config, variant.files.parserConfig),
+            `${variant.name}/parser_config.md`,
+          ],
+        ]),
       ]
     case "DOL":
       return [
@@ -611,6 +656,31 @@ function draftRowsForPackage(
         ],
       ]
   }
+}
+
+function changelogDraftRows(
+  config: RouterConfig,
+  draftPackage: SupportedDraftPackage,
+): string[][] {
+  if (draftPackage.files.notes) {
+    return [
+      [
+        "notes.md",
+        toVaultRelative(config, draftPackage.files.notes),
+        "changelog.md / notas de aplicacion",
+      ],
+    ]
+  }
+  if (draftPackage.canonicalType === "DVC") {
+    return [
+      [
+        "spec_draft.md",
+        toVaultRelative(config, draftPackage.files.spec),
+        "changelog.md",
+      ],
+    ]
+  }
+  return []
 }
 
 function targetRowsForPackage(
@@ -634,10 +704,15 @@ function targetRowsForPackage(
         ["DVC ID", draftPackage.canonicalId],
         ["Nombre documento variable", name],
         ["Carpeta destino", targetCanonicalPath],
-        ["Variante / version", name],
+        [
+          "Variantes",
+          dvcVariants(draftPackage)
+            .map((variant) => variant.name)
+            .join(", "),
+        ],
         [
           "Archivos canonicos esperados",
-          "spec.md / raw_schema.md / mapping.md / parser_config.md / changelog.md",
+          "README.md / spec.md / changelog.md / <variante>/raw_schema.md / <variante>/mapping.md / <variante>/parser_config.md",
         ],
       ]
     case "DOL":
@@ -661,7 +736,7 @@ function changeDescription(
     case "DOC":
       return `${action} canonico \`${draftPackage.canonicalId}\` para documentar ${name} como documento fuente estable de auditoria IMSS.`
     case "DVC":
-      return `${action} canonico \`${draftPackage.canonicalId}\` para documentar la variante cliente ${name}, incluyendo raw schema, mapping y parser config.`
+      return `${action} canonico \`${draftPackage.canonicalId}\` para documentar ${name} como documento variable de cliente con variantes internas. Cada variante contiene raw schema, mapping y parser config propios, compartiendo spec, README y changelog.`
     case "DOL":
       return `${action} canonico \`${draftPackage.canonicalId}\` para documentar el fundamento normativo ${name} y su transcripcion operativa.`
   }
@@ -690,14 +765,22 @@ function detailRowsForPackage(
       ]
     case "DVC":
       return [
-        ["Que cambia por cliente/software", `Variante cliente ${name}.`],
+        [
+          "Que cambia por cliente/software",
+          `Variantes: ${dvcVariants(draftPackage)
+            .map((variant) => variant.name)
+            .join(", ")}.`,
+        ],
         [
           "Software o formato origen",
           "Ver spec_draft.md y materiales fuente de la contribution.",
         ],
-        ["Raw schema esperado", "Ver raw_schema_draft.md."],
-        ["Parser config esperado", "Ver parser_config_draft.md."],
-        ["Relacion con DOC estable", "Ver mapping_draft.md."],
+        ["Raw schema esperado", "Ver cada <variante>/raw_schema_draft.md."],
+        [
+          "Parser config esperado",
+          "Ver cada <variante>/parser_config_draft.md.",
+        ],
+        ["Relacion con DOC estable", "Ver cada <variante>/mapping_draft.md."],
       ]
     case "DOL":
       return [
@@ -737,7 +820,9 @@ ${renderMarkdownTable(
         ? "variante_cliente"
         : "documento_fuente",
       "evidencia_contextual",
-      `${targetCanonicalFolder(draftPackage)}Examples/`,
+      draftPackage.canonicalType === "DVC"
+        ? `${targetCanonicalFolder(draftPackage)}<variante>/Ejemplos/`
+        : `${targetCanonicalFolder(draftPackage)}Examples/`,
     ],
   ],
 )}
@@ -762,7 +847,9 @@ ${renderMarkdownTable(
     [
       "copiar carpeta",
       "materials/",
-      `${targetCanonicalFolder(draftPackage)}Examples/`,
+      draftPackage.canonicalType === "DVC"
+        ? `${targetCanonicalFolder(draftPackage)}<variante>/Ejemplos/`
+        : `${targetCanonicalFolder(draftPackage)}Examples/`,
       "evidencia_contextual",
       "si",
       "Copiar ejemplos solo si el editor humano o handler soportado lo confirma.",
@@ -808,9 +895,18 @@ function expectedDraftDestinations(
     case "DVC":
       return [
         ["spec_draft.md", "spec.md"],
-        ["raw_schema_draft.md", "raw_schema.md"],
-        ["mapping_draft.md", "mapping.md"],
-        ["parser_config_draft.md", "parser_config.md"],
+        ["spec_draft.md", "README.md"],
+        ...dvcVariants(draftPackage).flatMap((variant) => [
+          [
+            `${variant.name}/raw_schema_draft.md`,
+            `${variant.name}/raw_schema.md`,
+          ],
+          [`${variant.name}/mapping_draft.md`, `${variant.name}/mapping.md`],
+          [
+            `${variant.name}/parser_config_draft.md`,
+            `${variant.name}/parser_config.md`,
+          ],
+        ]),
       ]
     case "DOL":
       return [
@@ -818,6 +914,15 @@ function expectedDraftDestinations(
         ["document_transcript_draft.md", "document_transcript.md"],
       ]
   }
+}
+
+function dvcVariants(
+  draftPackage: SupportedDraftPackage,
+): readonly DvcVariantDraft[] {
+  if (draftPackage.canonicalType !== "DVC" || !draftPackage.variants) {
+    throw new Error(`Missing DVC variants for ${draftPackage.canonicalId}.`)
+  }
+  return draftPackage.variants
 }
 
 function requiredPath(path: string | undefined): string {

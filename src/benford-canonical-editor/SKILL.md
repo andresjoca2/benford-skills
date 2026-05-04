@@ -36,6 +36,25 @@ Detente si:
 7. Crea `applied_record.md` dentro de la PROP.
 8. Mueve la PROP a `02 Proposals/04 Applied`.
 
+## Contrato DVC
+
+Para `PROP-DVC`, respeta destinos relativos con subcarpetas. Un DVC canonico
+tiene `README.md`, `spec.md` y `changelog.md` en la raiz, y cada variante tiene
+sus propios `raw_schema.md`, `mapping.md` y `parser_config.md`:
+
+```text
+DVC-<slug>/
+  README.md
+  spec.md
+  changelog.md
+  <Variante>/
+    raw_schema.md
+    mapping.md
+    parser_config.md
+```
+
+No aplanes archivos de variante en la raiz del DVC.
+
 ## Applied record minimo
 
 `applied_record.md` debe incluir:
