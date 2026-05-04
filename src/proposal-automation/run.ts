@@ -1,5 +1,3 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
 import { applyCanonicalProposal } from "@/canonical-editor"
 import {
   assertVaultRoot,
@@ -8,10 +6,9 @@ import {
 } from "@/router-engine"
 import { listProposalIds } from "@/router-engine/load-proposal"
 import {
-  extractSection,
-  parseFirstMarkdownTable,
-  tableToKeyValue,
-} from "@/router-engine/markdown"
+  generateProposalForContribution,
+  listPendingContributionPackages,
+} from "./proposal-generator"
 import {
   AUTOMATION_QUEUE_ORDER,
   AUTOMATION_RULES,
@@ -28,7 +25,9 @@ export function checkProposalAutomations(
 ): ProposalAutomationCheck {
   const config = resolveRouterConfig(options)
   assertVaultRoot(config)
-  const contributionIds = listReadyContributionIds(config.vaultRoot)
+  const contributionIds = listPendingContributionPackages(config).map(
+    (contribution) => contribution.id,
+  )
 
   return {
     vaultRoot: config.vaultRoot,
@@ -57,16 +56,26 @@ export function runProposalAutomations(
   assertVaultRoot(config)
   const events: ProposalAutomationEvent[] = []
 
-  for (const contribution of listReadyContributions(config.vaultRoot)) {
+  for (const contribution of listPendingContributionPackages(config)) {
+    const proposalGeneratorResult =
+      options.write === true
+        ? generateProposalForContribution(config, contribution, {
+            write: true,
+          })
+        : generateProposalForContribution(config, contribution)
     events.push({
       id: contribution.id,
       subject: "contribution",
       contributionId: contribution.id,
       action: "generate_proposal",
-      status: "pending_manual",
+      status: options.write === true ? "handled" : "pending",
       detail:
-        "Contribution is ready for Proposal Generator. Creating a PROP requires explicit user approval in-session.",
+        options.write === true
+          ? `Generated ${proposalGeneratorResult.proposalId} in 02 Proposals/01 Draft.`
+          : `Dry-run would generate ${proposalGeneratorResult.proposalId} in 02 Proposals/01 Draft.`,
       nextSkill: "IMSS-Proposal-Generator",
+      proposalId: proposalGeneratorResult.proposalId,
+      proposalGeneratorResult,
     })
   }
 
@@ -128,59 +137,4 @@ export function runProposalAutomations(
   }
 
   return events
-}
-
-function listReadyContributionIds(vaultRoot: string): string[] {
-  return listReadyContributions(vaultRoot).map(
-    (contribution) => contribution.id,
-  )
-}
-
-function listReadyContributions(
-  vaultRoot: string,
-): Array<{ id: string; path: string }> {
-  const root = join(vaultRoot, "01 Contribuciones")
-  if (!existsSync(root)) return []
-  const results: Array<{ id: string; path: string }> = []
-  const stack = [root]
-
-  while (stack.length > 0) {
-    const current = stack.pop()
-    if (!current) continue
-    const entries = readdirSync(current, { withFileTypes: true })
-    const hasContributionMap = entries.some(
-      (entry) => entry.isFile() && entry.name === "contribution_map.md",
-    )
-    if (hasContributionMap) {
-      const contribution = readContributionMap(
-        join(current, "contribution_map.md"),
-      )
-      if (contribution) results.push({ ...contribution, path: current })
-      continue
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory()) stack.push(join(current, entry.name))
-    }
-  }
-
-  return results.sort((a, b) => a.id.localeCompare(b.id))
-}
-
-function readContributionMap(path: string): { id: string } | null {
-  const markdown = readFileSync(path, "utf8")
-  const identification = tableToKeyValue(
-    parseFirstMarkdownTable(extractSection(markdown, "Identificacion")),
-  )
-  const id = stripTicks(identification.ID)
-  const estado = stripTicks(identification.Estado)
-  if (!id || estado !== "ready_for_proposal") return null
-
-  const proposals = extractSection(markdown, "Proposals generadas") ?? ""
-  if (/\|\s*PROP-[A-Z]+-\d+|\|\s*PROP-\d+/.test(proposals)) return null
-
-  return { id }
-}
-
-function stripTicks(value: string | undefined): string {
-  return (value ?? "").trim().replace(/^`|`$/g, "")
 }

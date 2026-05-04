@@ -18,7 +18,7 @@ las dispara o reporta que estan listas.
 Flujo:
 
 ```text
-01 Contribuciones/**/CONTRIBUTION-* ready_for_proposal -> bun run automations -> IMSS-Proposal-Generator
+01 Contribuciones/**/CONTRIBUTION-* con outputs soportados -> bun run automations -> IMSS-Proposal-Generator
 02 Proposals/<cola>/PROP-* -> bun run automations -> siguiente skill o espera
 ```
 
@@ -26,7 +26,7 @@ Flujo:
 
 | Carpeta | Condicion | Accion | Siguiente paso |
 |---|---|---|---|
-| `01 Contribuciones/**/CONTRIBUTION-*` | `contribution_map.md` con `Estado` = `ready_for_proposal` y sin PROP generada | `generate_proposal` | usar `IMSS-Proposal-Generator` |
+| `01 Contribuciones/**/CONTRIBUTION-*` | `contribution_map.md` existe, hay outputs soportados y no hay PROP generada | `generate_proposal` | usar `IMSS-Proposal-Generator` |
 
 ## Reglas por cola
 
@@ -66,6 +66,8 @@ bun run automations -- watch --interval-ms 5000 --vault-root "$BENFORD_VAULT_ROO
 
 Solo por medio de handlers seguros:
 
+- Contributions soportadas: puede crear una `PROP-DOC` en `01 Draft` y actualizar
+  `contribution_map.md`.
 - `01 Draft`: puede llamar al Router Engine con `--write`, que escribe archivos
   operativos y mueve la PROP a su cola destino.
 
@@ -76,9 +78,8 @@ Solo por medio de handlers seguros:
 - `decision_record.md`.
 - `applied_record.md`.
 
-Para CONTRIBUTION-* listas, delega a `IMSS-Proposal-Generator`. Crear la carpeta
-PROP-* dentro del Vault requiere aprobacion explicita del usuario en la sesion,
-porque es una escritura dentro del Vault.
+Para CONTRIBUTION-* con outputs soportados, llama al `IMSS-Proposal-Generator`
+deterministico. En modo `--write`, puede crear la carpeta PROP-* dentro del Vault.
 
 Para PROPs en `03 Approved for Editor`, delega a `benford-canonical-editor`.
 

@@ -30,7 +30,7 @@ export interface ContributionAutomationRule {
   readonly action: "generate_proposal"
   readonly description: string
   readonly skillName: "IMSS-Proposal-Generator"
-  readonly writePolicy: "manual_only"
+  readonly writePolicy: "safe_auto"
 }
 
 export interface ProposalAutomationOptions extends RouterOptions {
@@ -49,6 +49,15 @@ export interface ProposalAutomationEvent {
   readonly nextSkill?: string
   readonly routerResult?: RouteRunResult
   readonly editorResult?: CanonicalEditPlan
+  readonly proposalGeneratorResult?: ProposalGenerationResult
+}
+
+export interface ProposalGenerationResult {
+  readonly contributionId: string
+  readonly proposalId: string
+  readonly proposalPath: string
+  readonly targetCanonicalId: string
+  readonly dryRun: boolean
 }
 
 export interface ProposalAutomationCheck {

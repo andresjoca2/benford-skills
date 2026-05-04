@@ -8,8 +8,9 @@ and invokes the deterministic engines in this repo.
 
 ## What This Runner Does
 
-- Detects `CONTRIBUTION-*` folders marked `ready_for_proposal`.
-- Reports that `IMSS-Proposal-Generator` should run.
+- Detects `CONTRIBUTION-*` folders with supported skill outputs and no
+  generated PROP.
+- Runs the deterministic `IMSS-Proposal-Generator` for supported contributions.
 - Detects `02 Proposals/01 Draft/PROP-*`.
 - Runs the deterministic Router Engine in write mode for draft proposals.
 - Leaves `02 Needs Human Decision` waiting for a human.
@@ -17,9 +18,8 @@ and invokes the deterministic engines in this repo.
   `03 Approved for Editor`.
 
 The runner performs safe automatic proposal routing and applies supported
-approved `PROP-DOC` packages through the deterministic Canonical Editor. It does
-not create proposal folders from contributions by itself, because those Vault
-writes still need explicit approval in the active agent session.
+approved `PROP-DOC` packages through the deterministic Canonical Editor. It also
+creates supported `PROP-DOC` draft packages from contributions automatically.
 
 ## Requirements
 
@@ -116,9 +116,8 @@ journalctl --user -u benford-automation.service -f
 - Do not run laptop watchers at the same time.
 - The runner is idempotent at the queue level: once a draft proposal is moved,
   it no longer appears in `01 Draft`.
-- The contribution generator should update `contribution_map.md` after creating
-  a `PROP-*`; otherwise the runner will keep reporting the contribution as
-  ready for proposal generation.
+- The contribution generator updates `contribution_map.md` after creating a
+  `PROP-*`, and also checks existing proposals to avoid duplicates.
 - If `systemctl --user status benford-automation.service` exits with
   `status=127`, systemd cannot find `bun`. Run `command -v bun`, then add
   `BUN_BIN=/absolute/path/to/bun` to `~/.config/benford/automation.env`.

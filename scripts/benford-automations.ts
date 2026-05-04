@@ -77,6 +77,20 @@ function printEvents(events: ProposalAutomationEvent[]): void {
     console.log(`  status: ${event.status}`)
     console.log(`  detail: ${event.detail}`)
     if (event.nextSkill) console.log(`  next skill: ${event.nextSkill}`)
+    if (event.proposalGeneratorResult) {
+      console.log(
+        `  generated proposal: ${event.proposalGeneratorResult.proposalId}`,
+      )
+      console.log(
+        `  target: ${event.proposalGeneratorResult.targetCanonicalId}`,
+      )
+      console.log(`  path: ${event.proposalGeneratorResult.proposalPath}`)
+      console.log(
+        `  generator mode: ${
+          event.proposalGeneratorResult.dryRun ? "dry-run" : "write"
+        }`,
+      )
+    }
     if (event.routerResult) {
       console.log(`  router decision: ${event.routerResult.decision}`)
       console.log(`  router target: ${event.routerResult.toQueue}`)

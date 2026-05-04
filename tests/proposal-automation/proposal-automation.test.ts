@@ -38,11 +38,11 @@ describe("benford proposal automation", () => {
     ).toBe("benford-canonical-editor")
   })
 
-  test("detects ready contributions and requests Proposal Generator", () => {
+  test("detects new contributions regardless of Estado and plans Proposal Generator", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
       id: "CONTRIBUTION-2026-05-03-ready",
-      estado: "ready_for_proposal",
+      estado: "draft_generated",
     })
 
     const check = checkProposalAutomations({
@@ -65,8 +65,9 @@ describe("benford proposal automation", () => {
     expect(events[0]?.subject).toBe("contribution")
     expect(events[0]?.contributionId).toBe("CONTRIBUTION-2026-05-03-ready")
     expect(events[0]?.action).toBe("generate_proposal")
-    expect(events[0]?.status).toBe("pending_manual")
+    expect(events[0]?.status).toBe("pending")
     expect(events[0]?.nextSkill).toBe("IMSS-Proposal-Generator")
+    expect(events[0]?.proposalGeneratorResult?.proposalId).toBe("PROP-0001")
   })
 
   test("skips ready contributions that already reference generated proposals", () => {
@@ -84,6 +85,42 @@ describe("benford proposal automation", () => {
 
     expect(check.contributions.count).toBe(0)
     expect(runProposalAutomations({ vaultRoot })).toHaveLength(0)
+  })
+
+  test("write mode generates a PROP from a contribution, routes it, and applies it", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-auto",
+      estado: "draft_generated",
+    })
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "invoke_skill",
+    ])
+    expect(events[0]?.proposalId).toBe("PROP-0001")
+    expect(events[1]?.routerResult?.decision).toBe("approved_for_editor")
+    expect(events[2]?.editorResult?.dryRun).toBe(false)
+    expect(
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0001")),
+    ).toBe(true)
+    expect(
+      readFileSync(
+        join(
+          vaultRoot,
+          "01 Contribuciones/CONTRIBUTION-2026-05-03-auto/contribution_map.md",
+        ),
+        "utf8",
+      ),
+    ).toContain("| PROP-0001 |")
   })
 
   test("dry-run routes draft proposals without writing", () => {
@@ -202,6 +239,23 @@ ${proposalRow}
 `,
     "utf8",
   )
+  writeDocDrafts(contributionRoot)
+}
+
+function writeDocDrafts(contributionRoot: string): void {
+  const outputRoot = join(
+    contributionRoot,
+    "skill_outputs/explicit_knowledge/DOC-test",
+  )
+  mkdirSync(outputRoot, { recursive: true })
+  writeFileSync(join(outputRoot, "spec_draft.md"), "# Spec draft\n", "utf8")
+  writeFileSync(join(outputRoot, "schema_draft.md"), "# Schema draft\n", "utf8")
+  writeFileSync(
+    join(outputRoot, "parser_config_draft.md"),
+    "# Parser draft\n",
+    "utf8",
+  )
+  writeFileSync(join(outputRoot, "notes.md"), "# Notes\n", "utf8")
 }
 
 function writeProposal(
