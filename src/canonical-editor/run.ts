@@ -1,4 +1,5 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -31,6 +32,15 @@ interface DraftMapping {
   readonly content: string
 }
 
+interface MaterialMapping {
+  readonly sourcePath: string
+  readonly destinationPath: string
+  readonly action: "copy"
+  readonly preserveStructure: boolean
+  readonly type: string
+  readonly note: string
+}
+
 type SupportedProposalType = "PROP-DOC" | "PROP-DVC" | "PROP-DOL"
 
 const SUPPORTED_PROPOSAL_TYPES: readonly SupportedProposalType[] = [
@@ -58,10 +68,14 @@ export function applyCanonicalProposal(
   )
   const targetCanonicalPath = resolveTargetCanonicalPath(config, proposal)
   const draftMappings = loadDraftMappings(config, proposal)
+  const materialMappings = loadMaterialMappings(
+    config,
+    proposal,
+    targetCanonicalPath,
+  )
   const canonicalFiles = planCanonicalFiles(
     config,
     proposal,
-    targetCanonicalId,
     targetCanonicalPath,
     draftMappings,
   )
@@ -74,6 +88,7 @@ export function applyCanonicalProposal(
   if (!dryRun) {
     withCanonicalEditorLock(config, proposal.id, () => {
       writeCanonicalFiles(canonicalFiles)
+      copyCanonicalMaterials(materialMappings)
       moveProposalToApplied(config, proposal)
       atomicWriteFile(
         appliedRecordPath,
@@ -81,6 +96,7 @@ export function applyCanonicalProposal(
           targetCanonicalId,
           targetCanonicalPath,
           canonicalFiles,
+          materialMappings,
         }),
       )
     })
@@ -97,6 +113,11 @@ export function applyCanonicalProposal(
       sourcePath: toVaultRelative(config, file.sourcePath),
       destinationPath: toVaultRelative(config, file.destinationPath),
       action: "create",
+    })),
+    canonicalMaterials: materialMappings.map((material) => ({
+      sourcePath: toVaultRelative(config, material.sourcePath),
+      destinationPath: toVaultRelative(config, material.destinationPath),
+      action: "copy",
     })),
     appliedRecordPath: toVaultRelative(config, appliedRecordPath),
     moved: !dryRun,
@@ -223,10 +244,157 @@ function loadDraftMappings(
   })
 }
 
+function loadMaterialMappings(
+  config: RouterConfig,
+  proposal: ProposalPackage,
+  targetCanonicalPath: string,
+): MaterialMapping[] {
+  const expectedCopyDestinations = loadExpectedCopyDestinations(
+    config,
+    proposal,
+  )
+  const table = parseFirstMarkdownTable(
+    extractSection(proposal.markdown, "Materiales canonicos a copiar"),
+  )
+  if (!table) {
+    if (expectedCopyDestinations.length > 0) {
+      throw new Error(
+        "Archivos canonicos esperados declares copy actions but Materiales canonicos a copiar is missing.",
+      )
+    }
+    return []
+  }
+  const actionHeader = headerByName(table.headers, "accion")
+  const sourceHeader = headerByName(table.headers, "origen en contribution")
+  const destinationHeader = headerByName(
+    table.headers,
+    "destino canonico esperado",
+  )
+  const preserveHeader = headerByName(table.headers, "preservar estructura")
+  const typeHeader = headerByName(table.headers, "tipo")
+  const noteHeader = headerByName(table.headers, "nota")
+  if (!actionHeader || !sourceHeader || !destinationHeader) {
+    throw new Error(
+      "Materiales canonicos a copiar must include Accion, Origen en contribution and Destino canonico esperado.",
+    )
+  }
+
+  const mappings = table.rows.map((row) => {
+    const rawAction = stripTicks(row[actionHeader]).toLowerCase()
+    if (!rawAction.includes("copiar")) {
+      throw new Error(`Unsupported material action: ${row[actionHeader]}`)
+    }
+    const sourcePath = resolveVaultPath(
+      config,
+      requiredField(row[sourceHeader], "Missing material source path."),
+    )
+    if (!existsSync(sourcePath)) {
+      throw new Error(
+        `Material source does not exist: ${toVaultRelative(config, sourcePath)}`,
+      )
+    }
+    const destinationPath = resolveMaterialDestination(
+      config,
+      targetCanonicalPath,
+      requiredField(row[destinationHeader], "Missing material destination."),
+    )
+    if (existsSync(destinationPath)) {
+      throw new Error(
+        `Canonical material destination already exists: ${toVaultRelative(config, destinationPath)}`,
+      )
+    }
+    return {
+      sourcePath,
+      destinationPath,
+      action: "copy" as const,
+      preserveStructure:
+        stripTicks(preserveHeader ? row[preserveHeader] : undefined)
+          .toLowerCase()
+          .trim() !== "no",
+      type: stripTicks(typeHeader ? row[typeHeader] : undefined) || "material",
+      note: stripTicks(noteHeader ? row[noteHeader] : undefined) || "N/A",
+    }
+  })
+
+  const materialDestinations = new Set(
+    mappings.map((mapping) => toVaultRelative(config, mapping.destinationPath)),
+  )
+  const expectedDestinationSet = new Set(expectedCopyDestinations)
+  for (const expectedDestination of expectedCopyDestinations) {
+    if (!materialDestinations.has(expectedDestination)) {
+      throw new Error(
+        `Expected copy destination is not declared in Materiales canonicos a copiar: ${expectedDestination}`,
+      )
+    }
+  }
+  for (const materialDestination of materialDestinations) {
+    if (!expectedDestinationSet.has(materialDestination)) {
+      throw new Error(
+        `Material copy destination is missing from Archivos canonicos esperados: ${materialDestination}`,
+      )
+    }
+  }
+
+  return mappings
+}
+
+function loadExpectedCopyDestinations(
+  config: RouterConfig,
+  proposal: ProposalPackage,
+): string[] {
+  const table = parseFirstMarkdownTable(
+    extractSection(proposal.markdown, "Archivos canonicos esperados"),
+  )
+  if (!table) return []
+  const actionHeader = headerByName(table.headers, "accion")
+  const pathHeader = headerByName(table.headers, "path esperado")
+  if (!actionHeader || !pathHeader) return []
+  return table.rows
+    .filter((row) => stripTicks(row[actionHeader]).toLowerCase() === "copiar")
+    .map((row) => {
+      const path = resolveVaultPath(
+        config,
+        requiredField(row[pathHeader], "Missing expected copy path."),
+      )
+      assertInsideVault(config, path)
+      return toVaultRelative(config, path)
+    })
+}
+
+function resolveMaterialDestination(
+  config: RouterConfig,
+  targetCanonicalPath: string,
+  rawDestination: string,
+): string {
+  const stripped = stripTicks(rawDestination)
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/")
+    .trim()
+  const targetRelative = toVaultRelative(config, targetCanonicalPath)
+  const destinationRelative = stripped.startsWith(targetRelative)
+    ? stripped
+    : `${targetRelative.replace(/\/+$/, "")}/${parseRelativeMaterialPath(stripped)}`
+  const destinationPath = resolveVaultPath(config, destinationRelative)
+  assertInsideVault(config, destinationPath)
+  return destinationPath
+}
+
+function parseRelativeMaterialPath(value: string): string {
+  const stripped = value.replace(/^\/+/, "")
+  const segments = stripped.split("/").filter(Boolean)
+  if (
+    segments.length === 0 ||
+    stripped.startsWith("/") ||
+    segments.some((segment) => segment === "." || segment === "..")
+  ) {
+    throw new Error(`Unsafe canonical material destination: ${value}`)
+  }
+  return segments.join("/")
+}
+
 function planCanonicalFiles(
   config: RouterConfig,
   proposal: ProposalPackage,
-  targetCanonicalId: string,
   targetCanonicalPath: string,
   draftMappings: DraftMapping[],
 ): Array<{ sourcePath: string; destinationPath: string; content: string }> {
@@ -244,60 +412,13 @@ function planCanonicalFiles(
       content:
         draft.destinationFile === "changelog.md"
           ? renderChangelog(config, proposal, draft)
-          : renderCanonicalFromDraft(
-              config,
-              proposal,
-              targetCanonicalId,
-              draft,
-            ),
+          : renderCanonicalFromDraft(draft),
     }
   })
 }
 
-function renderCanonicalFromDraft(
-  config: RouterConfig,
-  proposal: ProposalPackage,
-  targetCanonicalId: string,
-  draft: DraftMapping,
-): string {
-  const title = `# ${targetCanonicalId} - ${draft.destinationFile}`
-  const body = stripFirstHeadingAndIdentification(draft.content)
-  return `${title}
-
-## Objetivo
-Crear el archivo canonico \`${draft.destinationFile}\` para \`${targetCanonicalId}\` desde la PROP aprobada \`${proposal.id}\`.
-
-## Justificacion
-${proposal.sections.has("Cambio propuesto") ? (extractSection(proposal.markdown, "Cambio propuesto") ?? "").trim() : `Aplicacion aprobada de ${proposal.id}.`}
-
-## Identificacion
-${renderMarkdownTable(
-  ["Campo", "Valor"],
-  [
-    ["ID", targetCanonicalId],
-    ["Tipo", "canonical"],
-    ["Estado", "active"],
-    ["Fecha creacion", config.today],
-    ["Ultima actualizacion", config.today],
-    ["Owner operativo", "Canonical Editor"],
-    ["Capa", proposal.identification.Capa ?? "explicit_knowledge"],
-    ["Canonical type", proposal.identification["Canonical type"] ?? "DOC"],
-    ["Source proposal", proposal.id],
-  ],
-)}
-
-## Contenido canonico
-${body}
-
-## Evidencia fuente
-${extractSection(proposal.markdown, "Evidencia usada") ?? "Pendiente"}
-
-## Relaciones canonicas
-${extractSection(proposal.markdown, "Canonicos relacionados") ?? "Pendiente"}
-
-## Changelog
-- ${config.today}: Creado desde \`${proposal.id}\` por Canonical Editor.
-`
+function renderCanonicalFromDraft(draft: DraftMapping): string {
+  return `${draft.content.trimEnd()}\n`
 }
 
 function renderChangelog(
@@ -348,6 +469,7 @@ function renderAppliedRecord(
       sourcePath: string
       destinationPath: string
     }>
+    readonly materialMappings: readonly MaterialMapping[]
   },
 ): string {
   return `# Applied Record - ${proposal.id}
@@ -390,6 +512,20 @@ ${renderMarkdownTable(
     .map((file) => [toVaultRelative(config, file.destinationPath), "Creado"]),
 )}
 
+## Materiales canonicos copiados
+${renderMarkdownTable(
+  ["Destino", "Fuente", "Tipo", "Nota"],
+  applied.materialMappings.map((material) => [
+    toVaultRelative(config, material.destinationPath),
+    toVaultRelative(config, material.sourcePath),
+    material.type,
+    material.note,
+  ]),
+)}
+
+## Materiales declarados no copiados
+N/A
+
 ## Cambios no aplicados
 N/A
 
@@ -398,10 +534,11 @@ N/A
 - PROP estaba aprobada por \`router_decision.md\` o \`decision_record.md\`.
 - El target canonico resuelve dentro de Benford Vault V3.
 - Todos los drafts usados existen.
+- Todos los materiales declarados para copiar existen.
 - Los destinos canonicos no existian antes de escribir.
 
 ## Notas
-Canonical Editor aplico los archivos declarados en \`Drafts usados\` para el tipo de PROP soportado.
+Canonical Editor aplico los archivos declarados en \`Drafts usados\` y los materiales declarados en \`Materiales canonicos a copiar\` para el tipo de PROP soportado.
 `
 }
 
@@ -411,17 +548,26 @@ function isSupportedProposalType(
   return SUPPORTED_PROPOSAL_TYPES.includes(value as SupportedProposalType)
 }
 
-function stripFirstHeadingAndIdentification(content: string): string {
-  const withoutHeading = content.replace(/^# .+?\n+/, "")
-  return withoutHeading
-    .replace(/## Identificacion\n[\s\S]*?(?=\n## |\n$)/, "")
-    .trim()
-}
-
 function writeCanonicalFiles(
   files: Array<{ destinationPath: string; content: string }>,
 ): void {
   for (const file of files) atomicWriteFile(file.destinationPath, file.content)
+}
+
+function copyCanonicalMaterials(materials: readonly MaterialMapping[]): void {
+  for (const material of materials) {
+    mkdirSync(dirname(material.destinationPath), { recursive: true })
+    cpSync(material.sourcePath, material.destinationPath, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+    })
+    if (!existsSync(material.destinationPath)) {
+      throw new Error(
+        `Material copy did not produce destination: ${material.destinationPath}`,
+      )
+    }
+  }
 }
 
 function moveProposalToApplied(
@@ -481,6 +627,13 @@ function requiredField(value: string | undefined, message: string): string {
 
 function stripTicks(value: string | undefined): string {
   return (value ?? "").trim().replace(/^`+|`+$/g, "")
+}
+
+function headerByName(
+  headers: readonly string[],
+  name: string,
+): string | undefined {
+  return headers.find((header) => header.trim().toLowerCase() === name)
 }
 
 function parseDestinationPath(value: string): string {

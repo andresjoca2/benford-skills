@@ -149,8 +149,25 @@ describe("benford proposal automation", () => {
     expect(events[0]?.proposalId).toBe("PROP-0001")
     expect(events[1]?.routerResult?.decision).toBe("approved_for_editor")
     expect(events[2]?.editorResult?.dryRun).toBe(false)
+    expect(events[2]?.editorResult?.canonicalMaterials).toEqual([
+      {
+        sourcePath:
+          "01 Contribuciones/CONTRIBUTION-2026-05-03-auto/materials/source_documents/examples/Selim",
+        destinationPath:
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/Examples/Selim",
+        action: "copy",
+      },
+    ])
     expect(
       existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0001")),
+    ).toBe(true)
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/Examples/Selim/example.pdf",
+        ),
+      ),
     ).toBe(true)
     expect(
       readFileSync(
@@ -359,6 +376,20 @@ function writeContributionMap(
 ): void {
   const contributionRoot = join(vaultRoot, "01 Contribuciones", options.id)
   mkdirSync(contributionRoot, { recursive: true })
+  mkdirSync(
+    join(contributionRoot, "materials/source_documents/examples/Selim"),
+    {
+      recursive: true,
+    },
+  )
+  writeFileSync(
+    join(
+      contributionRoot,
+      "materials/source_documents/examples/Selim/example.pdf",
+    ),
+    "fixture",
+    "utf8",
+  )
   const proposalRow = options.proposalId
     ? `| ${options.proposalId} | Draft creado |`
     : "| Pendiente | N/A |"

@@ -22,7 +22,7 @@ Cuando los materiales fuente ya contienen documentos aterrizados, como
 transcripciones legales, la responsabilidad principal de la skill es preservar
 esos documentos, no reinterpretarlos. En ese modo, la skill debe copiar el
 contenido fuente casi intacto y registrar la trazabilidad en `notes.md` o en un
-manifest separado.
+apartado operativo equivalente dentro de `notes.md`.
 
 Flujo:
 
@@ -84,6 +84,14 @@ Reglas de copia:
 
 - copiar cada archivo fuente indicado por el usuario a `materials/`, preservando
   el nombre original cuando no haya conflicto;
+- cuando el usuario entregue documentos ejemplo o una carpeta de ejemplos,
+  copiarlos bajo `materials/source_documents/examples/`;
+- si los ejemplos vienen separados por empresa, cliente, fuente o carpeta
+  identificable, preservar esa subcarpeta; si el nombre de empresa esta claro
+  pero venia mezclado, separar en `materials/source_documents/examples/<Empresa>/`;
+- no renombrar, compactar ni convertir los documentos ejemplo; esos archivos son
+  materiales fisicos para que Proposal Generator los declare y Canonical Editor
+  los copie al canon;
 - si ya existe un archivo con el mismo nombre, no sobrescribirlo sin aprobacion
   explicita; proponer un sufijo claro como `_v2` o la fecha `YYYY-MM-DD`;
 - despues de copiar, usar la copia dentro de `materials/` como evidencia

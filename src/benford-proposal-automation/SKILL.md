@@ -80,6 +80,10 @@ Solo por medio de handlers seguros:
 
 Para CONTRIBUTION-* con outputs soportados, llama al `IMSS-Proposal-Generator`
 deterministico. En modo `--write`, puede crear la carpeta PROP-* dentro del Vault.
+Si la contribution contiene `materials/source_documents/examples/`, la PROP debe
+declarar esas carpetas o archivos en `Materiales canonicos a copiar` y repetir
+los destinos en `Archivos canonicos esperados` con accion `copiar`. Listarlos
+solo como evidencia raw no basta para que el Canonical Editor los imprima.
 
 Para PROPs en `03 Approved for Editor`, delega a `benford-canonical-editor`.
 El editor deterministico aplica `PROP-DOC`, `PROP-DVC` y `PROP-DOL` cuando el

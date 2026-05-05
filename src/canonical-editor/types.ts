@@ -17,6 +17,11 @@ export interface CanonicalEditPlan {
     readonly destinationPath: string
     readonly action: "create"
   }>
+  readonly canonicalMaterials: Array<{
+    readonly sourcePath: string
+    readonly destinationPath: string
+    readonly action: "copy"
+  }>
   readonly appliedRecordPath: string
   readonly moved: boolean
 }

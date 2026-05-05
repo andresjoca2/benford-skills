@@ -30,6 +30,11 @@ describe("benford canonical editor", () => {
       "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/changelog.md",
     ])
     expect(
+      plan.canonicalMaterials.map((material) => material.destinationPath),
+    ).toEqual([
+      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/Examples/Selim",
+    ])
+    expect(
       existsSync(
         join(
           vaultRoot,
@@ -57,7 +62,15 @@ describe("benford canonical editor", () => {
     const appliedRoot = join(vaultRoot, "02 Proposals/04 Applied/PROP-0002")
     expect(plan.dryRun).toBe(false)
     expect(existsSync(canonicalSpec)).toBe(true)
-    expect(readFileSync(canonicalSpec, "utf8")).toContain("Tipo | canonical")
+    expect(readFileSync(canonicalSpec, "utf8")).toContain("Spec fixture.")
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/Examples/Selim/example.pdf",
+        ),
+      ),
+    ).toBe(true)
     expect(existsSync(join(appliedRoot, "applied_record.md"))).toBe(true)
     expect(existsSync(join(appliedRoot, "proposal.md"))).toBe(true)
   })
@@ -221,6 +234,18 @@ function makeVault(): string {
     "# Document Transcript Draft\n\n## Proposito\nTranscript fixture.\n",
     "utf8",
   )
+  mkdirSync(
+    join(root, "01 Contribuciones/CONTRIBUTION-2026-05-03-test/examples/Selim"),
+    { recursive: true },
+  )
+  writeFileSync(
+    join(
+      root,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-test/examples/Selim/example.pdf",
+    ),
+    "fixture",
+    "utf8",
+  )
   return root
 }
 
@@ -307,6 +332,11 @@ Crear DOC-test.
 | schema_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/schema_draft.md | schema.md |
 | notes.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/notes.md | changelog.md / notas de aplicacion |
 
+## Materiales canonicos a copiar
+| Accion | Origen en contribution | Destino canonico esperado | Tipo | Preservar estructura | Nota |
+|---|---|---|---|---|---|
+| copiar carpeta | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/examples/Selim | Examples/Selim/ | documento_fuente | si | Copiar material fuente aprobado preservando nombres y estructura. |
+
 ## Canonicos relacionados
 | Canonico | Relacion |
 |---|---|
@@ -319,6 +349,7 @@ N/A
 | Accion | Canonical ID | Path esperado | Nota |
 |---|---|---|---|
 | crear | DOC-test/spec.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/spec.md | fixture |
+| copiar | DOC-test/Examples/Selim/ | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/Examples/Selim/ | fixture |
 `
 }
 

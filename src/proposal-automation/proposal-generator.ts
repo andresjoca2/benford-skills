@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs"
 import { basename, dirname, join } from "node:path"
@@ -37,9 +38,19 @@ interface SupportedDraftPackage {
     readonly parserConfig?: string
     readonly documentTranscript?: string
     readonly notes?: string
-    readonly sourceManifest?: string
   }
   readonly variants?: readonly DvcVariantDraft[]
+}
+
+interface CanonicalMaterial {
+  readonly action: "copiar carpeta" | "copiar archivo"
+  readonly sourcePath: string
+  readonly destinationPath: string
+  readonly sourceName: string
+  readonly sourceOwner: string
+  readonly type: string
+  readonly preserveStructure: "si" | "no"
+  readonly note: string
 }
 
 interface DvcVariantDraft {
@@ -253,7 +264,6 @@ function readSupportedDraftPackage(path: string): SupportedDraftPackage | null {
   const parserConfig = join(path, "parser_config_draft.md")
   const documentTranscript = join(path, "document_transcript_draft.md")
   const notes = join(path, "notes.md")
-  const sourceManifest = join(path, "source_manifest.md")
   const files = {
     spec,
     schema,
@@ -264,7 +274,6 @@ function readSupportedDraftPackage(path: string): SupportedDraftPackage | null {
       ? documentTranscript
       : undefined,
     notes: existsSync(notes) ? notes : undefined,
-    sourceManifest: existsSync(sourceManifest) ? sourceManifest : undefined,
   }
 
   if (canonicalType === "DOC") {
@@ -352,6 +361,10 @@ function renderProposal(
   const changeType = existsSync(join(config.vaultRoot, targetCanonicalPath))
     ? "enrich"
     : "new"
+  const canonicalMaterials = discoverCanonicalMaterials(
+    contribution,
+    draftPackage,
+  )
   const touchesCanon = changeType === "new" ? "no" : "si"
   const contributionPath = toVaultRelative(config, contribution.path)
   const sourceInventory = join(
@@ -380,15 +393,6 @@ function renderProposal(
             "Session transcript",
             toVaultRelative(config, sessionTranscript),
             "Trazabilidad de captura",
-          ],
-        ]
-      : []),
-    ...(draftPackage.files.sourceManifest
-      ? [
-          [
-            "Source manifest",
-            toVaultRelative(config, draftPackage.files.sourceManifest),
-            "Manifest de fuentes usadas por la skill",
           ],
         ]
       : []),
@@ -490,9 +494,9 @@ ${renderMarkdownTable(
 ## Evidencia usada
 ${renderMarkdownTable(["Evidencia", "Ubicacion", "Uso"], evidenceRows)}
 
-${rawDocumentSection(config, contribution, draftPackage)}
+${rawDocumentSection(config, contribution, draftPackage, canonicalMaterials)}
 
-${canonicalMaterialsSection(draftPackage)}
+${canonicalMaterialsSection(config, canonicalMaterials)}
 
 ## Drafts usados
 ${renderMarkdownTable(["Draft", "Ubicacion", "Archivo canonico destino"], draftRows)}
@@ -513,6 +517,7 @@ ${renderMarkdownTable(
     targetCanonicalPath,
     options.proposalId,
     changeType,
+    canonicalMaterials,
   ),
 )}
 `
@@ -799,8 +804,32 @@ function rawDocumentSection(
   config: RouterConfig,
   contribution: ContributionPackage,
   draftPackage: SupportedDraftPackage,
+  canonicalMaterials: readonly CanonicalMaterial[],
 ): string {
   if (draftPackage.canonicalType === "DOL") return ""
+  const rows =
+    canonicalMaterials.length > 0
+      ? canonicalMaterials.map((material) => [
+          material.sourceName,
+          material.sourceOwner,
+          toVaultRelative(config, material.sourcePath),
+          material.type,
+          "evidencia_contextual",
+          `${targetCanonicalFolder(draftPackage)}${material.destinationPath}`,
+        ])
+      : [
+          [
+            "Materiales fuente",
+            stripTicks(contribution.identification["Persona fuente"]) ||
+              "Pendiente",
+            `${toVaultRelative(config, contribution.path)}/materials/`,
+            draftPackage.canonicalType === "DVC"
+              ? "variante_cliente"
+              : "documento_fuente",
+            "evidencia_contextual",
+            `${targetCanonicalFolder(draftPackage)}Examples/`,
+          ],
+        ]
   return `## Ejemplos raw documents
 ${renderMarkdownTable(
   [
@@ -811,28 +840,16 @@ ${renderMarkdownTable(
     "Uso en el canonico",
     "Destino canonico sugerido",
   ],
-  [
-    [
-      "Materiales fuente",
-      stripTicks(contribution.identification["Persona fuente"]) || "Pendiente",
-      `${toVaultRelative(config, contribution.path)}/materials/`,
-      draftPackage.canonicalType === "DVC"
-        ? "variante_cliente"
-        : "documento_fuente",
-      "evidencia_contextual",
-      draftPackage.canonicalType === "DVC"
-        ? `${targetCanonicalFolder(draftPackage)}<variante>/Ejemplos/`
-        : `${targetCanonicalFolder(draftPackage)}Examples/`,
-    ],
-  ],
+  rows,
 )}
 `
 }
 
 function canonicalMaterialsSection(
-  draftPackage: SupportedDraftPackage,
+  config: RouterConfig,
+  canonicalMaterials: readonly CanonicalMaterial[],
 ): string {
-  if (draftPackage.canonicalType === "DOL") return ""
+  if (canonicalMaterials.length === 0) return ""
   return `## Materiales canonicos a copiar
 ${renderMarkdownTable(
   [
@@ -843,18 +860,14 @@ ${renderMarkdownTable(
     "Preservar estructura",
     "Nota",
   ],
-  [
-    [
-      "copiar carpeta",
-      "materials/",
-      draftPackage.canonicalType === "DVC"
-        ? `${targetCanonicalFolder(draftPackage)}<variante>/Ejemplos/`
-        : `${targetCanonicalFolder(draftPackage)}Examples/`,
-      "evidencia_contextual",
-      "si",
-      "Copiar ejemplos solo si el editor humano o handler soportado lo confirma.",
-    ],
-  ],
+  canonicalMaterials.map((material) => [
+    material.action,
+    toVaultRelative(config, material.sourcePath),
+    material.destinationPath,
+    material.type,
+    material.preserveStructure,
+    material.note,
+  ]),
 )}
 `
 }
@@ -864,6 +877,7 @@ function expectedCanonicalRows(
   targetCanonicalPath: string,
   proposalId: string,
   changeType: string,
+  canonicalMaterials: readonly CanonicalMaterial[],
 ): string[][] {
   const action = changeType === "new" ? "crear" : "modificar"
   const draftDestinations = expectedDraftDestinations(draftPackage)
@@ -879,6 +893,14 @@ function expectedCanonicalRows(
     `${targetCanonicalPath}changelog.md`,
     `Registro de cambio desde ${proposalId}`,
   ])
+  for (const material of canonicalMaterials) {
+    rows.push([
+      "copiar",
+      `${draftPackage.canonicalId}/${material.destinationPath}`,
+      `${targetCanonicalPath}${material.destinationPath}`,
+      material.note,
+    ])
+  }
   return rows
 }
 
@@ -914,6 +936,70 @@ function expectedDraftDestinations(
         ["document_transcript_draft.md", "document_transcript.md"],
       ]
   }
+}
+
+function discoverCanonicalMaterials(
+  contribution: ContributionPackage,
+  draftPackage: SupportedDraftPackage,
+): CanonicalMaterial[] {
+  if (draftPackage.canonicalType === "DOL") return []
+  const materials: CanonicalMaterial[] = []
+  const examplesRoot = join(
+    contribution.path,
+    "materials/source_documents/examples",
+  )
+  if (existsSync(examplesRoot)) {
+    for (const entry of readdirSync(examplesRoot, { withFileTypes: true }).sort(
+      (a, b) => a.name.localeCompare(b.name),
+    )) {
+      const sourcePath = join(examplesRoot, entry.name)
+      const destinationPath = `Examples/${entry.name}${entry.isDirectory() ? "/" : ""}`
+      materials.push({
+        action: entry.isDirectory() ? "copiar carpeta" : "copiar archivo",
+        sourcePath,
+        destinationPath,
+        sourceName: entry.name,
+        sourceOwner: entry.name,
+        type:
+          draftPackage.canonicalType === "DVC"
+            ? "variante_cliente"
+            : "documento_fuente",
+        preserveStructure: entry.isDirectory() ? "si" : "no",
+        note: "Copiar material fuente aprobado preservando nombres y estructura.",
+      })
+    }
+  }
+
+  const legacyMarkdownRoot = join(
+    contribution.path,
+    "materials/source_documents/legacy_markdown",
+  )
+  if (existsSync(legacyMarkdownRoot)) {
+    for (const entry of readdirSync(legacyMarkdownRoot, {
+      withFileTypes: true,
+    }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isFile() || !/^pendientes\b/i.test(entry.name)) continue
+      const sourcePath = join(legacyMarkdownRoot, entry.name)
+      materials.push({
+        action: "copiar archivo",
+        sourcePath,
+        destinationPath: entry.name,
+        sourceName: entry.name,
+        sourceOwner: "legacy_markdown",
+        type: "pendientes_fuente",
+        preserveStructure: "no",
+        note: "Copiar pendientes fuente aprobados sin convertirlos en contrato del sistema.",
+      })
+    }
+  }
+
+  return materials.filter((material) => {
+    if (!existsSync(material.sourcePath)) return false
+    const stat = statSync(material.sourcePath)
+    return material.action === "copiar carpeta"
+      ? stat.isDirectory()
+      : stat.isFile()
+  })
 }
 
 function dvcVariants(
