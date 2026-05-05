@@ -61,6 +61,8 @@ try {
           event.contributionId,
           event.queue,
           event.action,
+          event.status,
+          event.detail,
           event.routerResult?.toQueue ?? "",
         ].join(":")
         if (seen.has(key)) return false

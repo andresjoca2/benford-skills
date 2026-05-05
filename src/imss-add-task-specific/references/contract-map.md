@@ -36,11 +36,13 @@ operational conversation transcript when that conversation is evidence.
 `contribution_map.md` may only be updated to reflect copied source materials and
 executed skills, not canonical decisions.
 
-`contribution_map.md` must include `Estado automation` in `## Identificacion`.
-The default value while the contribution is being assembled is `draft`; it may
-only change to `ready` as the final action after explicit user approval to
-publish the contribution to the runner. Any value other than `ready`, including
-a missing field, must be treated as not ready for automation.
+`contribution_map.md` must include `Estado` and `Estado automation` in
+`## Identificacion`. The default value while the contribution is being assembled
+is `draft` for both; they may only change to `drafts-ready` / `ready` as the
+final action after explicit user approval to publish the contribution to the
+runner. Any `Estado automation` value other than `ready`, including a missing
+field, must be treated as not ready for automation. Do not leave `Estado` =
+`drafts-ready` with `Estado automation` = `draft`.
 
 Minimum required block:
 
@@ -50,7 +52,7 @@ Minimum required block:
 | Campo | Valor |
 |---|---|
 | ID | CONTRIBUTION-YYYY-MM-DD-slug |
-| Estado | drafts-ready |
+| Estado | draft |
 | Estado automation | draft |
 | Fecha creacion | YYYY-MM-DD |
 | Ultima actualizacion | YYYY-MM-DD |
