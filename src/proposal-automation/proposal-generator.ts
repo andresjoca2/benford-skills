@@ -1005,7 +1005,8 @@ function rawDocumentSection(
   draftPackage: SupportedDraftPackage,
   canonicalMaterials: readonly CanonicalMaterial[],
 ): string {
-  if (draftPackage.canonicalType === "DOL") return ""
+  if (draftPackage.canonicalType === "DOL" && canonicalMaterials.length === 0)
+    return ""
   const rows =
     canonicalMaterials.length > 0
       ? canonicalMaterials.map((material) => [
@@ -1163,8 +1164,12 @@ function discoverCanonicalMaterials(
   contribution: ContributionPackage,
   draftPackage: SupportedDraftPackage,
 ): CanonicalMaterial[] {
-  if (draftPackage.canonicalType === "DOL") return []
-  const materials: CanonicalMaterial[] = []
+  const materials: CanonicalMaterial[] = [
+    ...loadContributionMapCanonicalMaterials(config, contribution),
+  ]
+  if (draftPackage.canonicalType === "DOL") {
+    return dedupeCanonicalMaterials(materials)
+  }
   const examplesRoot = join(
     contribution.path,
     "materials/source_documents/examples",
@@ -1222,13 +1227,78 @@ function discoverCanonicalMaterials(
     note: "Copiar pendientes fuente aprobados sin convertirlos en contrato del sistema.",
   })
 
-  return materials.filter((material) => {
+  return dedupeCanonicalMaterials(materials).filter((material) => {
     if (!existsSync(material.sourcePath)) return false
     const stat = statSync(material.sourcePath)
     return material.action === "copiar carpeta"
       ? stat.isDirectory()
       : stat.isFile()
   })
+}
+
+function loadContributionMapCanonicalMaterials(
+  config: RouterConfig,
+  contribution: ContributionPackage,
+): CanonicalMaterial[] {
+  const table = parseFirstMarkdownTable(
+    extractSection(contribution.markdown, "Materiales canonicos sugeridos"),
+  )
+  if (!table) return []
+  const sourceHeader = headerByName(table.headers, "Origen en contribution")
+  const destinationHeader = headerByName(
+    table.headers,
+    "Destino canonico esperado",
+  )
+  const copyHeader = headerByName(table.headers, "Copiar")
+  const typeHeader = headerByName(table.headers, "Tipo")
+  const noteHeader = headerByName(table.headers, "Nota")
+  if (!sourceHeader || !destinationHeader) return []
+
+  return table.rows.flatMap((row) => {
+    const shouldCopy = normalizeName(stripTicks(row[copyHeader ?? ""])) || "si"
+    if (["no", "false", "n"].includes(shouldCopy)) return []
+    const sourcePath = resolveContributionSourcePath(
+      config,
+      contribution,
+      stripTicks(row[sourceHeader]),
+    )
+    if (!existsSync(sourcePath)) return []
+    const stat = statSync(sourcePath)
+    const destinationPath = stripTicks(row[destinationHeader]).replace(
+      /^\/+/,
+      "",
+    )
+    if (!destinationPath) return []
+    const type = stripTicks(row[typeHeader ?? ""]) || "material_fuente"
+    return [
+      {
+        action: stat.isDirectory() ? "copiar carpeta" : "copiar archivo",
+        sourcePath,
+        destinationPath: `${destinationPath}${stat.isDirectory() && !destinationPath.endsWith("/") ? "/" : ""}`,
+        sourceName: basename(sourcePath),
+        sourceOwner: type,
+        type,
+        preserveStructure: stat.isDirectory() ? "si" : "no",
+        note:
+          stripTicks(row[noteHeader ?? ""]) ||
+          "Copiar material fuente declarado en contribution_map.md.",
+      },
+    ]
+  })
+}
+
+function dedupeCanonicalMaterials(
+  materials: readonly CanonicalMaterial[],
+): CanonicalMaterial[] {
+  const seen = new Set<string>()
+  const deduped: CanonicalMaterial[] = []
+  for (const material of materials) {
+    const key = `${material.sourcePath}\0${material.destinationPath}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(material)
+  }
+  return deduped
 }
 
 function collectLegacySourceDocuments(options: {

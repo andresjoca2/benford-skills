@@ -176,6 +176,55 @@ describe("benford proposal automation", () => {
     )
   })
 
+  test("write mode copies DOL source documents declared in contribution map", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-dol-source",
+      estado: "draft_generated",
+      automationState: "ready",
+      canonicalType: "DOL",
+      outputIds: ["DOL-reglamento-test"],
+      canonicalMaterials: [
+        {
+          sourcePath: "materials/Reg_LSS_MACERF.pdf",
+          destinationPath: "source_documents/Reg_LSS_MACERF.pdf",
+          type: "fuente_legal_original",
+          note: "PDF fuente usado para transcripcion DOL.",
+        },
+      ],
+    })
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "invoke_skill",
+    ])
+    expect(events[2]?.editorResult?.canonicalMaterials).toEqual([
+      {
+        sourcePath:
+          "01 Contribuciones/CONTRIBUTION-2026-05-03-dol-source/materials/Reg_LSS_MACERF.pdf",
+        destinationPath:
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-reglamento-test/source_documents/Reg_LSS_MACERF.pdf",
+        action: "copy",
+      },
+    ])
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-reglamento-test/source_documents/Reg_LSS_MACERF.pdf",
+        ),
+      ),
+    ).toBe(true)
+  })
+
   test("skips ready DVC contributions with examples until source_documents_map exists", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
@@ -631,6 +680,12 @@ function writeContributionMap(
       sourcePath: string
       note?: string
     }>
+    canonicalMaterials?: Array<{
+      sourcePath: string
+      destinationPath: string
+      type: string
+      note?: string
+    }>
   },
 ): void {
   const contributionRoot = join(vaultRoot, "01 Contribuciones", options.id)
@@ -644,9 +699,23 @@ function writeContributionMap(
     mkdirSync(exampleRoot, { recursive: true })
     writeFileSync(join(exampleRoot, "example.pdf"), "fixture", "utf8")
   }
+  for (const material of options.canonicalMaterials ?? []) {
+    const materialPath = join(contributionRoot, material.sourcePath)
+    mkdirSync(join(materialPath, ".."), { recursive: true })
+    writeFileSync(materialPath, "fixture", "utf8")
+  }
   const proposalRow = options.proposalId
     ? `| ${options.proposalId} | Draft creado |`
     : "| Pendiente | N/A |"
+  const canonicalMaterialsSection =
+    options.canonicalMaterials && options.canonicalMaterials.length > 0
+      ? `
+## Materiales canonicos sugeridos
+| Origen en contribution | Destino canonico esperado | Tipo | Copiar | Nota |
+|---|---|---|---|---|
+${options.canonicalMaterials.map((material) => `| ${material.sourcePath} | ${material.destinationPath} | ${material.type} | si | ${material.note ?? "Fixture material"} |`).join("\n")}
+`
+      : ""
 
   writeFileSync(
     join(contributionRoot, "contribution_map.md"),
@@ -669,6 +738,7 @@ ${options.automationState === undefined ? "" : `| Estado automation | ${options.
 | PROP | Estado |
 |---|---|
 ${proposalRow}
+${canonicalMaterialsSection}
     `,
     "utf8",
   )

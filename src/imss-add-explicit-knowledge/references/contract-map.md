@@ -29,6 +29,21 @@ reales entregadas por el usuario. `contribution_map.md` solo puede actualizarse
 en la nueva contribution de la corrida, para reflejar materiales copiados y
 skills ejecutadas; no para registrar decisiones canonicas.
 
+Cuando materiales fuente copiados deban viajar tambien al canonico target,
+declaralo en `contribution_map.md` bajo `## Materiales canonicos sugeridos`. No
+crees un manifiesto separado para materiales fuente DOC o DOL.
+
+Columnas requeridas:
+
+```md
+| Origen en contribution | Destino canonico esperado | Tipo | Copiar | Nota |
+|---|---|---|---|---|
+| materials/Reg_LSS_MACERF.pdf | source_documents/Reg_LSS_MACERF.pdf | fuente_legal_original | si | PDF fuente usado para transcripcion DOL. |
+```
+
+`Destino canonico esperado` es relativo a la carpeta canonica target. Para
+`DOL-*`, usa `source_documents/<archivo>` para PDFs legales fuente.
+
 `contribution_map.md` debe incluir `Estado` y `Estado automation` en
 `## Identificacion`. El valor default durante armado es `draft` para ambos; solo
 pueden cambiar a `drafts-ready` / `ready` como ultima accion despues de

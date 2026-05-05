@@ -313,8 +313,8 @@ Antes de terminar, confirma:
 - si el usuario aprobo publicar al runner, `Estado` quedo en `drafts-ready` y
   `Estado automation` quedo en `ready`;
 - si se actualizo `contribution_map.md`, solo cambiaron `Materiales fuente`,
-  `Skills ejecutadas` y, cuando hubo aprobacion final separada, `Estado` /
-  `Estado automation`;
+  `Skills ejecutadas`, `Materiales canonicos sugeridos` cuando aplique y,
+  cuando hubo aprobacion final separada, `Estado` / `Estado automation`;
 - no se escribio en Benford Brain;
 - no se escribio en `02 Proposals`;
 - no se toco legacy.

@@ -317,6 +317,8 @@ Puede escribir `contribution_map.md` solo bajo estas condiciones:
 - el archivo pertenece a la nueva contribution de esta corrida;
 - registra los renglones de `Materiales fuente` para archivos copiados a
   `materials/`, y/o la tabla `Skills ejecutadas`;
+- cuando un archivo fuente real deba copiarse tambien al canonico, registra el
+  bloque `Materiales canonicos sugeridos` en `contribution_map.md`;
 - no registra decisiones canonicas ni PROPs generadas;
 - mantiene `Estado automation` en `draft` durante el armado;
 - solo cambia `Estado automation` a `ready` como ultima accion, despues de una
@@ -377,6 +379,34 @@ Reglas del manifiesto DVC:
   distintas;
 - si no puedes mapear cada ejemplo a una variante, conserva
   `Estado automation` en `draft` y registra el bloqueo en `notes.md`.
+
+## Materiales canonicos sugeridos
+
+Cuando un material fuente copiado a `materials/` deba viajar al canonico, no
+crees otro manifiesto Markdown. Declara la intencion de copia dentro de
+`contribution_map.md` con este bloque:
+
+```md
+## Materiales canonicos sugeridos
+
+| Origen en contribution | Destino canonico esperado | Tipo | Copiar | Nota |
+|---|---|---|---|---|
+| materials/Reg_LSS_MACERF.pdf | source_documents/Reg_LSS_MACERF.pdf | fuente_legal_original | si | PDF fuente usado para transcripcion DOL. |
+```
+
+Reglas:
+
+- `Origen en contribution` debe apuntar a una ruta real dentro de la
+  contribution;
+- `Destino canonico esperado` es relativo a la carpeta canonica target, no al
+  vault root;
+- para `DOL-*`, usa `source_documents/<archivo>` para PDFs, leyes, reglamentos
+  o fuentes normativas primarias;
+- para `DOC-*`, usa `Examples/`, `fixtures/` o `source_documents/` segun el uso
+  real del material;
+- si `Copiar` es `no`, Proposal Generator debe ignorar la fila;
+- antes de marcar `Estado automation` como `ready`, verifica que toda fila con
+  `Copiar` = `si` apunte a un archivo o carpeta existente.
 
 ## Regla copy-through para documentos ya aterrizados
 

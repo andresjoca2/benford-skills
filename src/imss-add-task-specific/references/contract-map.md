@@ -36,6 +36,11 @@ operational conversation transcript when that conversation is evidence.
 `contribution_map.md` may only be updated to reflect copied source materials and
 executed skills, not canonical decisions.
 
+If copied source materials must also travel to a future canonical target,
+declare that in `contribution_map.md` under `## Materiales canonicos sugeridos`
+instead of creating a separate manifest. `Destino canonico esperado` is relative
+to the target canonical folder.
+
 `contribution_map.md` must include `Estado` and `Estado automation` in
 `## Identificacion`. The default value while the contribution is being assembled
 is `draft` for both; they may only change to `drafts-ready` / `ready` as the
