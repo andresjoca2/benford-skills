@@ -32,6 +32,15 @@ interface DraftMapping {
   readonly content: string
 }
 
+type CanonicalFileAction = "create" | "update"
+
+interface PlannedCanonicalFile {
+  readonly sourcePath: string
+  readonly destinationPath: string
+  readonly content: string
+  readonly action: CanonicalFileAction
+}
+
 interface MaterialMapping {
   readonly sourcePath: string
   readonly destinationPath: string
@@ -112,7 +121,7 @@ export function applyCanonicalProposal(
     canonicalFiles: canonicalFiles.map((file) => ({
       sourcePath: toVaultRelative(config, file.sourcePath),
       destinationPath: toVaultRelative(config, file.destinationPath),
-      action: "create",
+      action: file.action,
     })),
     canonicalMaterials: materialMappings.map((material) => ({
       sourcePath: toVaultRelative(config, material.sourcePath),
@@ -147,9 +156,12 @@ function assertApprovedForEditor(
       `Canonical Editor only supports ${SUPPORTED_PROPOSAL_TYPES.join(", ")}. Found: ${type}`,
     )
   }
-  if (changeType !== "new") {
+  if (
+    changeType !== "new" &&
+    !(type === "PROP-DVC" && changeType === "enrich")
+  ) {
     throw new Error(
-      `Canonical Editor only supports new canonicals. Found: ${changeType}`,
+      `Canonical Editor only supports new canonicals and DVC enrich proposals. Found: ${type} ${changeType}`,
     )
   }
 
@@ -171,6 +183,11 @@ function assertApprovedForEditor(
 
   const targetPath = resolveTargetCanonicalPath(config, proposal)
   assertInsideVault(config, targetPath)
+  if (changeType === "enrich" && !existsSync(targetPath)) {
+    throw new Error(
+      `DVC enrich target canonical does not exist: ${toVaultRelative(config, targetPath)}`,
+    )
+  }
 }
 
 function readIdentification(path: string): Record<string, string> {
@@ -361,6 +378,41 @@ function loadExpectedCopyDestinations(
     })
 }
 
+function loadExpectedFileActions(
+  config: RouterConfig,
+  proposal: ProposalPackage,
+): Map<string, CanonicalFileAction> {
+  const table = parseFirstMarkdownTable(
+    extractSection(proposal.markdown, "Archivos canonicos esperados"),
+  )
+  const actions = new Map<string, CanonicalFileAction>()
+  if (!table) return actions
+  const actionHeader = headerByName(table.headers, "accion")
+  const pathHeader = headerByName(table.headers, "path esperado")
+  if (!actionHeader || !pathHeader) return actions
+
+  for (const row of table.rows) {
+    const action = normalizeExpectedFileAction(row[actionHeader])
+    if (!action) continue
+    const path = resolveVaultPath(
+      config,
+      requiredField(row[pathHeader], "Missing expected canonical file path."),
+    )
+    assertInsideVault(config, path)
+    actions.set(toVaultRelative(config, path), action)
+  }
+  return actions
+}
+
+function normalizeExpectedFileAction(
+  value: string | undefined,
+): CanonicalFileAction | null {
+  const action = stripTicks(value).toLowerCase()
+  if (action === "crear") return "create"
+  if (action === "modificar") return "update"
+  return null
+}
+
 function resolveMaterialDestination(
   config: RouterConfig,
   targetCanonicalPath: string,
@@ -397,11 +449,58 @@ function planCanonicalFiles(
   proposal: ProposalPackage,
   targetCanonicalPath: string,
   draftMappings: DraftMapping[],
-): Array<{ sourcePath: string; destinationPath: string; content: string }> {
+): PlannedCanonicalFile[] {
+  const changeType = proposal.identification["Tipo de cambio"]
+  const expectedFileActions = loadExpectedFileActions(config, proposal)
   return draftMappings.map((draft) => {
     const destinationPath = join(targetCanonicalPath, draft.destinationFile)
     assertInsideVault(config, destinationPath)
-    if (existsSync(destinationPath)) {
+    const destinationRelative = toVaultRelative(config, destinationPath)
+
+    if (changeType === "enrich") {
+      assertSafeDvcEnrichDestination(draft.destinationFile)
+      const expectedAction = expectedFileActions.get(destinationRelative)
+      if (!expectedAction) {
+        throw new Error(
+          `DVC enrich destination is missing from Archivos canonicos esperados: ${destinationRelative}`,
+        )
+      }
+      const destinationExists = existsSync(destinationPath)
+      const action: CanonicalFileAction = destinationExists
+        ? "update"
+        : "create"
+      if (expectedAction !== action) {
+        throw new Error(
+          `DVC enrich expected action ${expectedAction} does not match destination state for ${destinationRelative}: ${action}`,
+        )
+      }
+      if (draft.destinationFile === "changelog.md") {
+        if (!destinationExists) {
+          throw new Error(
+            `DVC enrich requires an existing changelog: ${destinationRelative}`,
+          )
+        }
+        return {
+          sourcePath: draft.sourcePath,
+          destinationPath,
+          action,
+          content: renderChangelogUpdate(
+            config,
+            proposal,
+            draft,
+            destinationPath,
+          ),
+        }
+      }
+      return {
+        sourcePath: draft.sourcePath,
+        destinationPath,
+        action,
+        content: renderCanonicalFromDraft(draft),
+      }
+    }
+
+    if (destinationExists(destinationPath)) {
       throw new Error(
         `Canonical destination already exists: ${toVaultRelative(config, destinationPath)}`,
       )
@@ -409,12 +508,26 @@ function planCanonicalFiles(
     return {
       sourcePath: draft.sourcePath,
       destinationPath,
+      action: "create",
       content:
         draft.destinationFile === "changelog.md"
           ? renderChangelog(config, proposal, draft)
           : renderCanonicalFromDraft(draft),
     }
   })
+}
+
+function destinationExists(path: string): boolean {
+  return existsSync(path)
+}
+
+function assertSafeDvcEnrichDestination(destinationFile: string): void {
+  if (destinationFile === "changelog.md") return
+  if (!destinationFile.includes("/")) {
+    throw new Error(
+      `DVC enrich can only create or update variant files, not canonical root files: ${destinationFile}`,
+    )
+  }
 }
 
 function renderCanonicalFromDraft(draft: DraftMapping): string {
@@ -459,6 +572,21 @@ ${extractSection(proposal.markdown, "Canonicos relacionados") ?? "Pendiente"}
 `
 }
 
+function renderChangelogUpdate(
+  config: RouterConfig,
+  proposal: ProposalPackage,
+  draft: DraftMapping,
+  destinationPath: string,
+): string {
+  const existing = readFileSync(destinationPath, "utf8").trimEnd()
+  return `${existing}
+
+## ${config.today} - ${proposal.id}
+- Canonico enriquecido desde \`${proposal.id}\`.
+- Draft fuente usado para notas/changelog: \`${toVaultRelative(config, draft.sourcePath)}\`.
+`
+}
+
 function renderAppliedRecord(
   config: RouterConfig,
   proposal: ProposalPackage,
@@ -468,10 +596,23 @@ function renderAppliedRecord(
     readonly canonicalFiles: Array<{
       sourcePath: string
       destinationPath: string
+      action: CanonicalFileAction
     }>
     readonly materialMappings: readonly MaterialMapping[]
   },
 ): string {
+  const changeType = proposal.identification["Tipo de cambio"]
+  const createdFiles = applied.canonicalFiles.filter(
+    (file) => file.action === "create",
+  )
+  const modifiedFiles = applied.canonicalFiles.filter(
+    (file) => file.action === "update",
+  )
+  const summary =
+    changeType === "enrich"
+      ? `Se aplico \`${proposal.id}\` enriqueciendo el canonico \`${applied.targetCanonicalId}\` en \`${toVaultRelative(config, applied.targetCanonicalPath)}\`.`
+      : `Se aplico \`${proposal.id}\` creando el canonico \`${applied.targetCanonicalId}\` en \`${toVaultRelative(config, applied.targetCanonicalPath)}\`.`
+
   return `# Applied Record - ${proposal.id}
 
 ## Identificacion
@@ -490,26 +631,35 @@ ${renderMarkdownTable(
 )}
 
 ## Resumen de aplicacion
-Se aplico \`${proposal.id}\` creando el canonico \`${applied.targetCanonicalId}\` en \`${toVaultRelative(config, applied.targetCanonicalPath)}\`.
+${summary}
 
 ## Archivos canonicos creados
 ${renderMarkdownTable(
   ["Archivo", "Fuente"],
-  applied.canonicalFiles.map((file) => [
+  createdFiles.map((file) => [
     toVaultRelative(config, file.destinationPath),
     toVaultRelative(config, file.sourcePath),
   ]),
 )}
 
 ## Archivos canonicos modificados
-N/A
+${renderMarkdownTable(
+  ["Archivo", "Fuente"],
+  modifiedFiles.map((file) => [
+    toVaultRelative(config, file.destinationPath),
+    toVaultRelative(config, file.sourcePath),
+  ]),
+)}
 
 ## Changelogs actualizados
 ${renderMarkdownTable(
   ["Archivo", "Accion"],
   applied.canonicalFiles
     .filter((file) => file.destinationPath.endsWith("/changelog.md"))
-    .map((file) => [toVaultRelative(config, file.destinationPath), "Creado"]),
+    .map((file) => [
+      toVaultRelative(config, file.destinationPath),
+      file.action === "create" ? "Creado" : "Modificado",
+    ]),
 )}
 
 ## Materiales canonicos copiados
@@ -535,7 +685,7 @@ N/A
 - El target canonico resuelve dentro de Benford Vault V3.
 - Todos los drafts usados existen.
 - Todos los materiales declarados para copiar existen.
-- Los destinos canonicos no existian antes de escribir.
+- Los destinos canonicos declarados coincidian con la accion esperada antes de escribir.
 
 ## Notas
 Canonical Editor aplico los archivos declarados en \`Drafts usados\` y los materiales declarados en \`Materiales canonicos a copiar\` para el tipo de PROP soportado.

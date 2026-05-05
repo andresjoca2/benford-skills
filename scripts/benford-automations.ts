@@ -31,6 +31,18 @@ try {
     console.log(`  skill: ${check.contributions.rule.skillName}`)
     for (const contributionId of check.contributions.contributionIds)
       console.log(`  - ${contributionId}`)
+    console.log(`Skipped contributions: ${check.skippedContributions.length}`)
+    for (const contribution of check.skippedContributions.filter(
+      (entry) =>
+        entry.supportedOutputs.length > 0 || entry.automationState === "ready",
+    )) {
+      console.log(`  - ${contribution.id}: ${contribution.reason}`)
+      console.log(`    state: ${contribution.automationState}`)
+      if (contribution.supportedOutputs.length > 0) {
+        console.log(`    outputs: ${contribution.supportedOutputs.join(", ")}`)
+      }
+      console.log(`    map: ${contribution.mapPath}`)
+    }
     for (const queue of check.queues) {
       console.log(`${queue.queue}: ${queue.count}`)
       console.log(`  action: ${queue.rule.action}`)

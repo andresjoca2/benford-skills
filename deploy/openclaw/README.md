@@ -8,8 +8,10 @@ and invokes the deterministic engines in this repo.
 
 ## What This Runner Does
 
-- Detects `CONTRIBUTION-*` folders with supported skill outputs and no
-  generated PROP.
+- Detects `CONTRIBUTION-*` folders with `Estado automation=ready`, supported
+  skill outputs, and no generated PROP.
+- Requires `source_documents_map.md` for `DVC-*` outputs that have physical
+  examples under `materials/source_documents/examples/`.
 - Runs the deterministic `IMSS-Proposal-Generator` for supported contributions.
 - Detects `02 Proposals/01 Draft/PROP-*`.
 - Runs the deterministic Router Engine in write mode for draft proposals.
@@ -119,6 +121,9 @@ journalctl --user -u benford-automation.service -f
   it no longer appears in `01 Draft`.
 - The contribution generator updates `contribution_map.md` after creating a
   `PROP-*`, and also checks existing proposals to avoid duplicates.
+- `bun run automations -- check` reports skipped contributions with supported
+  outputs when `Estado automation` is missing or not `ready`, and when DVC
+  examples exist without `source_documents_map.md`.
 - If `systemctl --user status benford-automation.service` exits with
   `status=127`, systemd cannot find `bun`. Run `command -v bun`, then add
   `BUN_BIN=/absolute/path/to/bun` to `~/.config/benford/automation.env`.

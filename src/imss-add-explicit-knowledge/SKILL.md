@@ -86,6 +86,10 @@ Reglas de copia:
   el nombre original cuando no haya conflicto;
 - cuando el usuario entregue documentos ejemplo o una carpeta de ejemplos,
   copiarlos bajo `materials/source_documents/examples/`;
+- si la ruta fuente autorizada contiene una carpeta `Ejemplos/`, copiar esa
+  carpeta a `materials/source_documents/examples/`; los documentos de ejemplo
+  reales no deben quedar solo como referencia textual ni mezclarse con
+  `legacy_explicit_knowledge`;
 - si los ejemplos vienen separados por empresa, cliente, fuente o carpeta
   identificable, preservar esa subcarpeta; si el nombre de empresa esta claro
   pero venia mezclado, separar en `materials/source_documents/examples/<Empresa>/`;
@@ -111,6 +115,51 @@ CONTRIBUTION-*/session_conversation.md
 `call_transcript.md` solo se crea o usa cuando el usuario entregue una
 transcripcion de llamada real. Si no existe transcripcion de llamada, no
 inventarla ni bloquear la contribution por esa ausencia.
+
+## Estado de automatizacion de contribution
+Toda `contribution_map.md` creada por esta skill debe incluir en
+`## Identificacion` el campo:
+
+```md
+| Estado automation | draft |
+```
+
+Plantilla minima obligatoria para `contribution_map.md`:
+
+```md
+# Contribution Map - CONTRIBUTION-YYYY-MM-DD-slug
+
+## Identificacion
+
+| Campo | Valor |
+|---|---|
+| ID | CONTRIBUTION-YYYY-MM-DD-slug |
+| Estado | drafts-ready |
+| Estado automation | draft |
+| Fecha creacion | YYYY-MM-DD |
+| Ultima actualizacion | YYYY-MM-DD |
+| Owner operativo | imss-add-explicit-knowledge |
+```
+
+Reglas:
+
+- `draft` significa que la contribution esta en armado y el automation runner
+  debe ignorarla aunque ya existan archivos bajo `skill_outputs/`;
+- la skill puede crear carpeta, copiar `materials/`, guardar
+  `session_conversation.md`, crear `contribution_map.md` y escribir drafts
+  manteniendo `Estado automation` en `draft`;
+- no cambiar `Estado automation` a `ready` mientras falten materiales, drafts,
+  revision de gaps, validacion final o aprobacion explicita del usuario;
+- solo al final, despues de mostrar el resumen de rutas finales y recibir
+  aprobacion explicita del usuario para publicar la contribution al runner,
+  puede actualizar `contribution_map.md` a:
+
+```md
+| Estado automation | ready |
+```
+
+El valor exacto que activa automatizacion es `ready`. Si el campo falta o tiene
+cualquier otro valor, el runner debe ignorar la contribution.
 
 ## Hard Stops
 Detente antes de escribir si:
@@ -255,6 +304,9 @@ Puede escribir `contribution_map.md` solo bajo estas condiciones:
 - registra los renglones de `Materiales fuente` para archivos copiados a
   `materials/`, y/o la tabla `Skills ejecutadas`;
 - no registra decisiones canonicas ni PROPs generadas;
+- mantiene `Estado automation` en `draft` durante el armado;
+- solo cambia `Estado automation` a `ready` como ultima accion, despues de una
+  aprobacion explicita separada del usuario para activar el runner;
 - antes de escribir, muestra los renglones exactos que agregara.
 
 Salida esperada:
@@ -276,6 +328,39 @@ Para `DVC-*`, `TYPE-slug/` es el documento variable padre. No crees un
 `DVC-*` separado por variante. El DVC padre comparte `spec_draft.md` y
 `notes.md`; cada variante vive en su propia carpeta interna con
 `raw_schema_draft.md`, `mapping_draft.md` y `parser_config_draft.md`.
+
+Si la contribution DVC contiene ejemplos fisicos bajo
+`materials/source_documents/examples/`, la salida DVC debe incluir tambien:
+
+```text
+DVC-<slug-documento>/source_documents_map.md
+```
+
+Este manifiesto es obligatorio antes de marcar `Estado automation` como
+`ready`. Proposal Generator no debe inferir a que variante pertenece cada
+ejemplo por nombre de carpeta. Si incluyes metadata operativa, coloca la tabla
+bajo `## Mapa de ejemplos por variante`. La tabla minima es:
+
+```md
+| Variante | Origen en materials | Copiar como ejemplo | Nota |
+|---|---|---|---|
+| Variante SAP | materials/source_documents/examples/Servicios Administrativos Playa San Jose | si | Ejemplo SAP. |
+| Variante generico con naturaleza | materials/source_documents/examples/IMT (Ruben) | si | Ejemplo generico. |
+| Variante Selim deudor acreedor | materials/source_documents/examples/Selim/SEL BC 012024.xlsx | si | Layout Selim deudor/acreedor. |
+```
+
+Reglas del manifiesto DVC:
+
+- `Variante` debe coincidir exactamente con una carpeta de variante creada bajo
+  el output DVC;
+- `Origen en materials` debe apuntar a una ruta real dentro de la contribution,
+  normalmente bajo `materials/source_documents/examples/`;
+- usa una fila por archivo cuando una misma carpeta fuente contiene archivos de
+  mas de una variante;
+- una carpeta `Ejemplos` canonica no debe mezclar materiales de variantes
+  distintas;
+- si no puedes mapear cada ejemplo a una variante, conserva
+  `Estado automation` en `draft` y registra el bloqueo en `notes.md`.
 
 ## Regla copy-through para documentos ya aterrizados
 
@@ -368,7 +453,15 @@ si agregarlo rompe la fidelidad del documento fuente.
 8. Antes de escribir, ejecuta el gate de escritura del vault y espera aprobacion explicita.
 9. Genera drafts dentro de `skill_outputs/explicit_knowledge/TYPE-slug/`.
 10. Registra evidencia, dudas, confianza, gaps, riesgos y sugerencias para Proposal Builder en `notes.md`.
-11. Verifica que no se crearon PROPs ni canonicos.
+11. Si el tipo elegido es `DVC` y hay ejemplos bajo
+    `materials/source_documents/examples/`, crea `source_documents_map.md` con
+    la asignacion exacta ejemplo -> variante.
+12. Mantiene `Estado automation` en `draft` mientras valida outputs.
+13. Muestra resumen final de rutas creadas, gaps y readiness; pregunta
+    explicitamente si debe cambiar `Estado automation` a `ready`.
+14. Solo si el usuario aprueba esa publicacion final, actualiza
+    `contribution_map.md` a `Estado automation | ready |`.
+15. Verifica que no se crearon PROPs ni canonicos.
 
 ## Clasificacion
 La skill nunca debe cerrar la clasificacion sola. Siempre debe pedir que el usuario elija explicitamente `DOC`, `DVC` o `DOL` antes de escribir drafts.
@@ -414,6 +507,13 @@ Antes de terminar, confirma:
 - si se usaron rutas externas, sus copias viven en `materials/` y las rutas de
   evidencia apuntan a esas copias;
 - si la conversacion fue evidencia, existe `session_conversation.md`;
+- `contribution_map.md` contiene `Estado automation`;
+- si la contribution no fue aprobada explicitamente para runner, `Estado automation`
+  sigue en `draft`;
+- si el usuario aprobo publicar al runner, `Estado automation` quedo en `ready`;
+- si el output es `DVC` y existen ejemplos fisicos, existe
+  `source_documents_map.md` y cada fila apunta a una variante real y a una ruta
+  real dentro de `materials/`;
 - cada output tecnico redactado por la skill conserva la jerarquia de titulos y
   orden de secciones del template canonico V3 correspondiente listado en
   `references/contract-map.md`;

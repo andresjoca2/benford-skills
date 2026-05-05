@@ -73,6 +73,51 @@ CONTRIBUTION-*/session_transcript.md
 transcripcion de llamada real. Si no existe transcripcion de llamada, no
 inventarla ni bloquear la contribution por esa ausencia.
 
+## Estado de automatizacion de contribution
+Toda `contribution_map.md` creada o preparada por esta skill debe incluir en
+`## Identificacion` el campo:
+
+```md
+| Estado automation | draft |
+```
+
+Plantilla minima obligatoria para `contribution_map.md`:
+
+```md
+# Contribution Map - CONTRIBUTION-YYYY-MM-DD-slug
+
+## Identificacion
+
+| Campo | Valor |
+|---|---|
+| ID | CONTRIBUTION-YYYY-MM-DD-slug |
+| Estado | drafts-ready |
+| Estado automation | draft |
+| Fecha creacion | YYYY-MM-DD |
+| Ultima actualizacion | YYYY-MM-DD |
+| Owner operativo | imss-add-task-specific |
+```
+
+Reglas:
+
+- `draft` significa que la contribution esta en armado y cualquier automation
+  runner debe ignorarla aunque ya existan archivos bajo `skill_outputs/`;
+- la skill puede copiar `materials/`, guardar `session_transcript.md`, actualizar
+  `contribution_map.md` y escribir drafts manteniendo `Estado automation` en
+  `draft`;
+- no cambiar `Estado automation` a `ready` mientras falten materiales, drafts,
+  revision de gaps, validacion final o aprobacion explicita del usuario;
+- solo al final, despues de mostrar el resumen de rutas finales y recibir
+  aprobacion explicita del usuario para publicar la contribution al runner,
+  puede actualizar `contribution_map.md` a:
+
+```md
+| Estado automation | ready |
+```
+
+El valor exacto que activa automatizacion es `ready`. Si el campo falta o tiene
+cualquier otro valor, el runner debe ignorar la contribution.
+
 ## Permisos
 
 Puede leer:
@@ -118,8 +163,11 @@ Puede actualizar `contribution_map.md` solo bajo estas condiciones:
 - la actualizacion se limita a agregar o corregir renglones de `Materiales
   fuente` para archivos copiados a `materials/`, y/o a la tabla `Skills
   ejecutadas`;
-- no cambia `Estado`, `Canonicos potencialmente afectados`, `Proposals
-  generadas` ni decisiones;
+- no cambia el `Estado` generico, `Canonicos potencialmente afectados`,
+  `Proposals generadas` ni decisiones;
+- mantiene `Estado automation` en `draft` durante el armado;
+- solo cambia `Estado automation` a `ready` como ultima accion, despues de una
+  aprobacion explicita separada del usuario para activar el runner;
 - antes de escribir, muestra el diff o los renglones exactos que agregara.
 
 No puede escribir:
@@ -149,7 +197,12 @@ No puede escribir:
 11. Traduce papeles de trabajo a operaciones sobre fuentes, tablas, campos, llaves, cruces, validaciones y outputs.
 12. Antes de escribir drafts, ejecuta el gate de escritura del vault y espera aprobacion explicita.
 13. Produce drafts en `skill_outputs/task-specific/`.
-14. Deja en `notes.md` que PROPs podria generar Proposal Builder.
+14. Mantiene `Estado automation` en `draft` mientras valida outputs.
+15. Deja en `notes.md` que PROPs podria generar Proposal Builder.
+16. Muestra resumen final de rutas creadas, gaps y readiness; pregunta
+    explicitamente si debe cambiar `Estado automation` a `ready`.
+17. Solo si el usuario aprueba esa publicacion final, actualiza
+    `contribution_map.md` a `Estado automation | ready |`.
 
 ## Outputs
 
@@ -245,8 +298,12 @@ Antes de terminar, confirma:
 - si se usaron rutas externas, sus copias viven en `materials/` y las rutas de
   evidencia apuntan a esas copias;
 - si la conversacion fue evidencia, existe `session_transcript.md`;
-- si se actualizo `contribution_map.md`, solo cambiaron `Materiales fuente` y/o
-  `Skills ejecutadas`;
+- `contribution_map.md` contiene `Estado automation`;
+- si la contribution no fue aprobada explicitamente para runner, `Estado automation`
+  sigue en `draft`;
+- si el usuario aprobo publicar al runner, `Estado automation` quedo en `ready`;
+- si se actualizo `contribution_map.md`, solo cambiaron `Materiales fuente`,
+  `Skills ejecutadas` y, cuando hubo aprobacion final separada, `Estado automation`;
 - no se escribio en Benford Brain;
 - no se escribio en `02 Proposals`;
 - no se toco legacy.

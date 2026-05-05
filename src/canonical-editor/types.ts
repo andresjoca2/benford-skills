@@ -15,7 +15,7 @@ export interface CanonicalEditPlan {
   readonly canonicalFiles: Array<{
     readonly sourcePath: string
     readonly destinationPath: string
-    readonly action: "create"
+    readonly action: "create" | "update"
   }>
   readonly canonicalMaterials: Array<{
     readonly sourcePath: string

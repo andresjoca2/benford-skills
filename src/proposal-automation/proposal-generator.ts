@@ -26,9 +26,21 @@ export interface ContributionPackage {
   readonly identification: Record<string, string>
 }
 
+export interface ContributionAutomationDiagnostic {
+  readonly id: string
+  readonly path: string
+  readonly mapPath: string
+  readonly automationState: string
+  readonly supportedOutputs: string[]
+  readonly pendingOutputs: string[]
+  readonly ready: boolean
+  readonly reason?: string
+}
+
 interface SupportedDraftPackage {
   readonly canonicalType: "DOC" | "DVC" | "DOL"
   readonly canonicalId: string
+  readonly sourceCanonicalId: string
   readonly path: string
   readonly files: {
     readonly spec: string
@@ -53,6 +65,12 @@ interface CanonicalMaterial {
   readonly note: string
 }
 
+interface SourceDocumentMapping {
+  readonly variantName: string
+  readonly sourcePath: string
+  readonly note: string
+}
+
 interface DvcVariantDraft {
   readonly name: string
   readonly path: string
@@ -74,9 +92,17 @@ const QUEUES: readonly ProposalQueue[] = [
 export function listPendingContributionPackages(
   config: RouterConfig,
 ): ContributionPackage[] {
+  return inspectContributionPackages(config)
+    .filter((diagnostic) => diagnostic.ready)
+    .map((diagnostic) => readReadyContributionPackage(diagnostic.mapPath))
+}
+
+export function inspectContributionPackages(
+  config: RouterConfig,
+): ContributionAutomationDiagnostic[] {
   const root = join(config.vaultRoot, "01 Contribuciones")
   if (!existsSync(root)) return []
-  const results: ContributionPackage[] = []
+  const results: ContributionAutomationDiagnostic[] = []
   const stack = [root]
 
   while (stack.length > 0) {
@@ -87,11 +113,11 @@ export function listPendingContributionPackages(
       (entry) => entry.isFile() && entry.name === "contribution_map.md",
     )
     if (hasContributionMap) {
-      const contribution = readContributionPackage(
+      const diagnostic = inspectContributionPackage(
         config,
         join(current, "contribution_map.md"),
       )
-      if (contribution) results.push(contribution)
+      if (diagnostic) results.push(diagnostic)
       continue
     }
     for (const entry of entries) {
@@ -142,10 +168,10 @@ export function generateProposalForContribution(
   }
 }
 
-function readContributionPackage(
+function inspectContributionPackage(
   config: RouterConfig,
   mapPath: string,
-): ContributionPackage | null {
+): ContributionAutomationDiagnostic | null {
   const markdown = readFileSync(mapPath, "utf8")
   const identification = tableToKeyValue(
     parseFirstMarkdownTable(extractSection(markdown, "Identificacion")),
@@ -155,18 +181,107 @@ function readContributionPackage(
   if (!id.startsWith("CONTRIBUTION-") || id.includes("0000-template")) {
     return null
   }
-  const contributionPath = dirname(mapPath)
+
   const contribution = {
     id,
-    path: contributionPath,
+    path: dirname(mapPath),
     mapPath,
     markdown,
     identification,
   }
-  if (!findPendingDraftPackage(config, contribution)) {
-    return null
+  const automationState = automationReadyState(identification) || "missing"
+  const supportedDraftPackages = findSupportedDraftPackages(
+    config,
+    contribution,
+  )
+  const pendingDraftPackages = supportedDraftPackages.filter(
+    (draftPackage) =>
+      !hasGeneratedProposalForTarget(
+        config,
+        contribution.id,
+        draftPackage.canonicalId,
+        contribution.markdown,
+      ),
+  )
+  const supportedOutputs = supportedDraftPackages.map(
+    (draftPackage) => draftPackage.sourceCanonicalId,
+  )
+  const pendingOutputs = pendingDraftPackages.map(
+    (draftPackage) => draftPackage.sourceCanonicalId,
+  )
+  const missingDvcSourceMapOutputs = pendingDraftPackages
+    .filter(
+      (draftPackage) =>
+        draftPackage.canonicalType === "DVC" &&
+        contributionHasExampleMaterials(contribution) &&
+        !existsSync(dvcSourceDocumentsMapPath(draftPackage)),
+    )
+    .map((draftPackage) => draftPackage.sourceCanonicalId)
+  const ready =
+    automationState === "ready" &&
+    pendingOutputs.length > 0 &&
+    missingDvcSourceMapOutputs.length === 0
+  return {
+    id,
+    path: contribution.path,
+    mapPath,
+    automationState,
+    supportedOutputs,
+    pendingOutputs,
+    ready,
+    reason: contributionSkipReason({
+      automationState,
+      supportedOutputs,
+      pendingOutputs,
+      missingDvcSourceMapOutputs,
+    }),
   }
-  return contribution
+}
+
+function readReadyContributionPackage(mapPath: string): ContributionPackage {
+  const markdown = readFileSync(mapPath, "utf8")
+  const identification = tableToKeyValue(
+    parseFirstMarkdownTable(extractSection(markdown, "Identificacion")),
+  )
+  const fallbackId = basename(dirname(mapPath))
+  const id = stripTicks(identification.ID) || fallbackId
+  return {
+    id,
+    path: dirname(mapPath),
+    mapPath,
+    markdown,
+    identification,
+  }
+}
+
+function automationReadyState(identification: Record<string, string>): string {
+  return stripTicks(
+    identification["Estado automation"] ??
+      identification["Automation estado"] ??
+      identification["Automation status"],
+  ).toLowerCase()
+}
+
+function contributionSkipReason(options: {
+  readonly automationState: string
+  readonly supportedOutputs: readonly string[]
+  readonly pendingOutputs: readonly string[]
+  readonly missingDvcSourceMapOutputs: readonly string[]
+}): string | undefined {
+  if (options.automationState === "missing") {
+    return "missing Estado automation in ## Identificacion"
+  }
+  if (options.automationState !== "ready") {
+    return `Estado automation is ${options.automationState}`
+  }
+  if (options.missingDvcSourceMapOutputs.length > 0) {
+    return `missing DVC source_documents_map.md for ${options.missingDvcSourceMapOutputs.join(", ")}`
+  }
+  if (options.pendingOutputs.length > 0) return undefined
+  if (options.supportedOutputs.length === 0) {
+    return "no supported DOC, DVC or DOL outputs found"
+  }
+  return "supported outputs already have generated proposals"
 }
 
 function hasGeneratedProposalForTarget(
@@ -214,7 +329,7 @@ function findPendingDraftPackage(
   contribution: ContributionPackage,
 ): SupportedDraftPackage | null {
   return (
-    findSupportedDraftPackages(contribution).find(
+    findSupportedDraftPackages(config, contribution).find(
       (draftPackage) =>
         !hasGeneratedProposalForTarget(
           config,
@@ -227,6 +342,7 @@ function findPendingDraftPackage(
 }
 
 function findSupportedDraftPackages(
+  config: RouterConfig,
   contribution: Pick<ContributionPackage, "path">,
 ): SupportedDraftPackage[] {
   const explicitRoot = join(
@@ -240,15 +356,18 @@ function findSupportedDraftPackages(
     )
     .map((entry) => join(explicitRoot, entry.name))
     .sort()
-    .map(readSupportedDraftPackage)
+    .map((path) => readSupportedDraftPackage(config, path))
     .filter((draftPackage): draftPackage is SupportedDraftPackage =>
       Boolean(draftPackage),
     )
 }
 
-function readSupportedDraftPackage(path: string): SupportedDraftPackage | null {
-  const canonicalId = basename(path)
-  const canonicalType = canonicalId.split("-")[0]
+function readSupportedDraftPackage(
+  config: RouterConfig,
+  path: string,
+): SupportedDraftPackage | null {
+  const sourceCanonicalId = basename(path)
+  const canonicalType = sourceCanonicalId.split("-")[0]
   if (
     canonicalType !== "DOC" &&
     canonicalType !== "DVC" &&
@@ -257,6 +376,10 @@ function readSupportedDraftPackage(path: string): SupportedDraftPackage | null {
     return null
   }
 
+  const canonicalId =
+    canonicalType === "DVC"
+      ? resolveDvcTargetCanonicalId(config, sourceCanonicalId)
+      : sourceCanonicalId
   const spec = join(path, "spec_draft.md")
   const schema = join(path, "schema_draft.md")
   const rawSchema = join(path, "raw_schema_draft.md")
@@ -279,21 +402,70 @@ function readSupportedDraftPackage(path: string): SupportedDraftPackage | null {
   if (canonicalType === "DOC") {
     if (!existsSync(spec) || !existsSync(schema) || !existsSync(parserConfig))
       return null
-    return { canonicalType, canonicalId, path, files }
+    return { canonicalType, canonicalId, sourceCanonicalId, path, files }
   }
 
   if (canonicalType === "DVC") {
     if (!existsSync(spec)) return null
-    const variants = findDvcVariantDrafts(path)
+    const variants = findDvcVariantDrafts(
+      path,
+      dvcFlatVariantName(sourceCanonicalId, canonicalId),
+    )
     if (variants.length === 0) return null
-    return { canonicalType, canonicalId, path, files, variants }
+    return {
+      canonicalType,
+      canonicalId,
+      sourceCanonicalId,
+      path,
+      files,
+      variants,
+    }
   }
 
   if (!existsSync(spec) || !files.documentTranscript) return null
-  return { canonicalType, canonicalId, path, files }
+  return { canonicalType, canonicalId, sourceCanonicalId, path, files }
 }
 
-function findDvcVariantDrafts(path: string): DvcVariantDraft[] {
+function resolveDvcTargetCanonicalId(
+  config: RouterConfig,
+  sourceCanonicalId: string,
+): string {
+  const dvcRoot = join(
+    config.vaultRoot,
+    "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente",
+  )
+  if (!existsSync(dvcRoot)) return sourceCanonicalId
+  const existing = readdirSync(dvcRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("DVC-"))
+    .map((entry) => entry.name)
+    .filter(
+      (canonicalId) =>
+        sourceCanonicalId === canonicalId ||
+        sourceCanonicalId.startsWith(`${canonicalId}-`),
+    )
+    .sort((a, b) => b.length - a.length)
+  return existing[0] ?? sourceCanonicalId
+}
+
+function dvcFlatVariantName(
+  sourceCanonicalId: string,
+  targetCanonicalId: string,
+): string {
+  if (
+    sourceCanonicalId !== targetCanonicalId &&
+    sourceCanonicalId.startsWith(`${targetCanonicalId}-`)
+  ) {
+    return humanizeCanonicalId(
+      `DVC-${sourceCanonicalId.slice(targetCanonicalId.length + 1)}`,
+    )
+  }
+  return humanizeCanonicalId(sourceCanonicalId)
+}
+
+function findDvcVariantDrafts(
+  path: string,
+  flatVariantName: string,
+): DvcVariantDraft[] {
   const flatRawSchema = join(path, "raw_schema_draft.md")
   const flatMapping = join(path, "mapping_draft.md")
   const flatParserConfig = join(path, "parser_config_draft.md")
@@ -304,7 +476,7 @@ function findDvcVariantDrafts(path: string): DvcVariantDraft[] {
   ) {
     return [
       {
-        name: humanizeCanonicalId(basename(path)),
+        name: flatVariantName,
         path,
         files: {
           rawSchema: flatRawSchema,
@@ -362,6 +534,7 @@ function renderProposal(
     ? "enrich"
     : "new"
   const canonicalMaterials = discoverCanonicalMaterials(
+    config,
     contribution,
     draftPackage,
   )
@@ -404,7 +577,7 @@ function renderProposal(
     ...draftEvidenceRows(config, draftPackage),
   ]
   const draftRows = [
-    ...draftRowsForPackage(config, draftPackage),
+    ...draftRowsForPackage(config, draftPackage, changeType),
     ...changelogDraftRows(config, draftPackage),
   ]
 
@@ -513,6 +686,7 @@ ${extractSection(contribution.markdown, "Metodologias relacionadas") ?? ""}
 ${renderMarkdownTable(
   ["Accion", "Canonical ID", "Path esperado", "Nota"],
   expectedCanonicalRows(
+    config,
     draftPackage,
     targetCanonicalPath,
     options.proposalId,
@@ -591,6 +765,7 @@ function draftEvidenceRows(
 function draftRowsForPackage(
   config: RouterConfig,
   draftPackage: SupportedDraftPackage,
+  changeType: string,
 ): string[][] {
   switch (draftPackage.canonicalType) {
     case "DOC":
@@ -616,16 +791,20 @@ function draftRowsForPackage(
       ]
     case "DVC":
       return [
-        [
-          "spec_draft.md",
-          toVaultRelative(config, draftPackage.files.spec),
-          "spec.md",
-        ],
-        [
-          "spec_draft.md",
-          toVaultRelative(config, draftPackage.files.spec),
-          "README.md",
-        ],
+        ...(changeType === "new"
+          ? [
+              [
+                "spec_draft.md",
+                toVaultRelative(config, draftPackage.files.spec),
+                "spec.md",
+              ],
+              [
+                "spec_draft.md",
+                toVaultRelative(config, draftPackage.files.spec),
+                "README.md",
+              ],
+            ]
+          : []),
         ...dvcVariants(draftPackage).flatMap((variant) => [
           [
             `${variant.name}/raw_schema_draft.md`,
@@ -873,22 +1052,22 @@ ${renderMarkdownTable(
 }
 
 function expectedCanonicalRows(
+  config: RouterConfig,
   draftPackage: SupportedDraftPackage,
   targetCanonicalPath: string,
   proposalId: string,
   changeType: string,
   canonicalMaterials: readonly CanonicalMaterial[],
 ): string[][] {
-  const action = changeType === "new" ? "crear" : "modificar"
   const draftDestinations = expectedDraftDestinations(draftPackage)
   const rows = draftDestinations.map(([draftName, destinationFile]) => [
-    action,
+    expectedCanonicalAction(config, targetCanonicalPath, destinationFile),
     `${draftPackage.canonicalId}/${destinationFile}`,
     `${targetCanonicalPath}${destinationFile}`,
     `Derivado de ${draftName}`,
   ])
   rows.push([
-    action,
+    changeType === "new" ? "crear" : "modificar",
     `${draftPackage.canonicalId}/changelog.md`,
     `${targetCanonicalPath}changelog.md`,
     `Registro de cambio desde ${proposalId}`,
@@ -906,7 +1085,10 @@ function expectedCanonicalRows(
 
 function expectedDraftDestinations(
   draftPackage: SupportedDraftPackage,
-): string[][] {
+): Array<[string, string]> {
+  const includeDvcParentFiles =
+    draftPackage.canonicalType !== "DVC" ||
+    draftPackage.sourceCanonicalId === draftPackage.canonicalId
   switch (draftPackage.canonicalType) {
     case "DOC":
       return [
@@ -914,22 +1096,28 @@ function expectedDraftDestinations(
         ["schema_draft.md", "schema.md"],
         ["parser_config_draft.md", "parser_config.md"],
       ]
-    case "DVC":
-      return [
-        ["spec_draft.md", "spec.md"],
-        ["spec_draft.md", "README.md"],
-        ...dvcVariants(draftPackage).flatMap((variant) => [
-          [
-            `${variant.name}/raw_schema_draft.md`,
-            `${variant.name}/raw_schema.md`,
-          ],
-          [`${variant.name}/mapping_draft.md`, `${variant.name}/mapping.md`],
-          [
-            `${variant.name}/parser_config_draft.md`,
-            `${variant.name}/parser_config.md`,
-          ],
-        ]),
-      ]
+    case "DVC": {
+      const parentRows: Array<[string, string]> = includeDvcParentFiles
+        ? [
+            ["spec_draft.md", "spec.md"],
+            ["spec_draft.md", "README.md"],
+          ]
+        : []
+      const variantRows: Array<[string, string]> = dvcVariants(
+        draftPackage,
+      ).flatMap((variant) => [
+        [
+          `${variant.name}/raw_schema_draft.md`,
+          `${variant.name}/raw_schema.md`,
+        ],
+        [`${variant.name}/mapping_draft.md`, `${variant.name}/mapping.md`],
+        [
+          `${variant.name}/parser_config_draft.md`,
+          `${variant.name}/parser_config.md`,
+        ],
+      ])
+      return [...parentRows, ...variantRows]
+    }
     case "DOL":
       return [
         ["spec_draft.md", "spec.md"],
@@ -938,7 +1126,20 @@ function expectedDraftDestinations(
   }
 }
 
+function expectedCanonicalAction(
+  config: RouterConfig,
+  targetCanonicalPath: string,
+  destinationFile: string,
+): "crear" | "modificar" {
+  return existsSync(
+    join(config.vaultRoot, targetCanonicalPath, destinationFile),
+  )
+    ? "modificar"
+    : "crear"
+}
+
 function discoverCanonicalMaterials(
+  config: RouterConfig,
   contribution: ContributionPackage,
   draftPackage: SupportedDraftPackage,
 ): CanonicalMaterial[] {
@@ -948,22 +1149,39 @@ function discoverCanonicalMaterials(
     contribution.path,
     "materials/source_documents/examples",
   )
-  if (existsSync(examplesRoot)) {
+  if (draftPackage.canonicalType === "DVC") {
+    for (const mapping of loadDvcSourceDocumentMappings(
+      config,
+      contribution,
+      draftPackage,
+    )) {
+      const stat = statSync(mapping.sourcePath)
+      const sourceName = basename(mapping.sourcePath)
+      materials.push({
+        action: stat.isDirectory() ? "copiar carpeta" : "copiar archivo",
+        sourcePath: mapping.sourcePath,
+        destinationPath: `${mapping.variantName}/Ejemplos/${sourceName}${stat.isDirectory() ? "/" : ""}`,
+        sourceName,
+        sourceOwner: mapping.variantName,
+        type: "variante_cliente",
+        preserveStructure: stat.isDirectory() ? "si" : "no",
+        note: mapping.note,
+      })
+    }
+  } else if (existsSync(examplesRoot)) {
     for (const entry of readdirSync(examplesRoot, { withFileTypes: true }).sort(
       (a, b) => a.name.localeCompare(b.name),
     )) {
       const sourcePath = join(examplesRoot, entry.name)
-      const destinationPath = `Examples/${entry.name}${entry.isDirectory() ? "/" : ""}`
+      const destinationBase = "Examples"
+      const destinationPath = `${destinationBase}/${entry.name}${entry.isDirectory() ? "/" : ""}`
       materials.push({
         action: entry.isDirectory() ? "copiar carpeta" : "copiar archivo",
         sourcePath,
         destinationPath,
         sourceName: entry.name,
         sourceOwner: entry.name,
-        type:
-          draftPackage.canonicalType === "DVC"
-            ? "variante_cliente"
-            : "documento_fuente",
+        type: "documento_fuente",
         preserveStructure: entry.isDirectory() ? "si" : "no",
         note: "Copiar material fuente aprobado preservando nombres y estructura.",
       })
@@ -974,24 +1192,15 @@ function discoverCanonicalMaterials(
     contribution.path,
     "materials/source_documents/legacy_markdown",
   )
-  if (existsSync(legacyMarkdownRoot)) {
-    for (const entry of readdirSync(legacyMarkdownRoot, {
-      withFileTypes: true,
-    }).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!entry.isFile() || !/^pendientes\b/i.test(entry.name)) continue
-      const sourcePath = join(legacyMarkdownRoot, entry.name)
-      materials.push({
-        action: "copiar archivo",
-        sourcePath,
-        destinationPath: entry.name,
-        sourceName: entry.name,
-        sourceOwner: "legacy_markdown",
-        type: "pendientes_fuente",
-        preserveStructure: "no",
-        note: "Copiar pendientes fuente aprobados sin convertirlos en contrato del sistema.",
-      })
-    }
-  }
+  collectLegacySourceDocuments({
+    draftPackage,
+    materials,
+    rootPath: legacyMarkdownRoot,
+    rootName: "legacy_markdown",
+    includeFile: (name) => /^pendientes\b/i.test(name),
+    type: "pendientes_fuente",
+    note: "Copiar pendientes fuente aprobados sin convertirlos en contrato del sistema.",
+  })
 
   return materials.filter((material) => {
     if (!existsSync(material.sourcePath)) return false
@@ -1000,6 +1209,162 @@ function discoverCanonicalMaterials(
       ? stat.isDirectory()
       : stat.isFile()
   })
+}
+
+function collectLegacySourceDocuments(options: {
+  readonly draftPackage: SupportedDraftPackage
+  readonly materials: CanonicalMaterial[]
+  readonly rootPath: string
+  readonly rootName: string
+  readonly includeFile: (name: string) => boolean
+  readonly type: string
+  readonly note: string
+}): void {
+  if (!existsSync(options.rootPath)) return
+  if (options.draftPackage.canonicalType === "DVC") return
+
+  for (const entry of readdirSync(options.rootPath, {
+    withFileTypes: true,
+  }).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isFile() || !options.includeFile(entry.name)) continue
+    const sourcePath = join(options.rootPath, entry.name)
+    const destinationBase = `Examples/${options.rootName}`
+    options.materials.push({
+      action: "copiar archivo",
+      sourcePath,
+      destinationPath: `${destinationBase}/${entry.name}`,
+      sourceName: entry.name,
+      sourceOwner: options.rootName,
+      type: options.type,
+      preserveStructure: "no",
+      note: options.note,
+    })
+  }
+}
+
+function loadDvcSourceDocumentMappings(
+  config: RouterConfig,
+  contribution: ContributionPackage,
+  draftPackage: SupportedDraftPackage,
+): SourceDocumentMapping[] {
+  const mapPath = dvcSourceDocumentsMapPath(draftPackage)
+  if (!existsSync(mapPath)) {
+    if (contributionHasExampleMaterials(contribution)) {
+      throw new Error(
+        `Missing DVC source_documents_map.md for ${draftPackage.sourceCanonicalId}. Proposal Generator does not infer DVC example variants.`,
+      )
+    }
+    return []
+  }
+
+  const mapMarkdown = readFileSync(mapPath, "utf8")
+  const table =
+    parseFirstMarkdownTable(
+      extractSection(mapMarkdown, "Mapa de ejemplos por variante"),
+    ) ?? parseFirstMarkdownTable(mapMarkdown)
+  const variantHeader = headerByName(table?.headers ?? [], "Variante")
+  const sourceHeader = headerByName(table?.headers ?? [], "Origen en materials")
+  const copyHeader = headerByName(table?.headers ?? [], "Copiar como ejemplo")
+  const noteHeader = headerByName(table?.headers ?? [], "Nota")
+  if (!table || !variantHeader || !sourceHeader) {
+    throw new Error(
+      `Invalid DVC source_documents_map.md for ${draftPackage.sourceCanonicalId}: expected columns Variante and Origen en materials.`,
+    )
+  }
+
+  const variants = dvcVariants(draftPackage)
+  const variantByName = new Map(
+    variants.map((variant) => [normalizeName(variant.name), variant.name]),
+  )
+  return table.rows.flatMap((row) => {
+    const shouldCopy = normalizeName(stripTicks(row[copyHeader ?? ""])) || "si"
+    if (["no", "false", "n"].includes(shouldCopy)) return []
+    const rawVariantName = stripTicks(row[variantHeader])
+    const variantName = variantByName.get(normalizeName(rawVariantName))
+    if (!variantName) {
+      throw new Error(
+        `Invalid DVC source_documents_map.md for ${draftPackage.sourceCanonicalId}: unknown variant "${rawVariantName}".`,
+      )
+    }
+    const sourcePath = resolveContributionSourcePath(
+      config,
+      contribution,
+      stripTicks(row[sourceHeader]),
+    )
+    if (!existsSync(sourcePath)) {
+      throw new Error(
+        `Invalid DVC source_documents_map.md for ${draftPackage.sourceCanonicalId}: source does not exist: ${row[sourceHeader]}.`,
+      )
+    }
+    return [
+      {
+        variantName,
+        sourcePath,
+        note:
+          stripTicks(row[noteHeader ?? ""]) ||
+          "Copiar material fuente aprobado segun source_documents_map.md.",
+      },
+    ]
+  })
+}
+
+function contributionHasExampleMaterials(
+  contribution: Pick<ContributionPackage, "path">,
+): boolean {
+  const examplesRoot = join(
+    contribution.path,
+    "materials/source_documents/examples",
+  )
+  return (
+    existsSync(examplesRoot) &&
+    readdirSync(examplesRoot, { withFileTypes: true }).some(
+      (entry) => entry.isDirectory() || entry.isFile(),
+    )
+  )
+}
+
+function dvcSourceDocumentsMapPath(
+  draftPackage: SupportedDraftPackage,
+): string {
+  return join(draftPackage.path, "source_documents_map.md")
+}
+
+function resolveContributionSourcePath(
+  config: RouterConfig,
+  contribution: ContributionPackage,
+  sourcePath: string,
+): string {
+  const cleanPath = sourcePath.replace(/\\/g, "/").replace(/^\/+/, "")
+  if (cleanPath.startsWith("01 Contribuciones/")) {
+    return join(config.vaultRoot, cleanPath)
+  }
+  if (cleanPath.startsWith("materials/")) {
+    return join(contribution.path, cleanPath)
+  }
+  if (cleanPath.startsWith("skill_outputs/")) {
+    return join(contribution.path, cleanPath)
+  }
+  if (cleanPath.startsWith(`${basename(contribution.path)}/`)) {
+    return join(dirname(contribution.path), cleanPath)
+  }
+  return join(contribution.path, cleanPath)
+}
+
+function headerByName(
+  headers: readonly string[],
+  name: string,
+): string | undefined {
+  const normalized = normalizeName(name)
+  return headers.find((header) => normalizeName(header) === normalized)
+}
+
+function normalizeName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
 }
 
 function dvcVariants(

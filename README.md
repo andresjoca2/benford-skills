@@ -55,9 +55,14 @@ status plus queue membership drive the next action.
 
 Current rules:
 
-- `01 Contribuciones/**/CONTRIBUTION-*` with supported `DOC-*`, `DVC-*`, or
-  `DOL-*` skill outputs and no generated PROP for that target -> run
-  deterministic `IMSS-Proposal-Generator`.
+- `01 Contribuciones/**/CONTRIBUTION-*` with `Estado automation=ready` in
+  `contribution_map.md`, supported `DOC-*`, `DVC-*`, or `DOL-*` skill outputs,
+  and no generated PROP for that target -> run deterministic
+  `IMSS-Proposal-Generator`.
+- `DVC-*` outputs with physical examples under
+  `materials/source_documents/examples/` must include
+  `source_documents_map.md`; otherwise the contribution is reported as skipped
+  instead of guessing variant destinations.
 - `02 Proposals/01 Draft` -> run the deterministic Router Engine.
 - `02 Proposals/02 Needs Human Decision` -> wait for a human decision.
 - `02 Proposals/03 Approved for Editor` -> run the deterministic Canonical
@@ -74,6 +79,12 @@ bun run automations -- run --write --vault-root "/path/to/Benford Vault V3"
 bun run automations -- watch --interval-ms 5000 --vault-root "/path/to/Benford Vault V3"
 ```
 
+`check` also reports skipped contributions with supported outputs, including
+missing or non-ready `Estado automation`, so incomplete contribution maps do not
+fail silently.
+For DVC outputs it also reports missing `source_documents_map.md` when examples
+exist, because example folders can contain files for multiple variants.
+
 ## Canonical Editor Engine
 
 The Canonical Editor CLI applies supported approved PROPs to canonical Brain
@@ -85,6 +96,9 @@ For DVC, the canonical shape follows
 `DVC Documentos Variables Cliente/DVC-0000_template`: one parent DVC folder with
 shared `README.md`, `spec.md`, and `changelog.md`, plus one subfolder per
 variant containing `raw_schema.md`, `mapping.md`, and `parser_config.md`.
+Example materials are copied per variant from the proposal's
+`Materiales canonicos a copiar`, which is generated from
+`source_documents_map.md`.
 
 ```bash
 # dry-run is the default and writes nothing

@@ -70,6 +70,14 @@ export interface ProposalAutomationCheck {
     readonly contributionIds: string[]
     readonly rule: ContributionAutomationRule
   }
+  readonly skippedContributions: Array<{
+    readonly id: string
+    readonly mapPath: string
+    readonly automationState: string
+    readonly supportedOutputs: string[]
+    readonly pendingOutputs: string[]
+    readonly reason: string
+  }>
   readonly queues: Array<{
     readonly queue: ProposalQueue
     readonly count: number

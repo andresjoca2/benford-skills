@@ -36,6 +36,27 @@ operational conversation transcript when that conversation is evidence.
 `contribution_map.md` may only be updated to reflect copied source materials and
 executed skills, not canonical decisions.
 
+`contribution_map.md` must include `Estado automation` in `## Identificacion`.
+The default value while the contribution is being assembled is `draft`; it may
+only change to `ready` as the final action after explicit user approval to
+publish the contribution to the runner. Any value other than `ready`, including
+a missing field, must be treated as not ready for automation.
+
+Minimum required block:
+
+```md
+## Identificacion
+
+| Campo | Valor |
+|---|---|
+| ID | CONTRIBUTION-YYYY-MM-DD-slug |
+| Estado | drafts-ready |
+| Estado automation | draft |
+| Fecha creacion | YYYY-MM-DD |
+| Ultima actualizacion | YYYY-MM-DD |
+| Owner operativo | imss-add-task-specific |
+```
+
 Draft outputs live in:
 
 ```text

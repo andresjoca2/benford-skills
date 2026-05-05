@@ -18,7 +18,7 @@ las dispara o reporta que estan listas.
 Flujo:
 
 ```text
-01 Contribuciones/**/CONTRIBUTION-* con outputs soportados -> bun run automations -> IMSS-Proposal-Generator
+01 Contribuciones/**/CONTRIBUTION-* con Estado automation=ready y outputs soportados -> bun run automations -> IMSS-Proposal-Generator
 02 Proposals/<cola>/PROP-* -> bun run automations -> siguiente skill o espera
 ```
 
@@ -26,7 +26,16 @@ Flujo:
 
 | Carpeta | Condicion | Accion | Siguiente paso |
 |---|---|---|---|
-| `01 Contribuciones/**/CONTRIBUTION-*` | `contribution_map.md` existe, hay outputs soportados y no hay PROP generada | `generate_proposal` | usar `IMSS-Proposal-Generator` |
+| `01 Contribuciones/**/CONTRIBUTION-*` | `contribution_map.md` existe, `## Identificacion` contiene `Estado automation` = `ready`, hay outputs soportados y no hay PROP generada | `generate_proposal` | usar `IMSS-Proposal-Generator` |
+
+El runner debe ignorar contributions sin `Estado automation`, o con valores como
+`draft`, `building`, `blocked` o cualquier otro distinto de `ready`.
+
+Para outputs `DVC-*`, si existen ejemplos fisicos bajo
+`materials/source_documents/examples/`, tambien debe existir
+`skill_outputs/explicit_knowledge/DVC-*/source_documents_map.md`. Sin ese
+manifiesto, la contribution se reporta como skipped. El runner no debe adivinar
+la variante de un ejemplo por tokens del nombre de carpeta.
 
 ## Reglas por cola
 
@@ -78,12 +87,16 @@ Solo por medio de handlers seguros:
 - `decision_record.md`.
 - `applied_record.md`.
 
-Para CONTRIBUTION-* con outputs soportados, llama al `IMSS-Proposal-Generator`
-deterministico. En modo `--write`, puede crear la carpeta PROP-* dentro del Vault.
+Para CONTRIBUTION-* con `Estado automation` = `ready` y outputs soportados,
+llama al `IMSS-Proposal-Generator` deterministico. En modo `--write`, puede
+crear la carpeta PROP-* dentro del Vault.
 Si la contribution contiene `materials/source_documents/examples/`, la PROP debe
 declarar esas carpetas o archivos en `Materiales canonicos a copiar` y repetir
 los destinos en `Archivos canonicos esperados` con accion `copiar`. Listarlos
 solo como evidencia raw no basta para que el Canonical Editor los imprima.
+En `PROP-DVC`, esos destinos deben salir exclusivamente de
+`source_documents_map.md`; una carpeta fuente compartida por varias variantes se
+debe declarar por archivo para que cada variante reciba solo sus ejemplos.
 
 Para PROPs en `03 Approved for Editor`, delega a `benford-canonical-editor`.
 El editor deterministico aplica `PROP-DOC`, `PROP-DVC` y `PROP-DOL` cuando el
@@ -94,7 +107,10 @@ tipo de cambio es `new` y los drafts declarados existen.
 Reporta:
 
 - cuantas PROPs hay por cola;
-- cuantas CONTRIBUTION-* estan listas para Proposal Generator;
+- cuantas CONTRIBUTION-* estan listas para Proposal Generator, lo cual requiere
+  `Estado automation` = `ready`;
+- que CONTRIBUTION-* quedaron skipped por faltar `source_documents_map.md` en
+  DVC con ejemplos fisicos;
 - que eventos se detectaron;
 - que acciones se ejecutaron;
 - que acciones quedaron pendientes;

@@ -29,6 +29,27 @@ reales entregadas por el usuario. `contribution_map.md` solo puede actualizarse
 en la nueva contribution de la corrida, para reflejar materiales copiados y
 skills ejecutadas; no para registrar decisiones canonicas.
 
+`contribution_map.md` debe incluir `Estado automation` en `## Identificacion`.
+El valor default durante armado es `draft`; solo puede cambiar a `ready` como
+ultima accion despues de aprobacion explicita del usuario para publicar la
+contribution al runner. Cualquier valor distinto de `ready`, incluyendo ausencia
+del campo, debe ser tratado como no listo para automatizacion.
+
+Bloque minimo obligatorio:
+
+```md
+## Identificacion
+
+| Campo | Valor |
+|---|---|
+| ID | CONTRIBUTION-YYYY-MM-DD-slug |
+| Estado | drafts-ready |
+| Estado automation | draft |
+| Fecha creacion | YYYY-MM-DD |
+| Ultima actualizacion | YYYY-MM-DD |
+| Owner operativo | imss-add-explicit-knowledge |
+```
+
 La salida de la skill vive dentro de una contribution:
 
 ```text
@@ -39,7 +60,7 @@ La salida de la skill vive dentro de una contribution:
 | Tipo | Outputs esperados |
 |---|---|
 | `DOC` | `spec_draft.md`, `schema_draft.md`, `parser_config_draft.md`, `notes.md` |
-| `DVC` | `spec_draft.md`, `notes.md`, y por variante: `<Variante>/raw_schema_draft.md`, `<Variante>/mapping_draft.md`, `<Variante>/parser_config_draft.md` |
+| `DVC` | `spec_draft.md`, `notes.md`, `source_documents_map.md` si existen ejemplos fisicos, y por variante: `<Variante>/raw_schema_draft.md`, `<Variante>/mapping_draft.md`, `<Variante>/parser_config_draft.md` |
 | `DOL` | `spec_draft.md`, `document_transcript_draft.md`, `notes.md` |
 
 Para `DOL`, `document_transcript_draft.md` es el output primario cuando el
@@ -112,6 +133,7 @@ La salida DVC debe preservar esa separacion:
 DVC-<slug-documento>/
   spec_draft.md
   notes.md
+  source_documents_map.md  # obligatorio si existen ejemplos fisicos
   <Variante A>/
     raw_schema_draft.md
     mapping_draft.md
@@ -124,6 +146,31 @@ DVC-<slug-documento>/
 
 No crear `DVC-<slug>-<variante>` como canonico separado cuando las variantes
 pertenecen al mismo documento variable.
+
+Si la contribution tiene ejemplos bajo `materials/source_documents/examples/`,
+`source_documents_map.md` es obligatorio antes de publicar al runner. El
+Proposal Generator usa este archivo como fuente de verdad y no infiere variante
+por nombre de carpeta.
+
+Formato minimo:
+
+```md
+## Mapa de ejemplos por variante
+
+| Variante | Origen en materials | Copiar como ejemplo | Nota |
+|---|---|---|---|
+| Variante A | materials/source_documents/examples/Cliente A | si | Carpeta completa de la variante A. |
+| Variante B | materials/source_documents/examples/Cliente Mixto/archivo-b.xlsx | si | Archivo especifico de la variante B. |
+```
+
+Reglas:
+
+- `Variante` debe coincidir con una carpeta de variante del output DVC;
+- `Origen en materials` debe existir dentro de la contribution;
+- cuando una carpeta fuente contiene archivos de varias variantes, crear filas
+  por archivo;
+- no marcar `Estado automation` como `ready` si hay ejemplos fisicos y falta
+  este manifiesto o alguna asignacion esta dudosa.
 
 ### DOL
 ```text
