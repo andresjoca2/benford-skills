@@ -71,13 +71,19 @@ Fuentes no permitidas sin autorizacion:
 Cada corrida que vaya a escribir debe crear una `CONTRIBUTION-*` nueva. No debe
 editar una contribution existente ni buscar contributions anteriores.
 
+Todas las contributions creadas por esta skill deben vivir siempre bajo el
+grupo operativo `01 Internal Team`. No inferir, inventar ni crear otros grupos
+como `explicit-knowledge`, `DOC`, `DVC`, `DOL`, nombre de skill, nombre de
+dominio, cliente o categoria tecnica. Si `01 Contribuciones/01 Internal Team/`
+no existe o no se puede escribir, detenerse y pedir instruccion explicita.
+
 Cuando el usuario entregue rutas de archivos fuente, esos archivos son
 materiales candidatos, no evidencia estable todavia. Antes de extraer
 conocimiento desde ellos, la skill debe pedir el gate de escritura del vault
 para crear una nueva contribution y copiar los materiales dentro de:
 
 ```text
-01 Contribuciones/<grupo>/CONTRIBUTION-YYYY-MM-DD-slug/materials/
+01 Contribuciones/01 Internal Team/CONTRIBUTION-YYYY-MM-DD-slug/materials/
 ```
 
 Reglas de copia:
@@ -172,6 +178,8 @@ Detente antes de escribir si:
   `skill_outputs/explicit_knowledge/`;
 - la tarea pide escribir canonicos directamente;
 - la tarea pide modificar legacy `01 IMSS Mexico/`;
+- estas a punto de crear o usar un grupo distinto a
+  `01 Contribuciones/01 Internal Team/` para la nueva contribution;
 - no puedes localizar el Benford Vault V3.
 
 Detente antes de leer o buscar materiales si:
@@ -275,16 +283,16 @@ Durante preparacion de contribution, puede escribir solo estas rutas, siempre
 despues del gate de escritura del vault:
 
 ```text
-01 Contribuciones/<grupo>/CONTRIBUTION-YYYY-MM-DD-slug/
-01 Contribuciones/CONTRIBUTION-*/materials/<archivo-fuente-copiado>
-01 Contribuciones/CONTRIBUTION-*/session_conversation.md
-01 Contribuciones/CONTRIBUTION-*/contribution_map.md
+01 Contribuciones/01 Internal Team/CONTRIBUTION-YYYY-MM-DD-slug/
+01 Contribuciones/01 Internal Team/CONTRIBUTION-*/materials/<archivo-fuente-copiado>
+01 Contribuciones/01 Internal Team/CONTRIBUTION-*/session_conversation.md
+01 Contribuciones/01 Internal Team/CONTRIBUTION-*/contribution_map.md
 ```
 
 Durante generacion de drafts, puede escribir solo dentro de:
 
 ```text
-01 Contribuciones/CONTRIBUTION-*/skill_outputs/explicit_knowledge/
+01 Contribuciones/01 Internal Team/CONTRIBUTION-*/skill_outputs/explicit_knowledge/
 ```
 
 Antes de cualquier escritura dentro de `05 Benford Vault/`, incluso dentro de
@@ -425,7 +433,9 @@ si agregarlo rompe la fidelidad del documento fuente.
      suficiente y autorice fuentes o escritura.
 3. Si es extraccion:
    - localiza `Benford Vault V3`;
-   - propone un ID y ruta para una nueva `CONTRIBUTION-YYYY-MM-DD-slug`;
+   - propone un ID y ruta para una nueva
+     `01 Contribuciones/01 Internal Team/CONTRIBUTION-YYYY-MM-DD-slug`;
+   - no propongas ni crees ningun otro grupo bajo `01 Contribuciones`;
    - pide gate del vault para crear esa nueva contribution, copiar materiales
      a `materials/` y crear `contribution_map.md`;
    - usa solo las copias dentro de `materials/` como evidencia primaria;
