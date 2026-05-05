@@ -29,11 +29,13 @@ reales entregadas por el usuario. `contribution_map.md` solo puede actualizarse
 en la nueva contribution de la corrida, para reflejar materiales copiados y
 skills ejecutadas; no para registrar decisiones canonicas.
 
-`contribution_map.md` debe incluir `Estado automation` en `## Identificacion`.
-El valor default durante armado es `draft`; solo puede cambiar a `ready` como
-ultima accion despues de aprobacion explicita del usuario para publicar la
-contribution al runner. Cualquier valor distinto de `ready`, incluyendo ausencia
-del campo, debe ser tratado como no listo para automatizacion.
+`contribution_map.md` debe incluir `Estado` y `Estado automation` en
+`## Identificacion`. El valor default durante armado es `draft` para ambos; solo
+pueden cambiar a `drafts-ready` / `ready` como ultima accion despues de
+aprobacion explicita del usuario para publicar la contribution al runner.
+Cualquier valor de `Estado automation` distinto de `ready`, incluyendo ausencia
+del campo, debe ser tratado como no listo para automatizacion. No dejes
+`Estado` = `drafts-ready` con `Estado automation` = `draft`.
 
 Bloque minimo obligatorio:
 
@@ -43,7 +45,7 @@ Bloque minimo obligatorio:
 | Campo | Valor |
 |---|---|
 | ID | CONTRIBUTION-YYYY-MM-DD-slug |
-| Estado | drafts-ready |
+| Estado | draft |
 | Estado automation | draft |
 | Fecha creacion | YYYY-MM-DD |
 | Ultima actualizacion | YYYY-MM-DD |

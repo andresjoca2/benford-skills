@@ -317,11 +317,31 @@ function hasGeneratedProposalForTarget(
       )
       return (
         existsSync(path) &&
-        readFileSync(path, "utf8").includes(contributionId) &&
-        readFileSync(path, "utf8").includes(targetCanonicalId)
+        proposalReferencesGeneratedTarget(
+          readFileSync(path, "utf8"),
+          contributionId,
+          targetCanonicalId,
+        )
       )
     }),
   )
+}
+
+function proposalReferencesGeneratedTarget(
+  proposalMarkdown: string,
+  contributionId: string,
+  targetCanonicalId: string,
+): boolean {
+  return (
+    exactTokenMatch(proposalMarkdown, contributionId) &&
+    proposalMarkdown.includes(targetCanonicalId)
+  )
+}
+
+function exactTokenMatch(content: string, token: string): boolean {
+  return new RegExp(
+    `(^|[^A-Za-z0-9-])${escapeRegExp(token)}(?=$|[^A-Za-z0-9-])`,
+  ).test(content)
 }
 
 function findPendingDraftPackage(
@@ -1434,4 +1454,8 @@ function humanizeCanonicalId(canonicalId: string): string {
 
 function stripTicks(value: string | undefined): string {
   return (value ?? "").trim().replace(/^`+|`+$/g, "")
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }

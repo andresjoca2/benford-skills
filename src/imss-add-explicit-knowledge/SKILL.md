@@ -127,6 +127,7 @@ Toda `contribution_map.md` creada por esta skill debe incluir en
 `## Identificacion` el campo:
 
 ```md
+| Estado | draft |
 | Estado automation | draft |
 ```
 
@@ -140,7 +141,7 @@ Plantilla minima obligatoria para `contribution_map.md`:
 | Campo | Valor |
 |---|---|
 | ID | CONTRIBUTION-YYYY-MM-DD-slug |
-| Estado | drafts-ready |
+| Estado | draft |
 | Estado automation | draft |
 | Fecha creacion | YYYY-MM-DD |
 | Ultima actualizacion | YYYY-MM-DD |
@@ -151,6 +152,10 @@ Reglas:
 
 - `draft` significa que la contribution esta en armado y el automation runner
   debe ignorarla aunque ya existan archivos bajo `skill_outputs/`;
+- `drafts-ready` solo puede usarse junto con `Estado automation` = `ready`;
+  no dejes una contribution en `Estado` = `drafts-ready` y
+  `Estado automation` = `draft`, porque el runner la va a ignorar aunque parezca
+  lista para el operador;
 - la skill puede crear carpeta, copiar `materials/`, guardar
   `session_conversation.md`, crear `contribution_map.md` y escribir drafts
   manteniendo `Estado automation` en `draft`;
@@ -161,6 +166,7 @@ Reglas:
   puede actualizar `contribution_map.md` a:
 
 ```md
+| Estado | drafts-ready |
 | Estado automation | ready |
 ```
 
@@ -315,6 +321,8 @@ Puede escribir `contribution_map.md` solo bajo estas condiciones:
 - mantiene `Estado automation` en `draft` durante el armado;
 - solo cambia `Estado automation` a `ready` como ultima accion, despues de una
   aprobacion explicita separada del usuario para activar el runner;
+- cuando cambia `Estado automation` a `ready`, tambien cambia `Estado` a
+  `drafts-ready`; esos dos campos deben mantenerse sincronizados;
 - antes de escribir, muestra los renglones exactos que agregara.
 
 Salida esperada:
@@ -466,11 +474,12 @@ si agregarlo rompe la fidelidad del documento fuente.
 11. Si el tipo elegido es `DVC` y hay ejemplos bajo
     `materials/source_documents/examples/`, crea `source_documents_map.md` con
     la asignacion exacta ejemplo -> variante.
-12. Mantiene `Estado automation` en `draft` mientras valida outputs.
+12. Mantiene `Estado` y `Estado automation` en `draft` mientras valida outputs.
 13. Muestra resumen final de rutas creadas, gaps y readiness; pregunta
     explicitamente si debe cambiar `Estado automation` a `ready`.
 14. Solo si el usuario aprueba esa publicacion final, actualiza
-    `contribution_map.md` a `Estado automation | ready |`.
+    `contribution_map.md` a `Estado | drafts-ready |` y
+    `Estado automation | ready |`.
 15. Verifica que no se crearon PROPs ni canonicos.
 
 ## Clasificacion
@@ -518,9 +527,10 @@ Antes de terminar, confirma:
   evidencia apuntan a esas copias;
 - si la conversacion fue evidencia, existe `session_conversation.md`;
 - `contribution_map.md` contiene `Estado automation`;
-- si la contribution no fue aprobada explicitamente para runner, `Estado automation`
-  sigue en `draft`;
-- si el usuario aprobo publicar al runner, `Estado automation` quedo en `ready`;
+- si la contribution no fue aprobada explicitamente para runner, `Estado` y
+  `Estado automation` siguen en `draft`;
+- si el usuario aprobo publicar al runner, `Estado` quedo en `drafts-ready` y
+  `Estado automation` quedo en `ready`;
 - si el output es `DVC` y existen ejemplos fisicos, existe
   `source_documents_map.md` y cada fila apunta a una variante real y a una ruta
   real dentro de `materials/`;

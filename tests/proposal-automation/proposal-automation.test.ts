@@ -223,6 +223,33 @@ describe("benford proposal automation", () => {
     expect(runProposalAutomations({ vaultRoot })).toHaveLength(0)
   })
 
+  test("does not treat similarly prefixed contribution IDs as generated", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-comprobante-pago-sua",
+      estado: "draft_generated",
+      automationState: "ready",
+    })
+    writeProposal(
+      vaultRoot,
+      "PROP-0001",
+      completeProposal("PROP-0001").replace(
+        /CONTRIBUTION-2026-05-03-test/g,
+        "CONTRIBUTION-2026-05-03-comprobante-pago-sua-v2",
+      ),
+    )
+    moveProposal(vaultRoot, "PROP-0001", "01 Draft", "04 Applied")
+
+    const check = checkProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+    })
+
+    expect(check.contributions.contributionIds).toEqual([
+      "CONTRIBUTION-2026-05-03-comprobante-pago-sua",
+    ])
+  })
+
   test("write mode generates a PROP from a contribution, routes it, and applies it", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
