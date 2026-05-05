@@ -42,6 +42,11 @@ La salida de la skill vive dentro de una contribution:
 | `DVC` | `spec_draft.md`, `notes.md`, y por variante: `<Variante>/raw_schema_draft.md`, `<Variante>/mapping_draft.md`, `<Variante>/parser_config_draft.md` |
 | `DOL` | `spec_draft.md`, `document_transcript_draft.md`, `notes.md` |
 
+Para `DOL`, `document_transcript_draft.md` es el output primario cuando el
+material fuente es una ley, reglamento o documento normativo completo. Debe
+contener la transcripcion del texto fuente. Extractos o transcripcion parcial
+solo son validos si el usuario lo aprobo explicitamente antes de escribir.
+
 ## Metadata minima
 Esta metadata no es un template documental. No reemplaza la estructura canonica
 de `DOC-0000_template`, `DVC-0000_template` o `DOL-0000_template`.
@@ -125,6 +130,15 @@ pertenecen al mismo documento variable.
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-0000_template/spec.md
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-0000_template/document_transcript.md
 ```
+
+Reglas DOL:
+
+- `spec_draft.md` interpreta alcance, vigencia, relaciones y riesgos.
+- `document_transcript_draft.md` transcribe la fuente; no resume ni interpreta.
+- Si la fuente es PDF, preservar UTF-8 y marcar paginas o fragmentos trazables.
+- No normalizar a ASCII.
+- No omitir articulos por relevancia auditora salvo aprobacion explicita.
+- Si no hay texto extraible, detenerse y pedir autorizacion para OCR.
 
 ## Fuera de alcance
 `AIM` y `DICT` no se procesan con esta skill. Si el material parece target

@@ -191,6 +191,36 @@ DOL:
 Si no puedes abrir los templates del tipo elegido, detente. No redactes con una
 estructura recordada, inferida o tomada de otra skill.
 
+## Regla DOL: transcripcion primero
+Cuando el tipo confirmado sea `DOL` y el material fuente sea un PDF, Word, HTML,
+texto legal o documento normativo completo, `document_transcript_draft.md` debe
+ser una transcripcion del documento fuente, no un resumen.
+
+Reglas obligatorias:
+
+- por defecto, transcribir el documento completo;
+- usar transcripcion parcial o extractos solo si el usuario lo pide o aprueba
+  explicitamente antes de escribir;
+- preservar texto UTF-8, acentos, numeracion, titulos, articulos, fracciones,
+  transitorios y notas de reforma tal como se extraen de la fuente;
+- no normalizar a ASCII;
+- no reescribir articulos en lenguaje propio;
+- no convertir la ley en tablas de criterios dentro de
+  `document_transcript_draft.md`;
+- no omitir articulos por relevancia auditora salvo aprobacion explicita del
+  usuario;
+- separar la transcripcion por paginas, articulos o fragmentos trazables segun
+  el documento fuente; si se extrae desde PDF, incluir marcadores de pagina;
+- mantener interpretacion, criterios derivados, riesgos y relaciones auditoras
+  en `spec_draft.md` o `notes.md`, no dentro del bloque transcrito.
+
+Si el documento es grande y no cabe razonablemente en la conversacion, no lo
+resumas. Usa herramienta local de extraccion para generar el archivo Markdown y
+reporta numero de paginas, caracteres y cualquier pagina sin texto extraible.
+
+Si el PDF no tiene texto extraible o requiere OCR, detente y pregunta si se debe
+usar OCR. No inventes una transcripcion desde lectura visual parcial.
+
 ## Puede Escribir
 Durante preparacion de contribution, puede escribir solo estas rutas, siempre
 despues del gate de escritura del vault:
@@ -326,16 +356,19 @@ si agregarlo rompe la fidelidad del documento fuente.
      registra trazabilidad en `notes.md`.
    - Si los materiales son evidencia cruda o conversacion, entonces si puedes
      redactar drafts nuevos a partir de las fuentes.
-6. Lee `references/contract-map.md` y abre todos los templates canonicos V3 del
+6. Si el tipo elegido es `DOL`, aplica primero la regla `DOL: transcripcion
+   primero`. Para PDF legal completo, genera `document_transcript_draft.md` como
+   transcripcion completa salvo que el usuario haya autorizado extractos.
+7. Lee `references/contract-map.md` y abre todos los templates canonicos V3 del
    tipo seleccionado. Los templates del vault son la estructura fuente; no uses
    `references/examples.md`, `contrato-metadata-minima.md` ni memoria de otra
    skill como template para `spec_draft.md`, `schema_draft.md`,
    `raw_schema_draft.md`, `mapping_draft.md`, `parser_config_draft.md` ni
    `document_transcript_draft.md`.
-7. Antes de escribir, ejecuta el gate de escritura del vault y espera aprobacion explicita.
-8. Genera drafts dentro de `skill_outputs/explicit_knowledge/TYPE-slug/`.
-9. Registra evidencia, dudas, confianza, gaps, riesgos y sugerencias para Proposal Builder en `notes.md`.
-10. Verifica que no se crearon PROPs ni canonicos.
+8. Antes de escribir, ejecuta el gate de escritura del vault y espera aprobacion explicita.
+9. Genera drafts dentro de `skill_outputs/explicit_knowledge/TYPE-slug/`.
+10. Registra evidencia, dudas, confianza, gaps, riesgos y sugerencias para Proposal Builder en `notes.md`.
+11. Verifica que no se crearon PROPs ni canonicos.
 
 ## Clasificacion
 La skill nunca debe cerrar la clasificacion sola. Siempre debe pedir que el usuario elija explicitamente `DOC`, `DVC` o `DOL` antes de escribir drafts.
@@ -389,6 +422,11 @@ Antes de terminar, confirma:
 - cada output redactado por la skill conserva el bloque de identificacion del
   template canonico cuando exista, sin convertirlo en una metadata generica que
   reemplace la estructura del template;
+- si el tipo es `DOL` y la fuente fue un documento legal completo, el
+  `document_transcript_draft.md` contiene transcripcion completa o registra una
+  aprobacion explicita del usuario para transcripcion parcial/extractos;
+- `document_transcript_draft.md` no contiene resumen, criterios derivados,
+  interpretacion auditora ni tablas de decision como sustituto del texto fuente;
 - los outputs en modo `copy-through` fueron preservados fielmente; su metadata
   operativa vive en `notes.md`;
 - cada afirmacion relevante apunta a evidencia;
