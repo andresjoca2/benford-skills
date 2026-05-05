@@ -1,0 +1,7 @@
+interface:
+  display_name: "IMSS Proposal Generator"
+  short_description: "Create atomic V3 proposal drafts from contributions"
+  default_prompt: "Use $IMSS-Proposal-Generator to convert this contribution's skill outputs into atomic PROP drafts in 02 Proposals/01 Draft, without routing or editing canonicals."
+
+policy:
+  allow_implicit_invocation: true

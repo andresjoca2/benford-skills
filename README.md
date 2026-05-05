@@ -16,6 +16,27 @@ Use this repo for:
 
 Do not use this repo for canonical Benford Brain content.
 
+## Local Codex Skill Install
+
+Codex reads local skills from `~/.codex/skills`. For Benford skills, keep this
+repo as the source of truth and make the installed skill folders symlinks to
+`src/*`.
+
+One-time setup:
+
+```bash
+bun run link:local
+```
+
+After that, updating the repo updates the installed skills:
+
+```bash
+git pull --ff-only
+```
+
+`git fetch origin` only downloads refs; it does not change local files. Use
+`git pull --ff-only` when you want Codex to read the latest checked-out version.
+
 ## Benford Router Engine
 
 The router is a deterministic CLI for Benford Vault V3 proposal queues. The code lives in this repo; each user points it at their own local `Benford Vault V3` folder.

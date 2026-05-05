@@ -3,6 +3,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "link:local": "bash scripts/link-local-skills.sh",
     "router": "bun run scripts/benford-router.ts",
     "automations": "bun run scripts/benford-automations.ts",
     "canonical-editor": "bun run scripts/benford-canonical-editor.ts",
