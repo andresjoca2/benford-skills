@@ -123,11 +123,34 @@ describe("benford canonical editor", () => {
     ).toBe(true)
   })
 
+  test("new proposals fail when the target canonical folder already exists", () => {
+    const vaultRoot = makeVault()
+    writeExistingDvc(vaultRoot, "DVC-test", "Stale Variant")
+    writeApprovedProposal(vaultRoot, "PROP-0005", dvcProposal("PROP-0005"))
+
+    expect(() =>
+      applyCanonicalProposal("PROP-0005", {
+        vaultRoot,
+        runtimeDir: join(vaultRoot, ".runtime"),
+        today: "2026-05-03",
+        write: true,
+      }),
+    ).toThrow("New canonical target already exists")
+    expect(
+      existsSync(
+        join(vaultRoot, "02 Proposals/03 Approved for Editor/PROP-0005"),
+      ),
+    ).toBe(true)
+    expect(
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0005")),
+    ).toBe(false)
+  })
+
   test("write mode applies approved DOL proposals", () => {
     const vaultRoot = makeVault()
-    writeApprovedProposal(vaultRoot, "PROP-0005", dolProposal("PROP-0005"))
+    writeApprovedProposal(vaultRoot, "PROP-0006", dolProposal("PROP-0006"))
 
-    const plan = applyCanonicalProposal("PROP-0005", {
+    const plan = applyCanonicalProposal("PROP-0006", {
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
@@ -148,6 +171,9 @@ describe("benford canonical editor", () => {
     ).toBe(true)
     expect(
       existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0005")),
+    ).toBe(false)
+    expect(
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0006")),
     ).toBe(true)
   })
 
@@ -156,11 +182,11 @@ describe("benford canonical editor", () => {
     writeExistingDvc(vaultRoot, "DVC-test")
     writeApprovedProposal(
       vaultRoot,
-      "PROP-0006",
-      dvcEnrichProposal("PROP-0006", "Copa", "crear"),
+      "PROP-0007",
+      dvcEnrichProposal("PROP-0007", "Copa", "crear"),
     )
 
-    const plan = applyCanonicalProposal("PROP-0006", {
+    const plan = applyCanonicalProposal("PROP-0007", {
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
@@ -183,9 +209,9 @@ describe("benford canonical editor", () => {
     ])
     expect(existsSync(rawSchemaPath)).toBe(true)
     expect(readFileSync(rawSchemaPath, "utf8")).toContain("Raw schema fixture.")
-    expect(readFileSync(changelogPath, "utf8")).toContain("PROP-0006")
+    expect(readFileSync(changelogPath, "utf8")).toContain("PROP-0007")
     expect(
-      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0006")),
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0007")),
     ).toBe(true)
   })
 
@@ -194,11 +220,11 @@ describe("benford canonical editor", () => {
     writeExistingDvc(vaultRoot, "DVC-test", "Copa")
     writeApprovedProposal(
       vaultRoot,
-      "PROP-0007",
-      dvcEnrichProposal("PROP-0007", "Copa", "modificar"),
+      "PROP-0008",
+      dvcEnrichProposal("PROP-0008", "Copa", "modificar"),
     )
 
-    const plan = applyCanonicalProposal("PROP-0007", {
+    const plan = applyCanonicalProposal("PROP-0008", {
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",

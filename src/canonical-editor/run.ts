@@ -183,6 +183,11 @@ function assertApprovedForEditor(
 
   const targetPath = resolveTargetCanonicalPath(config, proposal)
   assertInsideVault(config, targetPath)
+  if (changeType === "new" && existsSync(targetPath)) {
+    throw new Error(
+      `New canonical target already exists: ${toVaultRelative(config, targetPath)}. Use an enrich proposal or repair the existing canonical before applying.`,
+    )
+  }
   if (changeType === "enrich" && !existsSync(targetPath)) {
     throw new Error(
       `DVC enrich target canonical does not exist: ${toVaultRelative(config, targetPath)}`,
