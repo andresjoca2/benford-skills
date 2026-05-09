@@ -80,7 +80,7 @@ La salida de la skill vive dentro de una contribution:
 | Tipo | Outputs esperados |
 |---|---|
 | `DOC` | `spec_draft.md`, `schema_draft.md`, `parser_config_draft.md`, `notes.md` |
-| `DVC` | `spec_draft.md`, `notes.md`, `source_documents_map.md` si existen ejemplos fisicos, y por variante: `<Variante>/raw_schema_draft.md`, `<Variante>/mapping_draft.md`, `<Variante>/parser_config_draft.md` |
+| `DVC` | `notes.md`, `source_documents_map.md` si existen ejemplos fisicos, y por variante: `<Variante>/spec_draft.md`, `<Variante>/raw_schema_draft.md`, `<Variante>/parser_config_draft.md` |
 | `DOL` | `spec_draft.md`, `document_transcript_draft.md`, `notes.md` |
 
 Para `DOL`, `document_transcript_draft.md` es el output primario cuando el
@@ -101,8 +101,7 @@ Usarla solo de estas formas:
 
 No insertar estos bloques para reemplazar la jerarquia de secciones de
 `spec_draft.md`, `schema_draft.md`, `raw_schema_draft.md`,
-`mapping_draft.md`, `parser_config_draft.md` ni
-`document_transcript_draft.md`.
+`parser_config_draft.md` ni `document_transcript_draft.md`.
 
 Cuando aplique, la metadata minima es:
 
@@ -119,7 +118,7 @@ Cuando aplique, la metadata minima es:
 | Owner operativo | imss-add-explicit-knowledge |
 | Contribution origen | CONTRIBUTION-* |
 | Skill origen | imss-add-explicit-knowledge |
-| Output tipo | doc_draft / dvc_draft / dol_draft / schema_draft / raw_schema_draft / mapping_draft / parser_config_draft / document_transcript_draft / notes |
+| Output tipo | doc_draft / dvc_draft / dol_draft / schema_draft / raw_schema_draft / parser_config_draft / document_transcript_draft / notes |
 ```
 
 ## Templates canonicos relevantes
@@ -137,10 +136,10 @@ y placeholders del template correspondiente.
 ### DVC
 ```text
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/README.md
-05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/spec.md
+05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/spec.md
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/raw_schema.md
-05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/mapping.md
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/parser_config.md
+05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/changelog.md
 ```
 
 Para DVC, `README.md` define la estructura de familia y la separacion entre
@@ -151,16 +150,15 @@ La salida DVC debe preservar esa separacion:
 
 ```text
 DVC-<slug-documento>/
-  spec_draft.md
   notes.md
   source_documents_map.md  # obligatorio si existen ejemplos fisicos
   <Variante A>/
+    spec_draft.md
     raw_schema_draft.md
-    mapping_draft.md
     parser_config_draft.md
   <Variante B>/
+    spec_draft.md
     raw_schema_draft.md
-    mapping_draft.md
     parser_config_draft.md
 ```
 

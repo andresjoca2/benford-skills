@@ -31,7 +31,10 @@ Por tipo de canonico la skill aplica reglas distintas porque el "template"
 canonico es distinto:
 
 - **DOC** (Documentos y Ejemplos): requiere `spec.md`, `schema.md`, `parser_config.md`, `changelog.md` no vacios y carpeta `Examples/` o `Ejemplos/` con al menos un archivo.
-- **DVC** (Documentos Variables Cliente): requiere `spec.md` y `changelog.md` a nivel raiz, mas al menos una variante real (no skeleton tipo "Variante x") con `parser_config.md`, `raw_schema.md`, `mapping.md` no vacios y carpeta `Ejemplos/` poblada.
+- **DVC** (Documentos Variables Cliente): requiere al menos una variante real
+  (no skeleton tipo "Variante x") con `spec.md`, `parser_config.md`,
+  `raw_schema.md`, `changelog.md` no vacios y evidencia bajo
+  `source_documents/examples/`.
 - **DOL** (Documentos de Leyes): requiere `spec.md`, `changelog.md`, `document_transcript.md` no vacios y al menos un PDF fuente en la raiz.
 
 Adicionalmente, todo canonico debe tener al menos una `PROP-*` aplicada

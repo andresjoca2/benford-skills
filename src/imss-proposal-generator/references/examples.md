@@ -176,23 +176,23 @@ asignarse a una variante concreta. Este mapeo debe repetirse en
 ## Mapeo ejemplos a variantes DVC
 | Ejemplo / fuente | Ubicacion en contribution | Variante canonica destino | Destino canonico esperado | Evidencia del mapeo |
 |---|---|---|---|---|
-| IMT (Ruben) | `materials/source_documents/examples/IMT (Ruben)/` | `imt-plana-cuenta-externa` | `imt-plana-cuenta-externa/Ejemplos/IMT (Ruben)/` | draft de variante IMT |
-| Selim | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `selim-agrupada-cuenta-header/Ejemplos/Selim/` | draft de variante Selim |
-| Servicios Administrativos Playa San Jose | `materials/source_documents/examples/Servicios Administrativos Playa San Jose/` | `saplayasj-aplanada-cuenta-renglon` | `saplayasj-aplanada-cuenta-renglon/Ejemplos/Servicios Administrativos Playa San Jose/` | draft de variante SAP |
+| IMT (Ruben) | `materials/source_documents/examples/IMT (Ruben)/` | `imt-plana-cuenta-externa` | `imt-plana-cuenta-externa/source_documents/examples/IMT (Ruben)/` | draft de variante IMT |
+| Selim | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `selim-agrupada-cuenta-header/source_documents/examples/Selim/` | draft de variante Selim |
+| Servicios Administrativos Playa San Jose | `materials/source_documents/examples/Servicios Administrativos Playa San Jose/` | `saplayasj-aplanada-cuenta-renglon` | `saplayasj-aplanada-cuenta-renglon/source_documents/examples/Servicios Administrativos Playa San Jose/` | draft de variante SAP |
 
 ## Materiales canonicos a copiar
 | Accion | Origen en contribution | Variante canonica destino | Destino canonico esperado | Tipo | Preservar estructura | Nota |
 |---|---|---|---|---|---|---|
-| copiar carpeta | `materials/source_documents/examples/IMT (Ruben)/` | `imt-plana-cuenta-externa` | `imt-plana-cuenta-externa/Ejemplos/IMT (Ruben)/` | ejemplo_real | si | Copiar a la variante IMT |
-| copiar carpeta | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `selim-agrupada-cuenta-header/Ejemplos/Selim/` | ejemplo_real | si | Copiar a la variante Selim |
-| copiar carpeta | `materials/source_documents/examples/Servicios Administrativos Playa San Jose/` | `saplayasj-aplanada-cuenta-renglon` | `saplayasj-aplanada-cuenta-renglon/Ejemplos/Servicios Administrativos Playa San Jose/` | ejemplo_real | si | Copiar a la variante SAP |
+| copiar carpeta | `materials/source_documents/examples/IMT (Ruben)/` | `imt-plana-cuenta-externa` | `imt-plana-cuenta-externa/source_documents/examples/IMT (Ruben)/` | ejemplo_real | si | Copiar a la variante IMT |
+| copiar carpeta | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `selim-agrupada-cuenta-header/source_documents/examples/Selim/` | ejemplo_real | si | Copiar a la variante Selim |
+| copiar carpeta | `materials/source_documents/examples/Servicios Administrativos Playa San Jose/` | `saplayasj-aplanada-cuenta-renglon` | `saplayasj-aplanada-cuenta-renglon/source_documents/examples/Servicios Administrativos Playa San Jose/` | ejemplo_real | si | Copiar a la variante SAP |
 
 ## Archivos canonicos esperados
 | Accion | Canonical ID | Path esperado | Nota |
 |---|---|---|---|
-| copiar | DVC-auxiliar-contable-gastos/imt-plana-cuenta-externa/Ejemplos/IMT (Ruben)/ | `05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/imt-plana-cuenta-externa/Ejemplos/IMT (Ruben)/` | Copiar carpeta preservando estructura |
-| copiar | DVC-auxiliar-contable-gastos/selim-agrupada-cuenta-header/Ejemplos/Selim/ | `05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/selim-agrupada-cuenta-header/Ejemplos/Selim/` | Copiar carpeta preservando estructura |
-| copiar | DVC-auxiliar-contable-gastos/saplayasj-aplanada-cuenta-renglon/Ejemplos/Servicios Administrativos Playa San Jose/ | `05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/saplayasj-aplanada-cuenta-renglon/Ejemplos/Servicios Administrativos Playa San Jose/` | Copiar carpeta preservando estructura |
+| copiar | DVC-auxiliar-contable-gastos/imt-plana-cuenta-externa/source_documents/examples/IMT (Ruben)/ | `05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/imt-plana-cuenta-externa/source_documents/examples/IMT (Ruben)/` | Copiar carpeta preservando estructura |
+| copiar | DVC-auxiliar-contable-gastos/selim-agrupada-cuenta-header/source_documents/examples/Selim/ | `05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/selim-agrupada-cuenta-header/source_documents/examples/Selim/` | Copiar carpeta preservando estructura |
+| copiar | DVC-auxiliar-contable-gastos/saplayasj-aplanada-cuenta-renglon/source_documents/examples/Servicios Administrativos Playa San Jose/ | `05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/saplayasj-aplanada-cuenta-renglon/source_documents/examples/Servicios Administrativos Playa San Jose/` | Copiar carpeta preservando estructura |
 ```
 
 Incorrecto para DVC:
@@ -200,7 +200,7 @@ Incorrecto para DVC:
 ```md
 | Accion | Origen en contribution | Variante canonica destino | Destino canonico esperado | Tipo | Preservar estructura | Nota |
 |---|---|---|---|---|---|---|
-| copiar carpeta | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `imt-plana-cuenta-externa/Ejemplos/Selim/` | ejemplo_real | si | Destino no inicia con la variante declarada |
+| copiar carpeta | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `imt-plana-cuenta-externa/source_documents/examples/Selim/` | ejemplo_real | si | Destino no inicia con la variante declarada |
 ```
 
 Esa fila debe bloquear la PROP: Selim requiere su variante explicita

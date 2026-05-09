@@ -18,8 +18,8 @@ Convierte materiales fuente de una `CONTRIBUTION-*` en drafts de `01 Explicit Kn
 La skill no crea canonicos ni PROPs. Produce materia prima estructurada para Proposal Builder.
 
 Cuando los materiales fuente ya contienen documentos aterrizados, como
-`spec.md`, `schema.md`, `parser_config.md`, `raw_schema.md`, `mapping.md` o
-transcripciones legales, la responsabilidad principal de la skill es preservar
+`spec.md`, `schema.md`, `parser_config.md`, `raw_schema.md` o transcripciones
+legales, la responsabilidad principal de la skill es preservar
 esos documentos, no reinterpretarlos. En ese modo, la skill debe copiar el
 contenido fuente casi intacto y registrar la trazabilidad en `notes.md` o en un
 apartado operativo equivalente dentro de `notes.md`.
@@ -226,8 +226,8 @@ Los templates del vault son la fuente de estructura. Eso significa:
 - no usar `contrato-metadata-minima.md` para imponer bloques como `Proposito`,
   `Evidencia usada`, `Contenido producido`, `Limitaciones o dudas` o
   `Sugerencias para Proposal Builder` dentro de `spec_draft.md`,
-  `schema_draft.md`, `raw_schema_draft.md`, `mapping_draft.md`,
-  `parser_config_draft.md` o `document_transcript_draft.md`;
+  `schema_draft.md`, `raw_schema_draft.md`, `parser_config_draft.md` o
+  `document_transcript_draft.md`;
 - usar esos bloques operativos solo en `notes.md` o donde el template canonico
   ya los pida de forma compatible.
 
@@ -241,10 +241,10 @@ DOC:
 
 DVC:
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/README.md
-05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/spec.md
+05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/spec.md
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/raw_schema.md
-05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/mapping.md
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/parser_config.md
+05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x/changelog.md
 
 DOL:
 05 Benford Vault/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-0000_template/spec.md
@@ -331,21 +331,21 @@ Salida esperada:
 
 ```text
 TYPE-slug/
-├── spec_draft.md
 ├── schema_draft.md              # si aplica a DOC
 ├── parser_config_draft.md       # si aplica a DOC/DVC
 ├── document_transcript_draft.md # si aplica a DOL
 ├── <Variante>/                  # si aplica a DVC
+│   ├── spec_draft.md
 │   ├── raw_schema_draft.md
-│   ├── mapping_draft.md
 │   └── parser_config_draft.md
 └── notes.md
 ```
 
 Para `DVC-*`, `TYPE-slug/` es el documento variable padre. No crees un
-`DVC-*` separado por variante. El DVC padre comparte `spec_draft.md` y
-`notes.md`; cada variante vive en su propia carpeta interna con
-`raw_schema_draft.md`, `mapping_draft.md` y `parser_config_draft.md`.
+`DVC-*` separado por variante. El DVC padre solo agrupa variantes y `notes.md`;
+cada variante vive en su propia carpeta interna con `spec_draft.md`,
+`raw_schema_draft.md` y `parser_config_draft.md`. No crees `mapping_draft.md`
+ni `spec_draft.md` en la raiz del DVC.
 
 Si la contribution DVC contiene ejemplos fisicos bajo
 `materials/source_documents/examples/`, la salida DVC debe incluir tambien:
@@ -375,8 +375,8 @@ Reglas del manifiesto DVC:
   normalmente bajo `materials/source_documents/examples/`;
 - usa una fila por archivo cuando una misma carpeta fuente contiene archivos de
   mas de una variante;
-- una carpeta `Ejemplos` canonica no debe mezclar materiales de variantes
-  distintas;
+- una carpeta `source_documents/examples` canonica no debe mezclar materiales
+  de variantes distintas;
 - si no puedes mapear cada ejemplo a una variante, conserva
   `Estado automation` en `draft` y registra el bloqueo en `notes.md`.
 
@@ -423,7 +423,6 @@ Ejemplos de documentos aterrizados:
 - `schema.md` o equivalente;
 - `parser_config.md` o equivalente;
 - `raw_schema.md`;
-- `mapping.md`;
 - `document_transcript.md`;
 - cualquier Markdown que el usuario identifique como documento oficial,
   aprobado, terminado o "el bueno".
@@ -500,7 +499,7 @@ si agregarlo rompe la fidelidad del documento fuente.
    tipo seleccionado. Los templates del vault son la estructura fuente; no uses
    `references/examples.md`, `contrato-metadata-minima.md` ni memoria de otra
    skill como template para `spec_draft.md`, `schema_draft.md`,
-   `raw_schema_draft.md`, `mapping_draft.md`, `parser_config_draft.md` ni
+   `raw_schema_draft.md`, `parser_config_draft.md` ni
    `document_transcript_draft.md`.
 8. Antes de escribir, ejecuta el gate de escritura del vault y espera aprobacion explicita.
 9. Genera drafts dentro de `skill_outputs/explicit_knowledge/TYPE-slug/`.

@@ -223,7 +223,7 @@ carpetas de ejemplos por empresa, cliente, sistema o layout:
 ## Mapeo ejemplos a variantes DVC
 | Ejemplo / fuente | Ubicacion en contribution | Variante canonica destino | Destino canonico esperado | Evidencia del mapeo |
 |---|---|---|---|---|
-| Pendiente | `materials/...` | `<variante-id>` | `<variante-id>/Ejemplos/<fuente>/` | draft de variante / contribution_map / nombre de carpeta |
+| Pendiente | `materials/...` | `<variante-id>` | `<variante-id>/source_documents/examples/<fuente>/` | draft de variante / contribution_map / nombre de carpeta |
 ```
 
 Reglas obligatorias para `PROP-DVC`:
@@ -232,7 +232,7 @@ Reglas obligatorias para `PROP-DVC`:
   declarada en `Target canonico`, en `Detalle DVC` o en los folders de
   `skill_outputs/explicit_knowledge/DVC-*/`;
 - el destino de cada ejemplo debe iniciar con la variante declarada, por
-  ejemplo `<variante-id>/Ejemplos/<fuente>/` o
+  ejemplo `<variante-id>/source_documents/examples/<fuente>/` o
   `<variante-id>/fixtures/<fuente>/`;
 - no uses rutas raiz como `Examples/<fuente>/`, `Ejemplos/<fuente>/` o
   `fixtures/<fuente>/` para DVC con variantes;
@@ -240,8 +240,8 @@ Reglas obligatorias para `PROP-DVC`:
   evidencia diga explicitamente que esas empresas usan esa misma variante;
 - si `materials/source_documents/examples/Selim/` corresponde a
   `selim-agrupada-cuenta-header`, el destino debe ser
-  `selim-agrupada-cuenta-header/Ejemplos/Selim/`; no lo pongas bajo
-  `imt-plana-cuenta-externa/Ejemplos/Selim/`;
+  `selim-agrupada-cuenta-header/source_documents/examples/Selim/`; no lo pongas bajo
+  `imt-plana-cuenta-externa/source_documents/examples/Selim/`;
 - si no puedes determinar la variante de un ejemplo, no inventes destino:
   marca `Pendiente`, deja la duda en `Riesgos o dudas` y detente antes de
   escribir la PROP si ese material seria copiable.
@@ -259,7 +259,7 @@ layout, legacy markdown o carpetas por empresa al canonico.
 ## Materiales canonicos a copiar
 | Accion | Origen en contribution | Variante canonica destino | Destino canonico esperado | Tipo | Preservar estructura | Nota |
 |---|---|---|---|---|---|---|
-| copiar archivo / copiar carpeta | `materials/...` | Pendiente / no_aplica | `Examples/...` / `<variante>/Ejemplos/...` / `fixtures/...` / `PENDIENTES - archivo.md` | ejemplo_real / fixture / legacy_markdown / muestra_layout | si / no | Pendiente |
+| copiar archivo / copiar carpeta | `materials/...` | Pendiente / no_aplica | `Examples/...` / `<variante>/source_documents/examples/...` / `fixtures/...` / `PENDIENTES - archivo.md` | ejemplo_real / fixture / legacy_markdown / muestra_layout | si / no | Pendiente |
 ```
 
 Reglas:
@@ -299,16 +299,16 @@ Ejemplo DVC correcto:
 ## Mapeo ejemplos a variantes DVC
 | Ejemplo / fuente | Ubicacion en contribution | Variante canonica destino | Destino canonico esperado | Evidencia del mapeo |
 |---|---|---|---|---|
-| IMT (Ruben) | `materials/source_documents/examples/IMT (Ruben)/` | `imt-plana-cuenta-externa` | `imt-plana-cuenta-externa/Ejemplos/IMT (Ruben)/` | folder de variante y draft IMT |
-| Selim | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `selim-agrupada-cuenta-header/Ejemplos/Selim/` | folder de variante y draft Selim |
-| Servicios Administrativos Playa San Jose | `materials/source_documents/examples/Servicios Administrativos Playa San Jose/` | `saplayasj-aplanada-cuenta-renglon` | `saplayasj-aplanada-cuenta-renglon/Ejemplos/Servicios Administrativos Playa San Jose/` | folder de variante y draft SAP |
+| IMT (Ruben) | `materials/source_documents/examples/IMT (Ruben)/` | `imt-plana-cuenta-externa` | `imt-plana-cuenta-externa/source_documents/examples/IMT (Ruben)/` | folder de variante y draft IMT |
+| Selim | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `selim-agrupada-cuenta-header/source_documents/examples/Selim/` | folder de variante y draft Selim |
+| Servicios Administrativos Playa San Jose | `materials/source_documents/examples/Servicios Administrativos Playa San Jose/` | `saplayasj-aplanada-cuenta-renglon` | `saplayasj-aplanada-cuenta-renglon/source_documents/examples/Servicios Administrativos Playa San Jose/` | folder de variante y draft SAP |
 
 ## Materiales canonicos a copiar
 | Accion | Origen en contribution | Variante canonica destino | Destino canonico esperado | Tipo | Preservar estructura | Nota |
 |---|---|---|---|---|---|---|
-| copiar carpeta | `materials/source_documents/examples/IMT (Ruben)/` | `imt-plana-cuenta-externa` | `imt-plana-cuenta-externa/Ejemplos/IMT (Ruben)/` | ejemplo_real | si | Copiar ejemplos IMT a su variante |
-| copiar carpeta | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `selim-agrupada-cuenta-header/Ejemplos/Selim/` | ejemplo_real | si | Copiar ejemplos Selim a su variante |
-| copiar carpeta | `materials/source_documents/examples/Servicios Administrativos Playa San Jose/` | `saplayasj-aplanada-cuenta-renglon` | `saplayasj-aplanada-cuenta-renglon/Ejemplos/Servicios Administrativos Playa San Jose/` | ejemplo_real | si | Copiar ejemplos SAP a su variante |
+| copiar carpeta | `materials/source_documents/examples/IMT (Ruben)/` | `imt-plana-cuenta-externa` | `imt-plana-cuenta-externa/source_documents/examples/IMT (Ruben)/` | ejemplo_real | si | Copiar ejemplos IMT a su variante |
+| copiar carpeta | `materials/source_documents/examples/Selim/` | `selim-agrupada-cuenta-header` | `selim-agrupada-cuenta-header/source_documents/examples/Selim/` | ejemplo_real | si | Copiar ejemplos Selim a su variante |
+| copiar carpeta | `materials/source_documents/examples/Servicios Administrativos Playa San Jose/` | `saplayasj-aplanada-cuenta-renglon` | `saplayasj-aplanada-cuenta-renglon/source_documents/examples/Servicios Administrativos Playa San Jose/` | ejemplo_real | si | Copiar ejemplos SAP a su variante |
 ```
 
 ## README en DVC

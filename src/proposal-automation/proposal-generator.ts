@@ -455,26 +455,18 @@ function findDvcVariantDrafts(
     "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente",
     canonicalId,
   )
-  const rootSpec = join(path, "spec_draft.md")
   return readdirSync(path, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry): DvcVariantDraft | null => {
       const variantPath = join(path, entry.name)
       const spec = join(variantPath, "spec_draft.md")
-      const effectiveSpec = existsSync(spec)
-        ? spec
-        : existsSync(rootSpec)
-          ? rootSpec
-          : undefined
       const rawSchema = join(variantPath, "raw_schema_draft.md")
       const parserConfig = join(variantPath, "parser_config_draft.md")
       const modificationSpec = join(variantPath, "modification_spec.md")
       const modificationSchema = join(variantPath, "modification_schema.md")
       const modificationParser = join(variantPath, "modification_parser.md")
       const hasFullDrafts =
-        Boolean(effectiveSpec) &&
-        existsSync(rawSchema) &&
-        existsSync(parserConfig)
+        existsSync(spec) && existsSync(rawSchema) && existsSync(parserConfig)
       const hasModifications =
         existsSync(modificationSpec) ||
         existsSync(modificationSchema) ||
@@ -487,7 +479,7 @@ function findDvcVariantDrafts(
         path: variantPath,
         mode: hasFullDrafts ? "full" : "modification",
         files: {
-          spec: effectiveSpec,
+          spec: existsSync(spec) ? spec : undefined,
           rawSchema: existsSync(rawSchema) ? rawSchema : undefined,
           parserConfig: existsSync(parserConfig) ? parserConfig : undefined,
           modificationSpec: existsSync(modificationSpec)
@@ -978,7 +970,7 @@ function targetRowsForPackage(
         ],
         [
           "Archivos canonicos esperados",
-          "<variante>/spec.md / <variante>/raw_schema.md / <variante>/parser_config.md / <variante>/changelog.md / <variante>/Ejemplos si aplica",
+          "<variante>/spec.md / <variante>/raw_schema.md / <variante>/parser_config.md / <variante>/changelog.md / <variante>/source_documents/examples si aplica",
         ],
       ]
     case "DOL":
@@ -1266,11 +1258,19 @@ function discoverCanonicalMaterials(
     collectDolSourceDocuments(contribution, materials)
     return filterExistingCanonicalMaterials(dedupeCanonicalMaterials(materials))
   }
+  if (draftPackage.canonicalType === "DVC") {
+    return filterExistingCanonicalMaterials(
+      filterDvcVariantMaterials(
+        draftPackage,
+        dedupeCanonicalMaterials(materials),
+      ),
+    )
+  }
   const examplesRoot = join(
     contribution.path,
     "materials/source_documents/examples",
   )
-  if (draftPackage.canonicalType !== "DVC" && existsSync(examplesRoot)) {
+  if (existsSync(examplesRoot)) {
     for (const entry of readdirSync(examplesRoot, { withFileTypes: true }).sort(
       (a, b) => a.name.localeCompare(b.name),
     )) {
@@ -1305,6 +1305,22 @@ function discoverCanonicalMaterials(
   })
 
   return filterExistingCanonicalMaterials(dedupeCanonicalMaterials(materials))
+}
+
+function filterDvcVariantMaterials(
+  draftPackage: SupportedDraftPackage,
+  materials: readonly CanonicalMaterial[],
+): CanonicalMaterial[] {
+  const variants = new Set(
+    dvcVariants(draftPackage).map((variant) => variant.name),
+  )
+  return materials.filter((material) => {
+    const firstSegment = material.destinationPath
+      .replace(/\\/g, "/")
+      .split("/")
+      .filter(Boolean)[0]
+    return Boolean(firstSegment && variants.has(firstSegment))
+  })
 }
 
 function collectDolSourceDocuments(

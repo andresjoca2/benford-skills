@@ -81,12 +81,13 @@ def scan_dvc(folder, name, scan_root, mac_root):
         if entry.startswith('.') or not os.path.isdir(full) or entry in ["Examples", "Ejemplos"]:
             continue
         vfiles = {
+            "spec.md": file_info(os.path.join(full, "spec.md")),
             "parser_config.md": file_info(os.path.join(full, "parser_config.md")),
             "raw_schema.md": file_info(os.path.join(full, "raw_schema.md")),
-            "mapping.md": file_info(os.path.join(full, "mapping.md")),
+            "changelog.md": file_info(os.path.join(full, "changelog.md")),
         }
         vfiles_ok = all(f["ok"] for f in vfiles.values())
-        ej_count = folder_file_count(os.path.join(full, "Ejemplos")) + folder_file_count(os.path.join(full, "Examples"))
+        ej_count = folder_file_count(os.path.join(full, "source_documents", "examples"))
         is_skeleton = entry.lower().startswith("variante x") or "_template" in entry.lower()
         vrel = os.path.relpath(full, scan_root)
         variants.append({

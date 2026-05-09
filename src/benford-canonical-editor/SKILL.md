@@ -35,8 +35,8 @@ Detente si:
 Los archivos canonicos no deben recibir narrativa operativa del proceso. No
 insertes bloques como `Objetivo`, `Justificacion`, `Evidencia fuente`,
 `Relaciones canonicas` o texto de router/editor dentro de `spec.md`,
-`schema.md`, `parser_config.md`, `raw_schema.md`, `mapping.md`,
-`document_transcript.md` o equivalentes.
+`schema.md`, `parser_config.md`, `raw_schema.md`, `document_transcript.md` o
+equivalentes.
 
 Cuando la PROP apunta a drafts ya aterrizados, imprime el contenido del draft lo
 mas intacto posible. La trazabilidad del proceso vive en `changelog.md`,
@@ -78,18 +78,17 @@ La misma copia debe aparecer en `Archivos canonicos esperados` con accion
 ## Contrato DVC
 
 Para `PROP-DVC`, respeta destinos relativos con subcarpetas. Un DVC canonico
-tiene `README.md`, `spec.md` y `changelog.md` en la raiz, y cada variante tiene
-sus propios `raw_schema.md`, `mapping.md` y `parser_config.md`:
+tiene solo una carpeta por variante; cada variante tiene sus propios `spec.md`,
+`raw_schema.md`, `parser_config.md`, `changelog.md` y ejemplos fuente:
 
 ```text
 DVC-<slug>/
-  README.md
-  spec.md
-  changelog.md
   <Variante>/
+    spec.md
     raw_schema.md
-    mapping.md
     parser_config.md
+    changelog.md
+    source_documents/examples/
 ```
 
 No aplanes archivos de variante en la raiz del DVC.

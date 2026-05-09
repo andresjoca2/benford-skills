@@ -503,7 +503,7 @@ describe("benford proposal automation", () => {
       existsSync(
         join(
           vaultRoot,
-          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/Copa/Ejemplos/Selim/example.pdf",
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/Copa/source_documents/examples/Selim/example.pdf",
         ),
       ),
     ).toBe(true)
@@ -517,7 +517,7 @@ describe("benford proposal automation", () => {
     ).toBe(false)
   })
 
-  test("supports DVC variant drafts with shared root spec", () => {
+  test("skips legacy DVC drafts with shared root spec", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
       id: "CONTRIBUTION-2026-05-03-dvc-root-spec",
@@ -541,27 +541,10 @@ describe("benford proposal automation", () => {
       runtimeDir: join(vaultRoot, ".runtime"),
     })
 
-    expect(check.contributions.contributionIds).toEqual([
+    expect(check.contributions.count).toBe(0)
+    expect(check.skippedContributions.map((item) => item.id)).toContain(
       "CONTRIBUTION-2026-05-03-dvc-root-spec",
-    ])
-    const events = runProposalAutomations({
-      vaultRoot,
-      runtimeDir: join(vaultRoot, ".runtime"),
-      today: "2026-05-03",
-      write: true,
-    })
-
-    expect(events[0]?.proposalGeneratorResult?.targetCanonicalId).toBe(
-      "DVC-root-spec",
     )
-    expect(
-      existsSync(
-        join(
-          vaultRoot,
-          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-root-spec/Variante RSM Merida/spec.md",
-        ),
-      ),
-    ).toBe(true)
   })
 
   test("routes partial DVC modifications as one human-review PROP", () => {
@@ -627,14 +610,15 @@ describe("benford proposal automation", () => {
       canonicalMaterials: [
         {
           sourcePath: "materials/source_documents/examples/Constructora Parmol",
-          destinationPath: "Constructora Parmol/Ejemplos/Constructora Parmol",
+          destinationPath:
+            "Constructora Parmol/source_documents/examples/Constructora Parmol",
           type: "variante_cliente",
         },
         {
           sourcePath:
             "materials/source_documents/examples/Servicios Administrativos Playa San Jose",
           destinationPath:
-            "Servicios Administrativos/Ejemplos/Servicios Administrativos Playa San Jose",
+            "Servicios Administrativos/source_documents/examples/Servicios Administrativos Playa San Jose",
           type: "variante_cliente",
         },
       ],
@@ -684,7 +668,7 @@ describe("benford proposal automation", () => {
       existsSync(
         join(
           vaultRoot,
-          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-alpha/Constructora Parmol/Ejemplos/Constructora Parmol/example.pdf",
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-alpha/Constructora Parmol/source_documents/examples/Constructora Parmol/example.pdf",
         ),
       ),
     ).toBe(true)
@@ -692,7 +676,7 @@ describe("benford proposal automation", () => {
       existsSync(
         join(
           vaultRoot,
-          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-alpha/Servicios Administrativos/Ejemplos/Servicios Administrativos Playa San Jose/example.pdf",
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-alpha/Servicios Administrativos/source_documents/examples/Servicios Administrativos Playa San Jose/example.pdf",
         ),
       ),
     ).toBe(true)
@@ -863,7 +847,7 @@ function writeContributionMap(
     options.declareDvcExampleMaterials !== false
       ? (options.exampleFolders ?? ["Selim"]).map((exampleFolder) => ({
           sourcePath: `materials/source_documents/examples/${exampleFolder}`,
-          destinationPath: `${variantNames[0] ?? "Variante Test"}/Ejemplos/${exampleFolder}`,
+          destinationPath: `${variantNames[0] ?? "Variante Test"}/source_documents/examples/${exampleFolder}`,
           type: "variante_cliente",
           note: "Fixture material",
         }))

@@ -131,7 +131,7 @@ crear PROP hasta preparar la contribution o marcar el bloqueo.
 Para `PROP-DVC`, cada ejemplo debe mapearse a una variante canonica explicita.
 La PROP debe incluir `## Mapeo ejemplos a variantes DVC` y el destino debe
 iniciar con esa variante, por ejemplo
-`<variante-id>/Ejemplos/<fuente>/`. No uses la primera variante como destino por
+`<variante-id>/source_documents/examples/<fuente>/`. No uses la primera variante como destino por
 default ni rutas raiz como `Examples/<fuente>/`.
 
 ## Canonical copy materials
@@ -143,7 +143,7 @@ al canonico aprobado, la PROP debe incluir:
 ## Materiales canonicos a copiar
 | Accion | Origen en contribution | Variante canonica destino | Destino canonico esperado | Tipo | Preservar estructura | Nota |
 |---|---|---|---|---|---|---|
-| copiar archivo / copiar carpeta | `materials/...` | Pendiente / no_aplica | `Examples/...` / `<variante>/Ejemplos/...` / `fixtures/...` / `PENDIENTES - archivo.md` | ejemplo_real / fixture / legacy_markdown / muestra_layout | si / no | Pendiente |
+| copiar archivo / copiar carpeta | `materials/...` | Pendiente / no_aplica | `Examples/...` / `<variante>/source_documents/examples/...` / `fixtures/...` / `PENDIENTES - archivo.md` | ejemplo_real / fixture / legacy_markdown / muestra_layout | si / no | Pendiente |
 ```
 
 Esta seccion es obligatoria para `PROP-DOC` y `PROP-DVC` cuando:

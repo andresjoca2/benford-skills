@@ -2,7 +2,7 @@
 
 Este archivo no reemplaza los templates canonicos del vault. Los drafts
 tecnicos (`spec_draft.md`, `schema_draft.md`, `raw_schema_draft.md`,
-`mapping_draft.md`, `parser_config_draft.md`, `document_transcript_draft.md`)
+`parser_config_draft.md`, `document_transcript_draft.md`)
 deben seguir los templates listados en `contract-map.md`.
 
 Usar este archivo solo para `notes.md`, bloqueos y criterios de clasificacion.
