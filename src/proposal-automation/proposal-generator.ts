@@ -1260,9 +1260,11 @@ function discoverCanonicalMaterials(
   }
   if (draftPackage.canonicalType === "DVC") {
     return filterExistingCanonicalMaterials(
-      filterDvcVariantMaterials(
-        draftPackage,
-        dedupeCanonicalMaterials(materials),
+      pruneCoveredCanonicalMaterials(
+        filterDvcVariantMaterials(
+          draftPackage,
+          dedupeCanonicalMaterials(materials),
+        ),
       ),
     )
   }
@@ -1304,7 +1306,9 @@ function discoverCanonicalMaterials(
     note: "Copiar pendientes fuente aprobados sin convertirlos en contrato del sistema.",
   })
 
-  return filterExistingCanonicalMaterials(dedupeCanonicalMaterials(materials))
+  return filterExistingCanonicalMaterials(
+    pruneCoveredCanonicalMaterials(dedupeCanonicalMaterials(materials)),
+  )
 }
 
 function filterDvcVariantMaterials(
@@ -1427,6 +1431,29 @@ function dedupeCanonicalMaterials(
     deduped.push(material)
   }
   return deduped
+}
+
+function pruneCoveredCanonicalMaterials(
+  materials: readonly CanonicalMaterial[],
+): CanonicalMaterial[] {
+  return materials.filter((material, index) => {
+    const destination = normalizeMaterialDestination(material.destinationPath)
+    return !materials.some((candidate, candidateIndex) => {
+      if (candidateIndex === index) return false
+      if (candidate.action !== "copiar carpeta") return false
+      const candidateDestination = normalizeMaterialDestination(
+        candidate.destinationPath,
+      )
+      return (
+        destination !== candidateDestination &&
+        destination.startsWith(`${candidateDestination}/`)
+      )
+    })
+  })
+}
+
+function normalizeMaterialDestination(destinationPath: string): string {
+  return destinationPath.replace(/\\/g, "/").replace(/\/+$/g, "")
 }
 
 function collectLegacySourceDocuments(options: {

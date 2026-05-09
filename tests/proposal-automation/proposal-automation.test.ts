@@ -420,6 +420,56 @@ describe("benford proposal automation", () => {
     ).toContain("| PROP-0001 |")
   })
 
+  test("write mode prunes nested DOC material copies covered by a parent folder", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-doc-parent-examples",
+      estado: "draft_generated",
+      automationState: "ready",
+      canonicalType: "DOC",
+      outputIds: ["DOC-parent-examples"],
+      exampleFolders: ["Constructora Parmol", "IMT"],
+      canonicalMaterials: [
+        {
+          sourcePath: "materials/source_documents/examples",
+          destinationPath: "Examples/",
+          type: "ejemplos_documento_fuente",
+          note: "Carpeta completa de ejemplos.",
+        },
+      ],
+    })
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "invoke_skill",
+    ])
+    expect(events[2]?.editorResult?.canonicalMaterials).toEqual([
+      {
+        sourcePath:
+          "01 Contribuciones/CONTRIBUTION-2026-05-03-doc-parent-examples/materials/source_documents/examples",
+        destinationPath:
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-parent-examples/Examples",
+        action: "copy",
+      },
+    ])
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-parent-examples/Examples/Constructora Parmol/example.pdf",
+        ),
+      ),
+    ).toBe(true)
+  })
+
   test("write mode applies supported DVC proposals", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
