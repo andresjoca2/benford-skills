@@ -225,6 +225,56 @@ describe("benford proposal automation", () => {
     ).toBe(true)
   })
 
+  test("write mode copies DOL source documents found in materials", () => {
+    const vaultRoot = makeVault()
+    const contributionId = "CONTRIBUTION-2026-05-03-dol-auto-source"
+    writeContributionMap(vaultRoot, {
+      id: contributionId,
+      estado: "draft_generated",
+      automationState: "ready",
+      canonicalType: "DOL",
+      outputIds: ["DOL-reglamento-auto"],
+      exampleFolders: [],
+    })
+    const sourcePath = join(
+      vaultRoot,
+      "01 Contribuciones",
+      contributionId,
+      "materials/Reg_LSS_MACERF.pdf",
+    )
+    mkdirSync(join(sourcePath, ".."), { recursive: true })
+    writeFileSync(sourcePath, "fixture", "utf8")
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "invoke_skill",
+    ])
+    expect(events[2]?.editorResult?.canonicalMaterials).toEqual([
+      {
+        sourcePath: `01 Contribuciones/${contributionId}/materials/Reg_LSS_MACERF.pdf`,
+        destinationPath:
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-reglamento-auto/source_documents/Reg_LSS_MACERF.pdf",
+        action: "copy",
+      },
+    ])
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-reglamento-auto/source_documents/Reg_LSS_MACERF.pdf",
+        ),
+      ),
+    ).toBe(true)
+  })
+
   test("routes DVC contributions without physical examples to human review", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {

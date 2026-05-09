@@ -1263,7 +1263,8 @@ function discoverCanonicalMaterials(
     ...loadContributionMapCanonicalMaterials(config, contribution),
   ]
   if (draftPackage.canonicalType === "DOL") {
-    return dedupeCanonicalMaterials(materials)
+    collectDolSourceDocuments(contribution, materials)
+    return filterExistingCanonicalMaterials(dedupeCanonicalMaterials(materials))
   }
   const examplesRoot = join(
     contribution.path,
@@ -1303,7 +1304,42 @@ function discoverCanonicalMaterials(
     note: "Copiar pendientes fuente aprobados sin convertirlos en contrato del sistema.",
   })
 
-  return dedupeCanonicalMaterials(materials).filter((material) => {
+  return filterExistingCanonicalMaterials(dedupeCanonicalMaterials(materials))
+}
+
+function collectDolSourceDocuments(
+  contribution: ContributionPackage,
+  materials: CanonicalMaterial[],
+): void {
+  const materialsRoot = join(contribution.path, "materials")
+  if (!existsSync(materialsRoot)) return
+  for (const entry of readdirSync(materialsRoot, { withFileTypes: true }).sort(
+    (a, b) => a.name.localeCompare(b.name),
+  )) {
+    if (!entry.isFile()) continue
+    if (!isDolSourceDocumentName(entry.name)) continue
+    const sourcePath = join(materialsRoot, entry.name)
+    materials.push({
+      action: "copiar archivo",
+      sourcePath,
+      destinationPath: `source_documents/${entry.name}`,
+      sourceName: entry.name,
+      sourceOwner: "fuente_legal_original",
+      type: "fuente_legal_original",
+      preserveStructure: "no",
+      note: "PDF fuente legal usado para transcripcion DOL y trazabilidad canonica.",
+    })
+  }
+}
+
+function isDolSourceDocumentName(name: string): boolean {
+  return /\.(?:pdf|docx?|html?|txt)$/i.test(name)
+}
+
+function filterExistingCanonicalMaterials(
+  materials: readonly CanonicalMaterial[],
+): CanonicalMaterial[] {
+  return materials.filter((material) => {
     if (!existsSync(material.sourcePath)) return false
     const stat = statSync(material.sourcePath)
     return material.action === "copiar carpeta"

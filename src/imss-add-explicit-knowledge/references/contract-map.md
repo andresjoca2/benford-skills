@@ -43,6 +43,9 @@ Columnas requeridas:
 
 `Destino canonico esperado` es relativo a la carpeta canonica target. Para
 `DOL-*`, usa `source_documents/<archivo>` para PDFs legales fuente.
+Si el output es `DOL-*` y hay un PDF, Word, HTML o TXT legal completo en
+`materials/`, no marques la contribution como `ready` hasta declarar esa copia
+en `Materiales canonicos sugeridos`.
 
 `contribution_map.md` debe incluir `Estado` y `Estado automation` en
 `## Identificacion`. El valor default durante armado es `draft` para ambos; solo

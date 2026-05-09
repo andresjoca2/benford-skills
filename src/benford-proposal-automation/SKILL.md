@@ -94,6 +94,9 @@ Si la contribution contiene `materials/source_documents/examples/`, la PROP debe
 declarar esas carpetas o archivos en `Materiales canonicos a copiar` y repetir
 los destinos en `Archivos canonicos esperados` con accion `copiar`. Listarlos
 solo como evidencia raw no basta para que el Canonical Editor los imprima.
+Si la contribution soportada es `DOL-*` y contiene PDFs, Word, HTML o TXT legales
+en `materials/`, la PROP debe copiarlos a `source_documents/` aunque la
+contribution legacy no haya declarado `Materiales canonicos sugeridos`.
 En `PROP-DVC`, esos destinos deben salir exclusivamente de
 `source_documents_map.md`; una carpeta fuente compartida por varias variantes se
 debe declarar por archivo para que cada variante reciba solo sus ejemplos.

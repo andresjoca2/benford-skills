@@ -158,10 +158,10 @@ function assertApprovedForEditor(
   }
   if (
     changeType !== "new" &&
-    !(type === "PROP-DVC" && changeType === "enrich")
+    !((type === "PROP-DVC" || type === "PROP-DOL") && changeType === "enrich")
   ) {
     throw new Error(
-      `Canonical Editor only supports new canonicals and DVC enrich proposals. Found: ${type} ${changeType}`,
+      `Canonical Editor only supports new canonicals and DVC/DOL enrich proposals. Found: ${type} ${changeType}`,
     )
   }
 
@@ -190,7 +190,7 @@ function assertApprovedForEditor(
   }
   if (changeType === "enrich" && !existsSync(targetPath)) {
     throw new Error(
-      `DVC enrich target canonical does not exist: ${toVaultRelative(config, targetPath)}`,
+      `Enrich target canonical does not exist: ${toVaultRelative(config, targetPath)}`,
     )
   }
 }
@@ -229,7 +229,15 @@ function loadDraftMappings(
   const table = parseFirstMarkdownTable(
     extractSection(proposal.markdown, "Drafts usados"),
   )
-  if (!table) throw new Error(`Missing Drafts usados table: ${proposal.id}`)
+  if (!table) {
+    if (
+      proposal.identification.Tipo === "PROP-DOL" &&
+      proposal.identification["Tipo de cambio"] === "enrich"
+    ) {
+      return []
+    }
+    throw new Error(`Missing Drafts usados table: ${proposal.id}`)
+  }
   const sourceHeader = table.headers.find(
     (header) => header.toLowerCase() === "ubicacion",
   )
@@ -464,11 +472,11 @@ function planCanonicalFiles(
     const destinationRelative = toVaultRelative(config, destinationPath)
 
     if (changeType === "enrich") {
-      assertSafeDvcEnrichDestination(draft.destinationFile)
+      assertSafeEnrichDestination(draft.destinationFile)
       const expectedAction = expectedFileActions.get(destinationRelative)
       if (!expectedAction) {
         throw new Error(
-          `DVC enrich destination is missing from Archivos canonicos esperados: ${destinationRelative}`,
+          `Enrich destination is missing from Archivos canonicos esperados: ${destinationRelative}`,
         )
       }
       const destinationExists = existsSync(destinationPath)
@@ -477,7 +485,7 @@ function planCanonicalFiles(
         : "create"
       if (expectedAction !== action) {
         throw new Error(
-          `DVC enrich expected action ${expectedAction} does not match destination state for ${destinationRelative}: ${action}`,
+          `Enrich expected action ${expectedAction} does not match destination state for ${destinationRelative}: ${action}`,
         )
       }
       if (isChangelogDestination(draft.destinationFile)) {
@@ -518,10 +526,10 @@ function destinationExists(path: string): boolean {
   return existsSync(path)
 }
 
-function assertSafeDvcEnrichDestination(destinationFile: string): void {
+function assertSafeEnrichDestination(destinationFile: string): void {
   if (!destinationFile.includes("/")) {
     throw new Error(
-      `DVC enrich can only create or update variant files, not canonical root files: ${destinationFile}`,
+      `Enrich can only create or update nested files, not canonical root files: ${destinationFile}`,
     )
   }
 }

@@ -180,16 +180,57 @@ describe("benford canonical editor", () => {
     ).toBe(true)
   })
 
+  test("write mode enriches an existing DOL with source documents", () => {
+    const vaultRoot = makeVault()
+    writeExistingDol(vaultRoot, "DOL-test")
+    const sourcePath = join(
+      vaultRoot,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/Reg_LSS_MACERF.pdf",
+    )
+    mkdirSync(join(sourcePath, ".."), { recursive: true })
+    writeFileSync(sourcePath, "fixture", "utf8")
+    writeApprovedProposal(
+      vaultRoot,
+      "PROP-0007",
+      dolEnrichMaterialProposal("PROP-0007"),
+    )
+
+    const plan = applyCanonicalProposal("PROP-0007", {
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(plan.canonicalFiles).toEqual([])
+    expect(
+      plan.canonicalMaterials.map((material) => material.destinationPath),
+    ).toEqual([
+      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/source_documents/Reg_LSS_MACERF.pdf",
+    ])
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/source_documents/Reg_LSS_MACERF.pdf",
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0007")),
+    ).toBe(true)
+  })
+
   test("write mode enriches an existing DVC with a new variant", () => {
     const vaultRoot = makeVault()
     writeExistingDvc(vaultRoot, "DVC-test")
     writeApprovedProposal(
       vaultRoot,
-      "PROP-0007",
-      dvcEnrichProposal("PROP-0007", "Copa", "crear"),
+      "PROP-0008",
+      dvcEnrichProposal("PROP-0008", "Copa", "crear"),
     )
 
-    const plan = applyCanonicalProposal("PROP-0007", {
+    const plan = applyCanonicalProposal("PROP-0008", {
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
@@ -212,9 +253,9 @@ describe("benford canonical editor", () => {
     ])
     expect(existsSync(rawSchemaPath)).toBe(true)
     expect(readFileSync(rawSchemaPath, "utf8")).toContain("Raw schema fixture.")
-    expect(readFileSync(changelogPath, "utf8")).toContain("PROP-0007")
+    expect(readFileSync(changelogPath, "utf8")).toContain("PROP-0008")
     expect(
-      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0007")),
+      existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0008")),
     ).toBe(true)
   })
 
@@ -385,6 +426,26 @@ function writeExistingDvc(
   writeFileSync(join(variantRoot, "parser_config.md"), "old parser\n", "utf8")
   writeFileSync(
     join(variantRoot, "changelog.md"),
+    "# Existing changelog\n",
+    "utf8",
+  )
+}
+
+function writeExistingDol(vaultRoot: string, canonicalId: string): void {
+  const canonicalRoot = join(
+    vaultRoot,
+    "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes",
+    canonicalId,
+  )
+  mkdirSync(canonicalRoot, { recursive: true })
+  writeFileSync(join(canonicalRoot, "spec.md"), "# Existing spec\n", "utf8")
+  writeFileSync(
+    join(canonicalRoot, "document_transcript.md"),
+    "# Existing transcript\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(canonicalRoot, "changelog.md"),
     "# Existing changelog\n",
     "utf8",
   )
@@ -606,6 +667,74 @@ N/A
 | Accion | Canonical ID | Path esperado | Nota |
 |---|---|---|---|
 | crear | DOL-test/spec.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/spec.md | fixture |
+`
+}
+
+function dolEnrichMaterialProposal(proposalId: string): string {
+  return `# ${proposalId}
+
+## Identificacion
+| Campo | Valor |
+|---|---|
+| ID | ${proposalId} |
+| Tipo | PROP-DOL |
+| Estado | approved_for_editor |
+| Fecha creacion | 2026-05-03 |
+| Ultima actualizacion | 2026-05-03 |
+| Owner operativo | Proposal Builder |
+| Contribution origen | CONTRIBUTION-2026-05-03-test |
+| Tipo de cambio | enrich |
+| Target canonico ID | DOL-test |
+| Target canonico path | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/ |
+| Riesgo inicial | low |
+| Capa | explicit_knowledge |
+| Canonical type | DOL |
+
+## Campos para routing
+| Campo | Prioridad | Valor |
+|---|---|---|
+| Target canonico path | M | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/ |
+
+## Contribution source
+| Campo | Valor |
+|---|---|
+| Contribution origen | CONTRIBUTION-2026-05-03-test |
+
+## Tipo de cambio
+| Campo | Valor |
+|---|---|
+| Tipo | enrich |
+
+## Target canonico
+| Campo | Valor |
+|---|---|
+| DOL ID | DOL-test |
+
+## Cambio propuesto
+Copiar documento fuente legal faltante.
+
+## Evidencia usada
+| Evidencia | Ubicacion | Uso |
+|---|---|---|
+| PDF fuente | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/Reg_LSS_MACERF.pdf | Trazabilidad legal |
+
+## Canonicos relacionados
+| Canonico | Relacion |
+|---|---|
+| N/A | N/A |
+
+## Riesgos o dudas
+N/A
+
+## Materiales canonicos a copiar
+| Accion | Origen en contribution | Destino canonico esperado | Tipo | Preservar estructura | Nota |
+|---|---|---|---|---|---|
+| copiar archivo | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/Reg_LSS_MACERF.pdf | source_documents/Reg_LSS_MACERF.pdf | fuente_legal_original | no | PDF legal fuente usado para transcripcion y trazabilidad canonica. |
+
+## Archivos canonicos esperados
+| Accion | Canonical ID | Path esperado | Nota |
+|---|---|---|---|
+| copiar | DOL-test/source_documents/Reg_LSS_MACERF.pdf | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-test/source_documents/Reg_LSS_MACERF.pdf | PDF legal fuente |
 `
 }
 

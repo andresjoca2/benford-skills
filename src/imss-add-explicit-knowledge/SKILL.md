@@ -402,6 +402,10 @@ Reglas:
   vault root;
 - para `DOL-*`, usa `source_documents/<archivo>` para PDFs, leyes, reglamentos
   o fuentes normativas primarias;
+- para `DOL-*`, si existe un PDF, Word, HTML o TXT legal completo en
+  `materials/`, debe existir una fila `Materiales canonicos sugeridos` que lo
+  copie a `source_documents/`; no marques `Estado automation` como `ready` si
+  falta esa fila o si la ruta no existe;
 - para `DOC-*`, usa `Examples/`, `fixtures/` o `source_documents/` segun el uso
   real del material;
 - si `Copiar` es `no`, Proposal Generator debe ignorar la fila;
