@@ -458,6 +458,7 @@ function planCanonicalFiles(
   const changeType = proposal.identification["Tipo de cambio"]
   const expectedFileActions = loadExpectedFileActions(config, proposal)
   return draftMappings.map((draft) => {
+    assertNotModificationDraft(draft.sourcePath)
     const destinationPath = join(targetCanonicalPath, draft.destinationFile)
     assertInsideVault(config, destinationPath)
     const destinationRelative = toVaultRelative(config, destinationPath)
@@ -479,22 +480,14 @@ function planCanonicalFiles(
           `DVC enrich expected action ${expectedAction} does not match destination state for ${destinationRelative}: ${action}`,
         )
       }
-      if (draft.destinationFile === "changelog.md") {
-        if (!destinationExists) {
-          throw new Error(
-            `DVC enrich requires an existing changelog: ${destinationRelative}`,
-          )
-        }
+      if (isChangelogDestination(draft.destinationFile)) {
         return {
           sourcePath: draft.sourcePath,
           destinationPath,
           action,
-          content: renderChangelogUpdate(
-            config,
-            proposal,
-            draft,
-            destinationPath,
-          ),
+          content: destinationExists
+            ? renderChangelogUpdate(config, proposal, draft, destinationPath)
+            : renderChangelog(config, proposal, draft),
         }
       }
       return {
@@ -514,10 +507,9 @@ function planCanonicalFiles(
       sourcePath: draft.sourcePath,
       destinationPath,
       action: "create",
-      content:
-        draft.destinationFile === "changelog.md"
-          ? renderChangelog(config, proposal, draft)
-          : renderCanonicalFromDraft(draft),
+      content: isChangelogDestination(draft.destinationFile)
+        ? renderChangelog(config, proposal, draft)
+        : renderCanonicalFromDraft(draft),
     }
   })
 }
@@ -527,12 +519,22 @@ function destinationExists(path: string): boolean {
 }
 
 function assertSafeDvcEnrichDestination(destinationFile: string): void {
-  if (destinationFile === "changelog.md") return
   if (!destinationFile.includes("/")) {
     throw new Error(
       `DVC enrich can only create or update variant files, not canonical root files: ${destinationFile}`,
     )
   }
+}
+
+function isChangelogDestination(destinationFile: string): boolean {
+  return basename(destinationFile) === "changelog.md"
+}
+
+function assertNotModificationDraft(sourcePath: string): void {
+  if (!basename(sourcePath).startsWith("modification_")) return
+  throw new Error(
+    `Modification drafts require a human-authored canonical patch before editor apply: ${sourcePath}`,
+  )
 }
 
 function renderCanonicalFromDraft(draft: DraftMapping): string {

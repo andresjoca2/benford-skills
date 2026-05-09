@@ -225,15 +225,15 @@ describe("benford proposal automation", () => {
     ).toBe(true)
   })
 
-  test("skips ready DVC contributions with examples until source_documents_map exists", () => {
+  test("does not require source_documents_map for DVC contributions", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
-      id: "CONTRIBUTION-2026-05-03-dvc-missing-map",
+      id: "CONTRIBUTION-2026-05-03-dvc-no-source-map",
       estado: "draft_generated",
       automationState: "ready",
       canonicalType: "DVC",
       outputIds: ["DVC-test"],
-      writeSourceDocumentMap: false,
+      declareDvcExampleMaterials: false,
     })
 
     const check = checkProposalAutomations({
@@ -241,17 +241,11 @@ describe("benford proposal automation", () => {
       runtimeDir: join(vaultRoot, ".runtime"),
     })
 
-    expect(check.contributions.count).toBe(0)
-    expect(check.skippedContributions).toEqual([
-      expect.objectContaining({
-        id: "CONTRIBUTION-2026-05-03-dvc-missing-map",
-        automationState: "ready",
-        supportedOutputs: ["DVC-test"],
-        pendingOutputs: ["DVC-test"],
-        reason: "missing DVC source_documents_map.md for DVC-test",
-      }),
+    expect(check.contributions.count).toBe(1)
+    expect(check.contributions.contributionIds).toEqual([
+      "CONTRIBUTION-2026-05-03-dvc-no-source-map",
     ])
-    expect(runProposalAutomations({ vaultRoot })).toHaveLength(0)
+    expect(check.skippedContributions).toEqual([])
   })
 
   test("skips ready contributions that already reference generated proposals", () => {
@@ -390,7 +384,7 @@ describe("benford proposal automation", () => {
     ).toBe(true)
   })
 
-  test("write mode enriches an existing DVC from a suffix output folder", () => {
+  test("write mode enriches an existing DVC with a new variant folder", () => {
     const vaultRoot = makeVault()
     writeExistingDvc(vaultRoot, "DVC-colaboradores-vigentes")
     writeContributionMap(vaultRoot, {
@@ -398,8 +392,7 @@ describe("benford proposal automation", () => {
       estado: "draft_generated",
       automationState: "ready",
       canonicalType: "DVC",
-      outputIds: ["DVC-colaboradores-vigentes-copa"],
-      flatDvc: true,
+      outputIds: ["DVC-colaboradores-vigentes"],
       variantNames: ["Copa"],
     })
 
@@ -445,10 +438,104 @@ describe("benford proposal automation", () => {
       existsSync(
         join(
           vaultRoot,
-          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes-copa",
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/README.md",
         ),
       ),
     ).toBe(false)
+  })
+
+  test("supports DVC variant drafts with shared root spec", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-dvc-root-spec",
+      estado: "draft_generated",
+      automationState: "ready",
+      canonicalType: "DVC",
+      outputIds: ["DVC-root-spec"],
+      variantNames: ["Variante RSM Merida"],
+    })
+    const outputRoot = join(
+      vaultRoot,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-dvc-root-spec/skill_outputs/explicit_knowledge/DVC-root-spec",
+    )
+    renameSync(
+      join(outputRoot, "Variante RSM Merida/spec_draft.md"),
+      join(outputRoot, "spec_draft.md"),
+    )
+
+    const check = checkProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+    })
+
+    expect(check.contributions.contributionIds).toEqual([
+      "CONTRIBUTION-2026-05-03-dvc-root-spec",
+    ])
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events[0]?.proposalGeneratorResult?.targetCanonicalId).toBe(
+      "DVC-root-spec",
+    )
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-root-spec/Variante RSM Merida/spec.md",
+        ),
+      ),
+    ).toBe(true)
+  })
+
+  test("routes partial DVC modifications as one human-review PROP", () => {
+    const vaultRoot = makeVault()
+    writeExistingDvc(vaultRoot, "DVC-test", "Copa")
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-dvc-modification",
+      estado: "draft_generated",
+      automationState: "ready",
+      canonicalType: "DVC",
+      outputIds: [],
+      declareDvcExampleMaterials: false,
+    })
+    writeDvcModificationDraft(vaultRoot, {
+      contributionId: "CONTRIBUTION-2026-05-03-dvc-modification",
+      canonicalId: "DVC-test",
+      variantName: "Copa",
+    })
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "wait_for_human",
+    ])
+    expect(events[1]?.routerResult?.decision).toBe("needs_human_decision")
+    expect(
+      existsSync(
+        join(vaultRoot, "02 Proposals/02 Needs Human Decision/PROP-0001"),
+      ),
+    ).toBe(true)
+    const proposal = readFileSync(
+      join(
+        vaultRoot,
+        "02 Proposals/02 Needs Human Decision/PROP-0001/proposal.md",
+      ),
+      "utf8",
+    )
+    expect(proposal).toContain("| Requiere humano sugerido | D | si |")
+    expect(proposal).toContain("| Copa/modification_schema.md |")
+    expect(proposal).toContain("| Copa/modification_parser.md |")
   })
 
   test("generates one DVC PROP with multiple variant folders", () => {
@@ -464,15 +551,18 @@ describe("benford proposal automation", () => {
         "Constructora Parmol",
         "Servicios Administrativos Playa San Jose",
       ],
-      sourceDocumentMapRows: [
+      canonicalMaterials: [
         {
-          variantName: "Constructora Parmol",
           sourcePath: "materials/source_documents/examples/Constructora Parmol",
+          destinationPath: "Constructora Parmol/Ejemplos/Constructora Parmol",
+          type: "variante_cliente",
         },
         {
-          variantName: "Servicios Administrativos",
           sourcePath:
             "materials/source_documents/examples/Servicios Administrativos Playa San Jose",
+          destinationPath:
+            "Servicios Administrativos/Ejemplos/Servicios Administrativos Playa San Jose",
+          type: "variante_cliente",
         },
       ],
     })
@@ -671,15 +761,9 @@ function writeContributionMap(
     canonicalType?: "DOC" | "DVC" | "DOL"
     outputIds?: string[]
     variantNames?: string[]
-    flatDvc?: boolean
     exampleFolders?: string[]
     omitIdentification?: boolean
-    writeSourceDocumentMap?: boolean
-    sourceDocumentMapRows?: Array<{
-      variantName: string
-      sourcePath: string
-      note?: string
-    }>
+    declareDvcExampleMaterials?: boolean
     canonicalMaterials?: Array<{
       sourcePath: string
       destinationPath: string
@@ -690,6 +774,7 @@ function writeContributionMap(
 ): void {
   const contributionRoot = join(vaultRoot, "01 Contribuciones", options.id)
   mkdirSync(contributionRoot, { recursive: true })
+  const variantNames = options.variantNames ?? ["Variante Test"]
   for (const exampleFolder of options.exampleFolders ?? ["Selim"]) {
     const exampleRoot = join(
       contributionRoot,
@@ -699,21 +784,34 @@ function writeContributionMap(
     mkdirSync(exampleRoot, { recursive: true })
     writeFileSync(join(exampleRoot, "example.pdf"), "fixture", "utf8")
   }
-  for (const material of options.canonicalMaterials ?? []) {
+  const effectiveCanonicalMaterials =
+    options.canonicalMaterials ??
+    (options.canonicalType === "DVC" &&
+    options.declareDvcExampleMaterials !== false
+      ? (options.exampleFolders ?? ["Selim"]).map((exampleFolder) => ({
+          sourcePath: `materials/source_documents/examples/${exampleFolder}`,
+          destinationPath: `${variantNames[0] ?? "Variante Test"}/Ejemplos/${exampleFolder}`,
+          type: "variante_cliente",
+          note: "Fixture material",
+        }))
+      : [])
+  for (const material of effectiveCanonicalMaterials) {
     const materialPath = join(contributionRoot, material.sourcePath)
-    mkdirSync(join(materialPath, ".."), { recursive: true })
-    writeFileSync(materialPath, "fixture", "utf8")
+    if (!existsSync(materialPath)) {
+      mkdirSync(join(materialPath, ".."), { recursive: true })
+      writeFileSync(materialPath, "fixture", "utf8")
+    }
   }
   const proposalRow = options.proposalId
     ? `| ${options.proposalId} | Draft creado |`
     : "| Pendiente | N/A |"
   const canonicalMaterialsSection =
-    options.canonicalMaterials && options.canonicalMaterials.length > 0
+    effectiveCanonicalMaterials.length > 0
       ? `
 ## Materiales canonicos sugeridos
 | Origen en contribution | Destino canonico esperado | Tipo | Copiar | Nota |
 |---|---|---|---|---|
-${options.canonicalMaterials.map((material) => `| ${material.sourcePath} | ${material.destinationPath} | ${material.type} | si | ${material.note ?? "Fixture material"} |`).join("\n")}
+${effectiveCanonicalMaterials.map((material) => `| ${material.sourcePath} | ${material.destinationPath} | ${material.type} | si | ${material.note ?? "Fixture material"} |`).join("\n")}
 `
       : ""
 
@@ -746,11 +844,7 @@ ${canonicalMaterialsSection}
     `${options.canonicalType ?? "DOC"}-test`,
   ]) {
     writeDrafts(contributionRoot, outputId, {
-      variantNames: options.variantNames,
-      flatDvc: options.flatDvc,
-      exampleFolders: options.exampleFolders ?? ["Selim"],
-      writeSourceDocumentMap: options.writeSourceDocumentMap,
-      sourceDocumentMapRows: options.sourceDocumentMapRows,
+      variantNames,
     })
   }
 }
@@ -760,14 +854,6 @@ function writeDrafts(
   outputId: string,
   options: {
     variantNames?: string[]
-    flatDvc?: boolean
-    exampleFolders?: string[]
-    writeSourceDocumentMap?: boolean
-    sourceDocumentMapRows?: Array<{
-      variantName: string
-      sourcePath: string
-      note?: string
-    }>
   } = {},
 ): void {
   const variantNames = options.variantNames ?? ["Variante Test"]
@@ -777,8 +863,8 @@ function writeDrafts(
     outputId,
   )
   mkdirSync(outputRoot, { recursive: true })
-  writeFileSync(join(outputRoot, "spec_draft.md"), "# Spec draft\n", "utf8")
   if (outputId.startsWith("DOC-")) {
+    writeFileSync(join(outputRoot, "spec_draft.md"), "# Spec draft\n", "utf8")
     writeFileSync(
       join(outputRoot, "schema_draft.md"),
       "# Schema draft\n",
@@ -791,19 +877,17 @@ function writeDrafts(
     )
   }
   if (outputId.startsWith("DVC-")) {
-    const variantRoots = options.flatDvc
-      ? [outputRoot]
-      : variantNames.map((variantName) => join(outputRoot, variantName))
-    for (const variantRoot of variantRoots) {
+    for (const variantName of variantNames) {
+      const variantRoot = join(outputRoot, variantName)
       mkdirSync(variantRoot, { recursive: true })
       writeFileSync(
-        join(variantRoot, "raw_schema_draft.md"),
-        "# Raw schema draft\n",
+        join(variantRoot, "spec_draft.md"),
+        "# Spec draft\n",
         "utf8",
       )
       writeFileSync(
-        join(variantRoot, "mapping_draft.md"),
-        "# Mapping draft\n",
+        join(variantRoot, "raw_schema_draft.md"),
+        "# Raw schema draft\n",
         "utf8",
       )
       writeFileSync(
@@ -812,29 +896,9 @@ function writeDrafts(
         "utf8",
       )
     }
-    if (options.writeSourceDocumentMap !== false) {
-      const rows =
-        options.sourceDocumentMapRows ??
-        (options.exampleFolders ?? ["Selim"]).map((exampleFolder) => ({
-          variantName: variantNames[0] ?? "Variante Test",
-          sourcePath: `materials/source_documents/examples/${exampleFolder}`,
-          note: "Fixture test mapping",
-        }))
-      writeFileSync(
-        join(outputRoot, "source_documents_map.md"),
-        `# Source Documents Map
-
-## Mapa de ejemplos por variante
-
-| Variante | Origen en materials | Copiar como ejemplo | Nota |
-|---|---|---|---|
-${rows.map((row) => `| ${row.variantName} | ${row.sourcePath} | si | ${row.note ?? "Fixture test mapping"} |`).join("\n")}
-`,
-        "utf8",
-      )
-    }
   }
   if (outputId.startsWith("DOL-")) {
+    writeFileSync(join(outputRoot, "spec_draft.md"), "# Spec draft\n", "utf8")
     writeFileSync(
       join(outputRoot, "document_transcript_draft.md"),
       "# Transcript draft\n",
@@ -844,18 +908,55 @@ ${rows.map((row) => `| ${row.variantName} | ${row.sourcePath} | si | ${row.note 
   writeFileSync(join(outputRoot, "notes.md"), "# Notes\n", "utf8")
 }
 
-function writeExistingDvc(vaultRoot: string, canonicalId: string): void {
+function writeExistingDvc(
+  vaultRoot: string,
+  canonicalId: string,
+  variantName?: string,
+): void {
   const canonicalRoot = join(
     vaultRoot,
     "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente",
     canonicalId,
   )
   mkdirSync(canonicalRoot, { recursive: true })
-  writeFileSync(join(canonicalRoot, "spec.md"), "# Existing spec\n", "utf8")
-  writeFileSync(join(canonicalRoot, "README.md"), "# Existing readme\n", "utf8")
+  if (!variantName) return
+  const variantRoot = join(canonicalRoot, variantName)
+  mkdirSync(variantRoot, { recursive: true })
+  writeFileSync(join(variantRoot, "spec.md"), "# Existing spec\n", "utf8")
+  writeFileSync(join(variantRoot, "raw_schema.md"), "old raw schema\n", "utf8")
+  writeFileSync(join(variantRoot, "parser_config.md"), "old parser\n", "utf8")
   writeFileSync(
-    join(canonicalRoot, "changelog.md"),
+    join(variantRoot, "changelog.md"),
     "# Existing changelog\n",
+    "utf8",
+  )
+}
+
+function writeDvcModificationDraft(
+  vaultRoot: string,
+  options: {
+    contributionId: string
+    canonicalId: string
+    variantName: string
+  },
+): void {
+  const variantRoot = join(
+    vaultRoot,
+    "01 Contribuciones",
+    options.contributionId,
+    "skill_outputs/explicit_knowledge",
+    options.canonicalId,
+    options.variantName,
+  )
+  mkdirSync(variantRoot, { recursive: true })
+  writeFileSync(
+    join(variantRoot, "modification_schema.md"),
+    "# Modification schema\n\nAgregar columna x al raw schema.\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(variantRoot, "modification_parser.md"),
+    "# Modification parser\n\nActualizar parser_config para columna x.\n",
     "utf8",
   )
 }

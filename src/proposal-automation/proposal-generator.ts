@@ -43,10 +43,9 @@ interface SupportedDraftPackage {
   readonly sourceCanonicalId: string
   readonly path: string
   readonly files: {
-    readonly spec: string
+    readonly spec?: string
     readonly schema?: string
     readonly rawSchema?: string
-    readonly mapping?: string
     readonly parserConfig?: string
     readonly documentTranscript?: string
     readonly notes?: string
@@ -65,19 +64,17 @@ interface CanonicalMaterial {
   readonly note: string
 }
 
-interface SourceDocumentMapping {
-  readonly variantName: string
-  readonly sourcePath: string
-  readonly note: string
-}
-
 interface DvcVariantDraft {
   readonly name: string
   readonly path: string
+  readonly mode: "full" | "modification"
   readonly files: {
-    readonly rawSchema: string
-    readonly mapping: string
-    readonly parserConfig: string
+    readonly spec?: string
+    readonly rawSchema?: string
+    readonly parserConfig?: string
+    readonly modificationSpec?: string
+    readonly modificationSchema?: string
+    readonly modificationParser?: string
   }
 }
 
@@ -209,18 +206,8 @@ function inspectContributionPackage(
   const pendingOutputs = pendingDraftPackages.map(
     (draftPackage) => draftPackage.sourceCanonicalId,
   )
-  const missingDvcSourceMapOutputs = pendingDraftPackages
-    .filter(
-      (draftPackage) =>
-        draftPackage.canonicalType === "DVC" &&
-        contributionHasExampleMaterials(contribution) &&
-        !existsSync(dvcSourceDocumentsMapPath(draftPackage)),
-    )
-    .map((draftPackage) => draftPackage.sourceCanonicalId)
-  const ready =
-    automationState === "ready" &&
-    pendingOutputs.length > 0 &&
-    missingDvcSourceMapOutputs.length === 0
+  const missingDvcSourceMapOutputs: string[] = []
+  const ready = automationState === "ready" && pendingOutputs.length > 0
   return {
     id,
     path: contribution.path,
@@ -273,9 +260,6 @@ function contributionSkipReason(options: {
   }
   if (options.automationState !== "ready") {
     return `Estado automation is ${options.automationState}`
-  }
-  if (options.missingDvcSourceMapOutputs.length > 0) {
-    return `missing DVC source_documents_map.md for ${options.missingDvcSourceMapOutputs.join(", ")}`
   }
   if (options.pendingOutputs.length > 0) return undefined
   if (options.supportedOutputs.length === 0) {
@@ -403,15 +387,13 @@ function readSupportedDraftPackage(
   const spec = join(path, "spec_draft.md")
   const schema = join(path, "schema_draft.md")
   const rawSchema = join(path, "raw_schema_draft.md")
-  const mapping = join(path, "mapping_draft.md")
   const parserConfig = join(path, "parser_config_draft.md")
   const documentTranscript = join(path, "document_transcript_draft.md")
   const notes = join(path, "notes.md")
   const files = {
-    spec,
+    spec: existsSync(spec) ? spec : undefined,
     schema,
     rawSchema: existsSync(rawSchema) ? rawSchema : undefined,
-    mapping: existsSync(mapping) ? mapping : undefined,
     parserConfig,
     documentTranscript: existsSync(documentTranscript)
       ? documentTranscript
@@ -426,11 +408,7 @@ function readSupportedDraftPackage(
   }
 
   if (canonicalType === "DVC") {
-    if (!existsSync(spec)) return null
-    const variants = findDvcVariantDrafts(
-      path,
-      dvcFlatVariantName(sourceCanonicalId, canonicalId),
-    )
+    const variants = findDvcVariantDrafts(config, canonicalId, path)
     if (variants.length === 0) return null
     return {
       canonicalType,
@@ -467,63 +445,61 @@ function resolveDvcTargetCanonicalId(
   return existing[0] ?? sourceCanonicalId
 }
 
-function dvcFlatVariantName(
-  sourceCanonicalId: string,
-  targetCanonicalId: string,
-): string {
-  if (
-    sourceCanonicalId !== targetCanonicalId &&
-    sourceCanonicalId.startsWith(`${targetCanonicalId}-`)
-  ) {
-    return humanizeCanonicalId(
-      `DVC-${sourceCanonicalId.slice(targetCanonicalId.length + 1)}`,
-    )
-  }
-  return humanizeCanonicalId(sourceCanonicalId)
-}
-
 function findDvcVariantDrafts(
+  config: RouterConfig,
+  canonicalId: string,
   path: string,
-  flatVariantName: string,
 ): DvcVariantDraft[] {
-  const flatRawSchema = join(path, "raw_schema_draft.md")
-  const flatMapping = join(path, "mapping_draft.md")
-  const flatParserConfig = join(path, "parser_config_draft.md")
-  if (
-    existsSync(flatRawSchema) &&
-    existsSync(flatMapping) &&
-    existsSync(flatParserConfig)
-  ) {
-    return [
-      {
-        name: flatVariantName,
-        path,
-        files: {
-          rawSchema: flatRawSchema,
-          mapping: flatMapping,
-          parserConfig: flatParserConfig,
-        },
-      },
-    ]
-  }
-
+  const canonicalRoot = join(
+    config.vaultRoot,
+    "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente",
+    canonicalId,
+  )
+  const rootSpec = join(path, "spec_draft.md")
   return readdirSync(path, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => {
+    .map((entry): DvcVariantDraft | null => {
       const variantPath = join(path, entry.name)
+      const spec = join(variantPath, "spec_draft.md")
+      const effectiveSpec = existsSync(spec)
+        ? spec
+        : existsSync(rootSpec)
+          ? rootSpec
+          : undefined
       const rawSchema = join(variantPath, "raw_schema_draft.md")
-      const mapping = join(variantPath, "mapping_draft.md")
       const parserConfig = join(variantPath, "parser_config_draft.md")
-      if (
-        !existsSync(rawSchema) ||
-        !existsSync(mapping) ||
-        !existsSync(parserConfig)
-      )
-        return null
+      const modificationSpec = join(variantPath, "modification_spec.md")
+      const modificationSchema = join(variantPath, "modification_schema.md")
+      const modificationParser = join(variantPath, "modification_parser.md")
+      const hasFullDrafts =
+        Boolean(effectiveSpec) &&
+        existsSync(rawSchema) &&
+        existsSync(parserConfig)
+      const hasModifications =
+        existsSync(modificationSpec) ||
+        existsSync(modificationSchema) ||
+        existsSync(modificationParser)
+      const variantExists = existsSync(join(canonicalRoot, entry.name))
+      if (!variantExists && !hasFullDrafts) return null
+      if (variantExists && !hasFullDrafts && !hasModifications) return null
       return {
         name: entry.name,
         path: variantPath,
-        files: { rawSchema, mapping, parserConfig },
+        mode: hasFullDrafts ? "full" : "modification",
+        files: {
+          spec: effectiveSpec,
+          rawSchema: existsSync(rawSchema) ? rawSchema : undefined,
+          parserConfig: existsSync(parserConfig) ? parserConfig : undefined,
+          modificationSpec: existsSync(modificationSpec)
+            ? modificationSpec
+            : undefined,
+          modificationSchema: existsSync(modificationSchema)
+            ? modificationSchema
+            : undefined,
+          modificationParser: existsSync(modificationParser)
+            ? modificationParser
+            : undefined,
+        },
       }
     })
     .filter((variant): variant is DvcVariantDraft => Boolean(variant))
@@ -558,6 +534,7 @@ function renderProposal(
     contribution,
     draftPackage,
   )
+  const requiresHuman = dvcHasModifications(draftPackage)
   const touchesCanon = changeType === "new" ? "no" : "si"
   const contributionPath = toVaultRelative(config, contribution.path)
   const sourceInventory = join(
@@ -589,11 +566,7 @@ function renderProposal(
           ],
         ]
       : []),
-    [
-      "Spec draft",
-      toVaultRelative(config, draftPackage.files.spec),
-      `Draft funcional ${draftPackage.canonicalType}`,
-    ],
+    ...rootSpecEvidenceRows(config, draftPackage),
     ...draftEvidenceRows(config, draftPackage),
   ]
   const draftRows = [
@@ -638,7 +611,7 @@ ${renderMarkdownTable(
     ["Toca canon existente", "M", touchesCanon],
     ["Contradiccion detectada", "M", "no"],
     ["Riesgo inicial", "M", "medium"],
-    ["Requiere humano sugerido", "D", "no"],
+    ["Requiere humano sugerido", "D", requiresHuman ? "si" : "no"],
   ],
 )}
 
@@ -751,23 +724,9 @@ function draftEvidenceRows(
         ],
       ]
     case "DVC":
-      return dvcVariants(draftPackage).flatMap((variant) => [
-        [
-          `${variant.name} raw schema draft`,
-          toVaultRelative(config, variant.files.rawSchema),
-          "Draft de raw schema DVC",
-        ],
-        [
-          `${variant.name} mapping draft`,
-          toVaultRelative(config, variant.files.mapping),
-          "Draft de mapping hacia DOC estable",
-        ],
-        [
-          `${variant.name} parser config draft`,
-          toVaultRelative(config, variant.files.parserConfig),
-          "Draft de parser DVC",
-        ],
-      ])
+      return dvcVariants(draftPackage).flatMap((variant) =>
+        dvcVariantEvidenceRows(config, variant),
+      )
     case "DOL":
       return [
         [
@@ -782,6 +741,70 @@ function draftEvidenceRows(
   }
 }
 
+function rootSpecEvidenceRows(
+  config: RouterConfig,
+  draftPackage: SupportedDraftPackage,
+): string[][] {
+  if (!draftPackage.files.spec) return []
+  return [
+    [
+      "Spec draft",
+      toVaultRelative(config, draftPackage.files.spec),
+      `Draft funcional ${draftPackage.canonicalType}`,
+    ],
+  ]
+}
+
+function dvcVariantEvidenceRows(
+  config: RouterConfig,
+  variant: DvcVariantDraft,
+): string[][] {
+  const rows: string[][] = []
+  if (variant.files.spec) {
+    rows.push([
+      `${variant.name} spec draft`,
+      toVaultRelative(config, variant.files.spec),
+      "Draft de spec DVC",
+    ])
+  }
+  if (variant.files.rawSchema) {
+    rows.push([
+      `${variant.name} raw schema draft`,
+      toVaultRelative(config, variant.files.rawSchema),
+      "Draft de raw schema DVC",
+    ])
+  }
+  if (variant.files.parserConfig) {
+    rows.push([
+      `${variant.name} parser config draft`,
+      toVaultRelative(config, variant.files.parserConfig),
+      "Draft de parser DVC",
+    ])
+  }
+  if (variant.files.modificationSpec) {
+    rows.push([
+      `${variant.name} modification spec`,
+      toVaultRelative(config, variant.files.modificationSpec),
+      "Instruccion de cambio para spec.md",
+    ])
+  }
+  if (variant.files.modificationSchema) {
+    rows.push([
+      `${variant.name} modification schema`,
+      toVaultRelative(config, variant.files.modificationSchema),
+      "Instruccion de cambio para raw_schema.md",
+    ])
+  }
+  if (variant.files.modificationParser) {
+    rows.push([
+      `${variant.name} modification parser`,
+      toVaultRelative(config, variant.files.modificationParser),
+      "Instruccion de cambio para parser_config.md",
+    ])
+  }
+  return rows
+}
+
 function draftRowsForPackage(
   config: RouterConfig,
   draftPackage: SupportedDraftPackage,
@@ -792,7 +815,7 @@ function draftRowsForPackage(
       return [
         [
           "spec_draft.md",
-          toVaultRelative(config, draftPackage.files.spec),
+          toVaultRelative(config, requiredPath(draftPackage.files.spec)),
           "spec.md",
         ],
         [
@@ -810,44 +833,15 @@ function draftRowsForPackage(
         ],
       ]
     case "DVC":
-      return [
-        ...(changeType === "new"
-          ? [
-              [
-                "spec_draft.md",
-                toVaultRelative(config, draftPackage.files.spec),
-                "spec.md",
-              ],
-              [
-                "spec_draft.md",
-                toVaultRelative(config, draftPackage.files.spec),
-                "README.md",
-              ],
-            ]
-          : []),
-        ...dvcVariants(draftPackage).flatMap((variant) => [
-          [
-            `${variant.name}/raw_schema_draft.md`,
-            toVaultRelative(config, variant.files.rawSchema),
-            `${variant.name}/raw_schema.md`,
-          ],
-          [
-            `${variant.name}/mapping_draft.md`,
-            toVaultRelative(config, variant.files.mapping),
-            `${variant.name}/mapping.md`,
-          ],
-          [
-            `${variant.name}/parser_config_draft.md`,
-            toVaultRelative(config, variant.files.parserConfig),
-            `${variant.name}/parser_config.md`,
-          ],
-        ]),
-      ]
+      void changeType
+      return dvcVariants(draftPackage).flatMap((variant) =>
+        dvcVariantDraftRows(config, variant),
+      )
     case "DOL":
       return [
         [
           "spec_draft.md",
-          toVaultRelative(config, draftPackage.files.spec),
+          toVaultRelative(config, requiredPath(draftPackage.files.spec)),
           "spec.md",
         ],
         [
@@ -862,25 +856,83 @@ function draftRowsForPackage(
   }
 }
 
+function dvcVariantDraftRows(
+  config: RouterConfig,
+  variant: DvcVariantDraft,
+): string[][] {
+  const rows: string[][] = []
+  if (variant.files.spec) {
+    rows.push([
+      `${variant.name}/spec_draft.md`,
+      toVaultRelative(config, variant.files.spec),
+      `${variant.name}/spec.md`,
+    ])
+  }
+  if (variant.files.rawSchema) {
+    rows.push([
+      `${variant.name}/raw_schema_draft.md`,
+      toVaultRelative(config, variant.files.rawSchema),
+      `${variant.name}/raw_schema.md`,
+    ])
+  }
+  if (variant.files.parserConfig) {
+    rows.push([
+      `${variant.name}/parser_config_draft.md`,
+      toVaultRelative(config, variant.files.parserConfig),
+      `${variant.name}/parser_config.md`,
+    ])
+  }
+  if (variant.files.modificationSpec) {
+    rows.push([
+      `${variant.name}/modification_spec.md`,
+      toVaultRelative(config, variant.files.modificationSpec),
+      `${variant.name}/spec.md`,
+    ])
+  }
+  if (variant.files.modificationSchema) {
+    rows.push([
+      `${variant.name}/modification_schema.md`,
+      toVaultRelative(config, variant.files.modificationSchema),
+      `${variant.name}/raw_schema.md`,
+    ])
+  }
+  if (variant.files.modificationParser) {
+    rows.push([
+      `${variant.name}/modification_parser.md`,
+      toVaultRelative(config, variant.files.modificationParser),
+      `${variant.name}/parser_config.md`,
+    ])
+  }
+  return rows
+}
+
 function changelogDraftRows(
   config: RouterConfig,
   draftPackage: SupportedDraftPackage,
 ): string[][] {
+  if (draftPackage.canonicalType === "DVC") {
+    return dvcVariants(draftPackage).flatMap((variant) => {
+      const source =
+        variant.files.spec ??
+        variant.files.modificationSpec ??
+        variant.files.modificationSchema ??
+        variant.files.modificationParser
+      if (!source) return []
+      return [
+        [
+          `${variant.name}/${basename(source)}`,
+          toVaultRelative(config, source),
+          `${variant.name}/changelog.md`,
+        ],
+      ]
+    })
+  }
   if (draftPackage.files.notes) {
     return [
       [
         "notes.md",
         toVaultRelative(config, draftPackage.files.notes),
         "changelog.md / notas de aplicacion",
-      ],
-    ]
-  }
-  if (draftPackage.canonicalType === "DVC") {
-    return [
-      [
-        "spec_draft.md",
-        toVaultRelative(config, draftPackage.files.spec),
-        "changelog.md",
       ],
     ]
   }
@@ -916,7 +968,7 @@ function targetRowsForPackage(
         ],
         [
           "Archivos canonicos esperados",
-          "README.md / spec.md / changelog.md / <variante>/raw_schema.md / <variante>/mapping.md / <variante>/parser_config.md",
+          "<variante>/spec.md / <variante>/raw_schema.md / <variante>/parser_config.md / <variante>/changelog.md / <variante>/Ejemplos si aplica",
         ],
       ]
     case "DOL":
@@ -940,7 +992,7 @@ function changeDescription(
     case "DOC":
       return `${action} canonico \`${draftPackage.canonicalId}\` para documentar ${name} como documento fuente estable de auditoria IMSS.`
     case "DVC":
-      return `${action} canonico \`${draftPackage.canonicalId}\` para documentar ${name} como documento variable de cliente con variantes internas. Cada variante contiene raw schema, mapping y parser config propios, compartiendo spec, README y changelog.`
+      return `${action} canonico \`${draftPackage.canonicalId}\` para documentar ${name} como documento variable de cliente con variantes autonomas. Cada variante contiene su propio spec, raw schema, parser config, changelog y ejemplos.`
     case "DOL":
       return `${action} canonico \`${draftPackage.canonicalId}\` para documentar el fundamento normativo ${name} y su transcripcion operativa.`
   }
@@ -977,14 +1029,17 @@ function detailRowsForPackage(
         ],
         [
           "Software o formato origen",
-          "Ver spec_draft.md y materiales fuente de la contribution.",
+          "Ver spec_draft.md de cada variante y materiales fuente de la contribution.",
         ],
         ["Raw schema esperado", "Ver cada <variante>/raw_schema_draft.md."],
         [
           "Parser config esperado",
           "Ver cada <variante>/parser_config_draft.md.",
         ],
-        ["Relacion con DOC estable", "Ver cada <variante>/mapping_draft.md."],
+        [
+          "Modificaciones parciales",
+          "Ver modification_spec.md, modification_schema.md o modification_parser.md cuando aplique.",
+        ],
       ]
     case "DOL":
       return [
@@ -1087,12 +1142,14 @@ function expectedCanonicalRows(
     `${targetCanonicalPath}${destinationFile}`,
     `Derivado de ${draftName}`,
   ])
-  rows.push([
-    changeType === "new" ? "crear" : "modificar",
-    `${draftPackage.canonicalId}/changelog.md`,
-    `${targetCanonicalPath}changelog.md`,
-    `Registro de cambio desde ${proposalId}`,
-  ])
+  if (draftPackage.canonicalType !== "DVC") {
+    rows.push([
+      changeType === "new" ? "crear" : "modificar",
+      `${draftPackage.canonicalId}/changelog.md`,
+      `${targetCanonicalPath}changelog.md`,
+      `Registro de cambio desde ${proposalId}`,
+    ])
+  }
   for (const material of canonicalMaterials) {
     rows.push([
       "copiar",
@@ -1107,9 +1164,6 @@ function expectedCanonicalRows(
 function expectedDraftDestinations(
   draftPackage: SupportedDraftPackage,
 ): Array<[string, string]> {
-  const includeDvcParentFiles =
-    draftPackage.canonicalType !== "DVC" ||
-    draftPackage.sourceCanonicalId === draftPackage.canonicalId
   switch (draftPackage.canonicalType) {
     case "DOC":
       return [
@@ -1118,26 +1172,57 @@ function expectedDraftDestinations(
         ["parser_config_draft.md", "parser_config.md"],
       ]
     case "DVC": {
-      const parentRows: Array<[string, string]> = includeDvcParentFiles
-        ? [
-            ["spec_draft.md", "spec.md"],
-            ["spec_draft.md", "README.md"],
-          ]
-        : []
-      const variantRows: Array<[string, string]> = dvcVariants(
-        draftPackage,
-      ).flatMap((variant) => [
-        [
-          `${variant.name}/raw_schema_draft.md`,
-          `${variant.name}/raw_schema.md`,
-        ],
-        [`${variant.name}/mapping_draft.md`, `${variant.name}/mapping.md`],
-        [
-          `${variant.name}/parser_config_draft.md`,
-          `${variant.name}/parser_config.md`,
-        ],
-      ])
-      return [...parentRows, ...variantRows]
+      return dvcVariants(draftPackage).flatMap((variant) => {
+        const rows: Array<[string, string]> = []
+        if (variant.files.spec) {
+          rows.push([
+            `${variant.name}/spec_draft.md`,
+            `${variant.name}/spec.md`,
+          ])
+        }
+        if (variant.files.rawSchema) {
+          rows.push([
+            `${variant.name}/raw_schema_draft.md`,
+            `${variant.name}/raw_schema.md`,
+          ])
+        }
+        if (variant.files.parserConfig) {
+          rows.push([
+            `${variant.name}/parser_config_draft.md`,
+            `${variant.name}/parser_config.md`,
+          ])
+        }
+        if (variant.files.modificationSpec) {
+          rows.push([
+            `${variant.name}/modification_spec.md`,
+            `${variant.name}/spec.md`,
+          ])
+        }
+        if (variant.files.modificationSchema) {
+          rows.push([
+            `${variant.name}/modification_schema.md`,
+            `${variant.name}/raw_schema.md`,
+          ])
+        }
+        if (variant.files.modificationParser) {
+          rows.push([
+            `${variant.name}/modification_parser.md`,
+            `${variant.name}/parser_config.md`,
+          ])
+        }
+        const changelogSource =
+          variant.files.spec ??
+          variant.files.modificationSpec ??
+          variant.files.modificationSchema ??
+          variant.files.modificationParser
+        if (changelogSource) {
+          rows.push([
+            `${variant.name}/${basename(changelogSource)}`,
+            `${variant.name}/changelog.md`,
+          ])
+        }
+        return rows
+      })
     }
     case "DOL":
       return [
@@ -1174,26 +1259,7 @@ function discoverCanonicalMaterials(
     contribution.path,
     "materials/source_documents/examples",
   )
-  if (draftPackage.canonicalType === "DVC") {
-    for (const mapping of loadDvcSourceDocumentMappings(
-      config,
-      contribution,
-      draftPackage,
-    )) {
-      const stat = statSync(mapping.sourcePath)
-      const sourceName = basename(mapping.sourcePath)
-      materials.push({
-        action: stat.isDirectory() ? "copiar carpeta" : "copiar archivo",
-        sourcePath: mapping.sourcePath,
-        destinationPath: `${mapping.variantName}/Ejemplos/${sourceName}${stat.isDirectory() ? "/" : ""}`,
-        sourceName,
-        sourceOwner: mapping.variantName,
-        type: "variante_cliente",
-        preserveStructure: stat.isDirectory() ? "si" : "no",
-        note: mapping.note,
-      })
-    }
-  } else if (existsSync(examplesRoot)) {
+  if (draftPackage.canonicalType !== "DVC" && existsSync(examplesRoot)) {
     for (const entry of readdirSync(examplesRoot, { withFileTypes: true }).sort(
       (a, b) => a.name.localeCompare(b.name),
     )) {
@@ -1332,93 +1398,6 @@ function collectLegacySourceDocuments(options: {
   }
 }
 
-function loadDvcSourceDocumentMappings(
-  config: RouterConfig,
-  contribution: ContributionPackage,
-  draftPackage: SupportedDraftPackage,
-): SourceDocumentMapping[] {
-  const mapPath = dvcSourceDocumentsMapPath(draftPackage)
-  if (!existsSync(mapPath)) {
-    if (contributionHasExampleMaterials(contribution)) {
-      throw new Error(
-        `Missing DVC source_documents_map.md for ${draftPackage.sourceCanonicalId}. Proposal Generator does not infer DVC example variants.`,
-      )
-    }
-    return []
-  }
-
-  const mapMarkdown = readFileSync(mapPath, "utf8")
-  const table =
-    parseFirstMarkdownTable(
-      extractSection(mapMarkdown, "Mapa de ejemplos por variante"),
-    ) ?? parseFirstMarkdownTable(mapMarkdown)
-  const variantHeader = headerByName(table?.headers ?? [], "Variante")
-  const sourceHeader = headerByName(table?.headers ?? [], "Origen en materials")
-  const copyHeader = headerByName(table?.headers ?? [], "Copiar como ejemplo")
-  const noteHeader = headerByName(table?.headers ?? [], "Nota")
-  if (!table || !variantHeader || !sourceHeader) {
-    throw new Error(
-      `Invalid DVC source_documents_map.md for ${draftPackage.sourceCanonicalId}: expected columns Variante and Origen en materials.`,
-    )
-  }
-
-  const variants = dvcVariants(draftPackage)
-  const variantByName = new Map(
-    variants.map((variant) => [normalizeName(variant.name), variant.name]),
-  )
-  return table.rows.flatMap((row) => {
-    const shouldCopy = normalizeName(stripTicks(row[copyHeader ?? ""])) || "si"
-    if (["no", "false", "n"].includes(shouldCopy)) return []
-    const rawVariantName = stripTicks(row[variantHeader])
-    const variantName = variantByName.get(normalizeName(rawVariantName))
-    if (!variantName) {
-      throw new Error(
-        `Invalid DVC source_documents_map.md for ${draftPackage.sourceCanonicalId}: unknown variant "${rawVariantName}".`,
-      )
-    }
-    const sourcePath = resolveContributionSourcePath(
-      config,
-      contribution,
-      stripTicks(row[sourceHeader]),
-    )
-    if (!existsSync(sourcePath)) {
-      throw new Error(
-        `Invalid DVC source_documents_map.md for ${draftPackage.sourceCanonicalId}: source does not exist: ${row[sourceHeader]}.`,
-      )
-    }
-    return [
-      {
-        variantName,
-        sourcePath,
-        note:
-          stripTicks(row[noteHeader ?? ""]) ||
-          "Copiar material fuente aprobado segun source_documents_map.md.",
-      },
-    ]
-  })
-}
-
-function contributionHasExampleMaterials(
-  contribution: Pick<ContributionPackage, "path">,
-): boolean {
-  const examplesRoot = join(
-    contribution.path,
-    "materials/source_documents/examples",
-  )
-  return (
-    existsSync(examplesRoot) &&
-    readdirSync(examplesRoot, { withFileTypes: true }).some(
-      (entry) => entry.isDirectory() || entry.isFile(),
-    )
-  )
-}
-
-function dvcSourceDocumentsMapPath(
-  draftPackage: SupportedDraftPackage,
-): string {
-  return join(draftPackage.path, "source_documents_map.md")
-}
-
 function resolveContributionSourcePath(
   config: RouterConfig,
   contribution: ContributionPackage,
@@ -1464,6 +1443,21 @@ function dvcVariants(
     throw new Error(`Missing DVC variants for ${draftPackage.canonicalId}.`)
   }
   return draftPackage.variants
+}
+
+function dvcHasModifications(draftPackage: SupportedDraftPackage): boolean {
+  return (
+    draftPackage.canonicalType === "DVC" &&
+    dvcVariants(draftPackage).some(
+      (variant) =>
+        variant.mode === "modification" ||
+        Boolean(
+          variant.files.modificationSpec ??
+            variant.files.modificationSchema ??
+            variant.files.modificationParser,
+        ),
+    )
+  )
 }
 
 function requiredPath(path: string | undefined): string {

@@ -108,16 +108,19 @@ describe("benford canonical editor", () => {
 
     expect(plan.targetCanonicalId).toBe("DVC-test")
     expect(plan.canonicalFiles.map((file) => file.destinationPath)).toContain(
+      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/spec.md",
+    )
+    expect(plan.canonicalFiles.map((file) => file.destinationPath)).toContain(
       "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/raw_schema.md",
     )
     expect(
       existsSync(
         join(
           vaultRoot,
-          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/mapping.md",
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/README.md",
         ),
       ),
-    ).toBe(true)
+    ).toBe(false)
     expect(
       existsSync(join(vaultRoot, "02 Proposals/04 Applied/PROP-0004")),
     ).toBe(true)
@@ -199,13 +202,13 @@ describe("benford canonical editor", () => {
     )
     const changelogPath = join(
       vaultRoot,
-      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/changelog.md",
+      "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Copa/changelog.md",
     )
     expect(plan.canonicalFiles.map((file) => file.action)).toEqual([
       "create",
       "create",
       "create",
-      "update",
+      "create",
     ])
     expect(existsSync(rawSchemaPath)).toBe(true)
     expect(readFileSync(rawSchemaPath, "utf8")).toContain("Raw schema fixture.")
@@ -307,14 +310,6 @@ function makeVault(): string {
   writeFileSync(
     join(
       root,
-      "01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/mapping_draft.md",
-    ),
-    "# Mapping Draft\n\n## Proposito\nMapping fixture.\n",
-    "utf8",
-  )
-  writeFileSync(
-    join(
-      root,
       "01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/parser_config_draft.md",
     ),
     "# Parser Config Draft\n\n## Proposito\nParser fixture.\n",
@@ -382,19 +377,17 @@ function writeExistingDvc(
     canonicalId,
   )
   mkdirSync(canonicalRoot, { recursive: true })
-  writeFileSync(join(canonicalRoot, "spec.md"), "# Existing spec\n", "utf8")
-  writeFileSync(join(canonicalRoot, "README.md"), "# Existing readme\n", "utf8")
-  writeFileSync(
-    join(canonicalRoot, "changelog.md"),
-    "# Existing changelog\n",
-    "utf8",
-  )
   if (!variantName) return
   const variantRoot = join(canonicalRoot, variantName)
   mkdirSync(variantRoot, { recursive: true })
+  writeFileSync(join(variantRoot, "spec.md"), "# Existing spec\n", "utf8")
   writeFileSync(join(variantRoot, "raw_schema.md"), "old raw schema\n", "utf8")
-  writeFileSync(join(variantRoot, "mapping.md"), "old mapping\n", "utf8")
   writeFileSync(join(variantRoot, "parser_config.md"), "old parser\n", "utf8")
+  writeFileSync(
+    join(variantRoot, "changelog.md"),
+    "# Existing changelog\n",
+    "utf8",
+  )
 }
 
 function proposal(proposalId: string): string {
@@ -524,12 +517,10 @@ Crear DVC-test.
 ## Drafts usados
 | Draft | Ubicacion | Archivo canonico destino |
 |---|---|---|
-| spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | spec.md |
-| spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | README.md |
-| raw_schema_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/raw_schema_draft.md | Variante Test/raw_schema.md |
-| mapping_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/mapping_draft.md | Variante Test/mapping.md |
-| parser_config_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/parser_config_draft.md | Variante Test/parser_config.md |
-| notes.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/notes.md | changelog.md / notas de aplicacion |
+| Variante Test/spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | Variante Test/spec.md |
+| Variante Test/raw_schema_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/raw_schema_draft.md | Variante Test/raw_schema.md |
+| Variante Test/parser_config_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/parser_config_draft.md | Variante Test/parser_config.md |
+| Variante Test/spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | Variante Test/changelog.md |
 
 ## Canonicos relacionados
 | Canonico | Relacion |
@@ -542,7 +533,10 @@ N/A
 ## Archivos canonicos esperados
 | Accion | Canonical ID | Path esperado | Nota |
 |---|---|---|---|
-| crear | DVC-test/spec.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/spec.md | fixture |
+| crear | DVC-test/Variante Test/spec.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/spec.md | fixture |
+| crear | DVC-test/Variante Test/raw_schema.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/raw_schema.md | fixture |
+| crear | DVC-test/Variante Test/parser_config.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/parser_config.md | fixture |
+| crear | DVC-test/Variante Test/changelog.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Test/changelog.md | fixture |
 `
 }
 
@@ -670,10 +664,10 @@ Enriquecer DVC-test.
 ## Drafts usados
 | Draft | Ubicacion | Archivo canonico destino |
 |---|---|---|
+| ${variantName}/spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | ${variantName}/spec.md |
 | ${variantName}/raw_schema_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/raw_schema_draft.md | ${variantName}/raw_schema.md |
-| ${variantName}/mapping_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/mapping_draft.md | ${variantName}/mapping.md |
 | ${variantName}/parser_config_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/parser_config_draft.md | ${variantName}/parser_config.md |
-| notes.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/notes.md | changelog.md / notas de aplicacion |
+| ${variantName}/spec_draft.md | 01 Contribuciones/CONTRIBUTION-2026-05-03-test/drafts/spec_draft.md | ${variantName}/changelog.md |
 
 ## Canonicos relacionados
 | Canonico | Relacion |
@@ -686,9 +680,9 @@ N/A
 ## Archivos canonicos esperados
 | Accion | Canonical ID | Path esperado | Nota |
 |---|---|---|---|
+| ${variantAction} | DVC-test/${variantName}/spec.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/${variantName}/spec.md | fixture |
 | ${variantAction} | DVC-test/${variantName}/raw_schema.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/${variantName}/raw_schema.md | fixture |
-| ${variantAction} | DVC-test/${variantName}/mapping.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/${variantName}/mapping.md | fixture |
 | ${variantAction} | DVC-test/${variantName}/parser_config.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/${variantName}/parser_config.md | fixture |
-| modificar | DVC-test/changelog.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/changelog.md | fixture |
+| ${variantAction} | DVC-test/${variantName}/changelog.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/${variantName}/changelog.md | fixture |
 `
 }
