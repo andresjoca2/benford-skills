@@ -169,6 +169,34 @@ export function evaluateProposal(
     })
   }
 
+  const dvcPhysicalEvidence = checkDvcPhysicalEvidence(proposal)
+  if (dvcPhysicalEvidence) {
+    checks.push(dvcPhysicalEvidence.check)
+    if (dvcPhysicalEvidence.requiresHuman) {
+      riskFactors.push({
+        factor: "dvc_missing_physical_examples",
+        description:
+          "PROP-DVC does not declare physical source examples or variant materials to copy.",
+        evidence:
+          "Materiales canonicos a copiar / Archivos canonicos esperados",
+      })
+      contradictionsOrGaps.push({
+        type: "dvc_evidence_gap",
+        description:
+          "La PROP-DVC no acredita ejemplo fisico real por variante; puede ser un draft conceptual no validado.",
+        evidence: "Materiales canonicos a copiar",
+        requiresHuman: true,
+      })
+      humanQuestions.push({
+        question:
+          "Existe un ejemplo fisico real que valide este DVC, o debe mantenerse como draft conceptual?",
+        why: "El Router no debe auto-aplicar DVC nuevos o enriquecidos sin documentos fuente observados por variante.",
+        expectedAnswer:
+          "Aportar ejemplo fisico y regresar a Draft, aprobar manualmente con rationale, o rechazar.",
+      })
+    }
+  }
+
   const riskLevel = calculateRiskLevel(
     proposal,
     riskFactors,
@@ -482,6 +510,9 @@ function decide(
   const targetFailed = failedChecks.some(
     (check) => check.name === "Target canonico",
   )
+  const dvcPhysicalEvidenceFailed = failedChecks.some(
+    (check) => check.name === "DVC physical examples",
+  )
 
   if (evidenceFailed) {
     reasons.push("Evidence is missing or explicitly unavailable.")
@@ -492,6 +523,12 @@ function decide(
       expectedAnswer:
         "Aportar evidencia y regresar a Draft, aprobar manualmente con rationale, o rechazar.",
     })
+    return "needs_human_decision"
+  }
+  if (dvcPhysicalEvidenceFailed) {
+    reasons.push(
+      "DVC proposals require physical source examples before automatic canonical apply.",
+    )
     return "needs_human_decision"
   }
   if (metadataFailed || targetFailed) {
@@ -525,6 +562,58 @@ function decide(
     return "needs_human_decision"
   }
   return "approved_for_editor"
+}
+
+function checkDvcPhysicalEvidence(
+  proposal: ProposalPackage,
+): { check: CheckResult; requiresHuman: boolean } | null {
+  const type = proposal.identification.Tipo
+  const changeType =
+    proposal.identification["Tipo de cambio"] ??
+    proposal.routingFields["Tipo de cambio"]
+  if (type !== "PROP-DVC") return null
+  if (changeType !== "new" && changeType !== "enrich") return null
+
+  const section = extractSection(
+    proposal.markdown,
+    "Materiales canonicos a copiar",
+  )
+  const table = parseFirstMarkdownTable(section)
+  if (!table) {
+    return {
+      check: {
+        name: "DVC physical examples",
+        status: "fail",
+        note: "PROP-DVC does not declare Materiales canonicos a copiar.",
+      },
+      requiresHuman: true,
+    }
+  }
+
+  const hasPhysicalExample = table.rows.some((row) =>
+    Object.values(row).some(isPhysicalDvcEvidenceValue),
+  )
+  return {
+    check: {
+      name: "DVC physical examples",
+      status: hasPhysicalExample ? "pass" : "fail",
+      note: hasPhysicalExample
+        ? "PROP-DVC declares physical examples or variant source materials."
+        : "PROP-DVC lacks physical examples or variant source materials.",
+    },
+    requiresHuman: !hasPhysicalExample,
+  }
+}
+
+function isPhysicalDvcEvidenceValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return (
+    normalized.includes("materials/source_documents/examples/") ||
+    normalized.includes("/ejemplos/") ||
+    normalized.includes("/examples/") ||
+    normalized.includes("ejemplo") ||
+    normalized.includes("variante_cliente")
+  )
 }
 
 export function decisionToQueue(decision: RouterDecision): ProposalQueue {

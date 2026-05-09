@@ -99,18 +99,43 @@ describe("benford router engine", () => {
     )
   })
 
-  test("resolves evidence paths prefixed with the Drive vault root", () => {
+  test("new DVC proposals without physical examples require human decision", () => {
     const vaultRoot = makeVault()
     writeProposal(
       vaultRoot,
       "PROP-0004",
-      completeProposal("PROP-0004", {
+      dvcProposalWithoutPhysicalExamples("PROP-0004"),
+    )
+
+    const result = runRouterForProposal("PROP-0004", {
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+    })
+
+    expect(result.decision).toBe("needs_human_decision")
+    expect(
+      result.evaluation.checks.find(
+        (check) => check.name === "DVC physical examples",
+      )?.status,
+    ).toBe("fail")
+    expect(result.evaluation.reasons).toContain(
+      "DVC proposals require physical source examples before automatic canonical apply.",
+    )
+  })
+
+  test("resolves evidence paths prefixed with the Drive vault root", () => {
+    const vaultRoot = makeVault()
+    writeProposal(
+      vaultRoot,
+      "PROP-0005",
+      completeProposal("PROP-0005", {
         evidencePath:
           "05 Benford Vault/Benford Vault V3/01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/source.md",
       }),
     )
 
-    const result = runRouterForProposal("PROP-0004", {
+    const result = runRouterForProposal("PROP-0005", {
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
@@ -135,13 +160,13 @@ describe("benford router engine", () => {
     )
     writeProposal(
       vaultRoot,
-      "PROP-0005",
-      completeProposal("PROP-0005", {
+      "PROP-0006",
+      completeProposal("PROP-0006", {
         evidencePath: "05 Benford Vault/01 IMSS Mexico/legacy/source.md",
       }),
     )
 
-    const result = runRouterForProposal("PROP-0005", {
+    const result = runRouterForProposal("PROP-0006", {
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
       today: "2026-05-03",
@@ -156,14 +181,14 @@ describe("benford router engine", () => {
 
   test("check lists draft proposals from portable vault root", () => {
     const vaultRoot = makeVault()
-    writeProposal(vaultRoot, "PROP-0006", completeProposal("PROP-0006"))
+    writeProposal(vaultRoot, "PROP-0007", completeProposal("PROP-0007"))
 
     const result = checkRouter({
       vaultRoot,
       runtimeDir: join(vaultRoot, ".runtime"),
     })
 
-    expect(result.draftProposalIds).toEqual(["PROP-0006"])
+    expect(result.draftProposalIds).toEqual(["PROP-0007"])
   })
 })
 
@@ -203,6 +228,29 @@ function makeVault(): string {
     "utf8",
   )
   return root
+}
+
+function dvcProposalWithoutPhysicalExamples(proposalId: string): string {
+  const evidencePath =
+    "01 Contribuciones/CONTRIBUTION-2026-05-03-test/materials/source.md"
+
+  return completeProposal(proposalId, {
+    evidencePath,
+  })
+    .replace("| Tipo | PROP-DOC |", "| Tipo | PROP-DVC |")
+    .replace(
+      "| Target canonico ID | DOC-test |",
+      "| Target canonico ID | DVC-test |",
+    )
+    .replace(
+      "| Target canonico path | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/spec.md |",
+      "| Target canonico path | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/ |",
+    )
+    .replace("| DOC ID | DOC-test |", "| DVC ID | DVC-test |")
+    .replace(
+      "| crear | DOC-test | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-test/spec.md | Nuevo |",
+      "| crear | DVC-test/Variante Conceptual/raw_schema.md | 05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-test/Variante Conceptual/raw_schema.md | Nuevo |",
+    )
 }
 
 function writeProposal(

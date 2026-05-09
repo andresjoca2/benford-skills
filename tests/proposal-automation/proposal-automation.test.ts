@@ -225,7 +225,7 @@ describe("benford proposal automation", () => {
     ).toBe(true)
   })
 
-  test("does not require source_documents_map for DVC contributions", () => {
+  test("routes DVC contributions without physical examples to human review", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
       id: "CONTRIBUTION-2026-05-03-dvc-no-source-map",
@@ -246,6 +246,29 @@ describe("benford proposal automation", () => {
       "CONTRIBUTION-2026-05-03-dvc-no-source-map",
     ])
     expect(check.skippedContributions).toEqual([])
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "wait_for_human",
+    ])
+    expect(events[1]?.routerResult?.decision).toBe("needs_human_decision")
+    const proposal = readFileSync(
+      join(
+        vaultRoot,
+        "02 Proposals/02 Needs Human Decision/PROP-0001/proposal.md",
+      ),
+      "utf8",
+    )
+    expect(proposal).toContain("| Evidencia minima disponible | M | no |")
+    expect(proposal).toContain("| Requiere humano sugerido | D | si |")
   })
 
   test("skips ready contributions that already reference generated proposals", () => {

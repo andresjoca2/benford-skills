@@ -534,7 +534,13 @@ function renderProposal(
     contribution,
     draftPackage,
   )
-  const requiresHuman = dvcHasModifications(draftPackage)
+  const requiresPhysicalDvcEvidence = dvcRequiresPhysicalEvidenceReview(
+    draftPackage,
+    changeType,
+    canonicalMaterials,
+  )
+  const requiresHuman =
+    dvcHasModifications(draftPackage) || requiresPhysicalDvcEvidence
   const touchesCanon = changeType === "new" ? "no" : "si"
   const contributionPath = toVaultRelative(config, contribution.path)
   const sourceInventory = join(
@@ -607,7 +613,11 @@ ${renderMarkdownTable(
     ["Tipo de cambio", "M", changeType],
     ["Target canonico ID", "M", draftPackage.canonicalId],
     ["Target canonico path", "M", targetCanonicalPath],
-    ["Evidencia minima disponible", "M", "si"],
+    [
+      "Evidencia minima disponible",
+      "M",
+      requiresPhysicalDvcEvidence ? "no" : "si",
+    ],
     ["Toca canon existente", "M", touchesCanon],
     ["Contradiccion detectada", "M", "no"],
     ["Riesgo inicial", "M", "medium"],
@@ -671,7 +681,7 @@ ${renderMarkdownTable(["Draft", "Ubicacion", "Archivo canonico destino"], draftR
 ${extractSection(contribution.markdown, "Canonicos potencialmente afectados") ?? "| Canonico | Relacion |\n|---|---|\n| Pendiente | Pendiente |"}
 
 ## Riesgos o dudas
-${extractSection(contribution.markdown, "Targets oficiales relacionados") ?? "Pendiente"}
+${riskOrQuestionsSection(contribution, requiresPhysicalDvcEvidence)}
 
 ${extractSection(contribution.markdown, "Metodologias relacionadas") ?? ""}
 
@@ -1458,6 +1468,44 @@ function dvcHasModifications(draftPackage: SupportedDraftPackage): boolean {
         ),
     )
   )
+}
+
+function dvcRequiresPhysicalEvidenceReview(
+  draftPackage: SupportedDraftPackage,
+  changeType: "new" | "enrich",
+  canonicalMaterials: readonly CanonicalMaterial[],
+): boolean {
+  if (draftPackage.canonicalType !== "DVC") return false
+  if (changeType !== "new" && changeType !== "enrich") return false
+  if (dvcHasModifications(draftPackage)) return false
+  return !canonicalMaterials.some(isPhysicalDvcExampleMaterial)
+}
+
+function isPhysicalDvcExampleMaterial(material: CanonicalMaterial): boolean {
+  const source = material.sourcePath.replace(/\\/g, "/").toLowerCase()
+  const destination = material.destinationPath.replace(/\\/g, "/").toLowerCase()
+  const type = material.type.toLowerCase()
+  return (
+    source.includes("/materials/source_documents/examples/") ||
+    destination.includes("/ejemplos/") ||
+    destination.includes("/examples/") ||
+    type.includes("ejemplo") ||
+    type.includes("variante_cliente")
+  )
+}
+
+function riskOrQuestionsSection(
+  contribution: ContributionPackage,
+  requiresPhysicalDvcEvidence: boolean,
+): string {
+  const existing =
+    extractSection(contribution.markdown, "Targets oficiales relacionados") ??
+    "Pendiente"
+  if (!requiresPhysicalDvcEvidence) return existing
+  return `${existing}
+
+## Requiere decision humana
+La PROP-DVC no declara ejemplos fisicos reales o materiales canonicos copiables por variante. No debe aplicarse automaticamente porque el raw schema y parser config no estan validados contra un documento fuente observado.`
 }
 
 function requiredPath(path: string | undefined): string {
