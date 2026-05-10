@@ -384,32 +384,42 @@ function readSupportedDraftPackage(
     canonicalType === "DVC"
       ? resolveDvcTargetCanonicalId(config, sourceCanonicalId)
       : sourceCanonicalId
-  const spec = join(path, "spec_draft.md")
-  const schema = join(path, "schema_draft.md")
-  const rawSchema = join(path, "raw_schema_draft.md")
-  const parserConfig = join(path, "parser_config_draft.md")
-  const documentTranscript = join(path, "document_transcript_draft.md")
+  const spec = resolveDraftOrCopyThrough(path, "spec")
+  const schema = resolveDraftOrCopyThrough(path, "schema")
+  const rawSchema = resolveDraftOrCopyThrough(path, "raw_schema")
+  const parserConfig = resolveDraftOrCopyThrough(path, "parser_config")
+  const documentTranscript = resolveDraftOrCopyThrough(
+    path,
+    "document_transcript",
+  )
   const notes = join(path, "notes.md")
   const files = {
-    spec: existsSync(spec) ? spec : undefined,
+    spec,
     schema,
-    rawSchema: existsSync(rawSchema) ? rawSchema : undefined,
+    rawSchema,
     parserConfig,
-    documentTranscript: existsSync(documentTranscript)
-      ? documentTranscript
-      : undefined,
+    documentTranscript,
     notes: existsSync(notes) ? notes : undefined,
   }
 
   if (canonicalType === "DOC") {
-    if (!existsSync(spec) || !existsSync(schema) || !existsSync(parserConfig))
+    if (
+      !files.spec ||
+      !files.schema ||
+      !files.parserConfig ||
+      !draftPackageMatchesLiveTemplate(config, canonicalType, path)
+    ) {
       return null
+    }
     return { canonicalType, canonicalId, sourceCanonicalId, path, files }
   }
 
   if (canonicalType === "DVC") {
     const variants = findDvcVariantDrafts(config, canonicalId, path)
     if (variants.length === 0) return null
+    if (!draftPackageMatchesLiveTemplate(config, canonicalType, path)) {
+      return null
+    }
     return {
       canonicalType,
       canonicalId,
@@ -420,8 +430,24 @@ function readSupportedDraftPackage(
     }
   }
 
-  if (!existsSync(spec) || !files.documentTranscript) return null
+  if (
+    !files.spec ||
+    !files.documentTranscript ||
+    !draftPackageMatchesLiveTemplate(config, canonicalType, path)
+  ) {
+    return null
+  }
   return { canonicalType, canonicalId, sourceCanonicalId, path, files }
+}
+
+function resolveDraftOrCopyThrough(
+  root: string,
+  canonicalName: string,
+): string | undefined {
+  const draft = join(root, `${canonicalName}_draft.md`)
+  if (existsSync(draft)) return draft
+  const copyThrough = join(root, `${canonicalName}.md`)
+  return existsSync(copyThrough) ? copyThrough : undefined
 }
 
 function resolveDvcTargetCanonicalId(
@@ -445,6 +471,121 @@ function resolveDvcTargetCanonicalId(
   return existing[0] ?? sourceCanonicalId
 }
 
+function draftPackageMatchesLiveTemplate(
+  config: RouterConfig,
+  canonicalType: "DOC" | "DVC" | "DOL",
+  outputPath: string,
+): boolean {
+  const templateRoot = liveTemplateRoot(config, canonicalType)
+  if (!existsSync(templateRoot)) return true
+
+  switch (canonicalType) {
+    case "DOC":
+      return (
+        hasFileForTemplate(outputPath, templateRoot, "spec") &&
+        hasFileForTemplate(outputPath, templateRoot, "schema") &&
+        hasFileForTemplate(outputPath, templateRoot, "parser_config")
+      )
+    case "DOL":
+      return (
+        hasFileForTemplate(outputPath, templateRoot, "spec") &&
+        hasFileForTemplate(outputPath, templateRoot, "document_transcript")
+      )
+    case "DVC":
+      return dvcDraftPackageMatchesLiveTemplate(outputPath, templateRoot)
+  }
+}
+
+function liveTemplateRoot(
+  config: RouterConfig,
+  canonicalType: "DOC" | "DVC" | "DOL",
+): string {
+  const base = join(
+    config.vaultRoot,
+    "05 Benford Brain IMSS Mexico/01 Explicit Knowledge",
+  )
+  switch (canonicalType) {
+    case "DOC":
+      return join(base, "DOC Documentos y Ejemplos/DOC-0000_template")
+    case "DVC":
+      return join(base, "DVC Documentos Variables Cliente/DVC-0000_template")
+    case "DOL":
+      return join(base, "DOL Documentos de Leyes/DOL-0000_template")
+  }
+}
+
+function hasFileForTemplate(
+  outputRoot: string,
+  templateRoot: string,
+  canonicalName: string,
+): boolean {
+  const templatePath = join(templateRoot, `${canonicalName}.md`)
+  if (!isUsableTemplateFile(templatePath)) return true
+  return Boolean(resolveDraftOrCopyThrough(outputRoot, canonicalName))
+}
+
+function dvcDraftPackageMatchesLiveTemplate(
+  outputRoot: string,
+  templateRoot: string,
+): boolean {
+  if (
+    isUsableTemplateFile(join(templateRoot, "spec.md")) === false &&
+    (existsSync(join(outputRoot, "spec_draft.md")) ||
+      existsSync(join(outputRoot, "spec.md")))
+  ) {
+    return false
+  }
+
+  const variantTemplate = findDvcVariantTemplate(templateRoot)
+  if (!variantTemplate) return true
+  const templateHasMapping = isUsableTemplateFile(
+    join(variantTemplate, "mapping.md"),
+  )
+
+  for (const entry of readdirSync(outputRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const variantPath = join(outputRoot, entry.name)
+    const hasModificationDraft =
+      existsSync(join(variantPath, "modification_spec.md")) ||
+      existsSync(join(variantPath, "modification_schema.md")) ||
+      existsSync(join(variantPath, "modification_parser.md"))
+    const hasFullDraft =
+      Boolean(resolveDraftOrCopyThrough(variantPath, "spec")) ||
+      Boolean(resolveDraftOrCopyThrough(variantPath, "raw_schema")) ||
+      Boolean(resolveDraftOrCopyThrough(variantPath, "parser_config"))
+    if (hasModificationDraft && !hasFullDraft) continue
+    if (
+      !hasFileForTemplate(variantPath, variantTemplate, "spec") ||
+      !hasFileForTemplate(variantPath, variantTemplate, "raw_schema") ||
+      !hasFileForTemplate(variantPath, variantTemplate, "parser_config")
+    ) {
+      return false
+    }
+    if (
+      !templateHasMapping &&
+      (existsSync(join(variantPath, "mapping_draft.md")) ||
+        existsSync(join(variantPath, "mapping.md")))
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function findDvcVariantTemplate(templateRoot: string): string | undefined {
+  const preferred = join(templateRoot, "Variante x")
+  if (existsSync(preferred)) return preferred
+  return readdirSync(templateRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(templateRoot, entry.name))
+    .sort()[0]
+}
+
+function isUsableTemplateFile(path: string): boolean {
+  if (!existsSync(path)) return false
+  return !readFileSync(path, "utf8").includes("LEGACY DO NOT USE")
+}
+
 function findDvcVariantDrafts(
   config: RouterConfig,
   canonicalId: string,
@@ -459,14 +600,17 @@ function findDvcVariantDrafts(
     .filter((entry) => entry.isDirectory())
     .map((entry): DvcVariantDraft | null => {
       const variantPath = join(path, entry.name)
-      const spec = join(variantPath, "spec_draft.md")
-      const rawSchema = join(variantPath, "raw_schema_draft.md")
-      const parserConfig = join(variantPath, "parser_config_draft.md")
+      const spec = resolveDraftOrCopyThrough(variantPath, "spec")
+      const rawSchema = resolveDraftOrCopyThrough(variantPath, "raw_schema")
+      const parserConfig = resolveDraftOrCopyThrough(
+        variantPath,
+        "parser_config",
+      )
       const modificationSpec = join(variantPath, "modification_spec.md")
       const modificationSchema = join(variantPath, "modification_schema.md")
       const modificationParser = join(variantPath, "modification_parser.md")
       const hasFullDrafts =
-        existsSync(spec) && existsSync(rawSchema) && existsSync(parserConfig)
+        Boolean(spec) && Boolean(rawSchema) && Boolean(parserConfig)
       const hasModifications =
         existsSync(modificationSpec) ||
         existsSync(modificationSchema) ||
@@ -479,9 +623,9 @@ function findDvcVariantDrafts(
         path: variantPath,
         mode: hasFullDrafts ? "full" : "modification",
         files: {
-          spec: existsSync(spec) ? spec : undefined,
-          rawSchema: existsSync(rawSchema) ? rawSchema : undefined,
-          parserConfig: existsSync(parserConfig) ? parserConfig : undefined,
+          spec,
+          rawSchema,
+          parserConfig,
           modificationSpec: existsSync(modificationSpec)
             ? modificationSpec
             : undefined,

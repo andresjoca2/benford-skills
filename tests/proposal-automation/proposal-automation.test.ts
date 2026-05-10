@@ -176,6 +176,39 @@ describe("benford proposal automation", () => {
     )
   })
 
+  test("accepts copy-through DOC files that match the live template shape", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-doc-copy-through",
+      estado: "draft_generated",
+      automationState: "ready",
+      canonicalType: "DOC",
+      outputIds: ["DOC-copy-through"],
+    })
+    const outputRoot = join(
+      vaultRoot,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-doc-copy-through/skill_outputs/explicit_knowledge/DOC-copy-through",
+    )
+    renameSync(join(outputRoot, "spec_draft.md"), join(outputRoot, "spec.md"))
+    renameSync(
+      join(outputRoot, "schema_draft.md"),
+      join(outputRoot, "schema.md"),
+    )
+    renameSync(
+      join(outputRoot, "parser_config_draft.md"),
+      join(outputRoot, "parser_config.md"),
+    )
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+    })
+
+    expect(events[0]?.proposalGeneratorResult?.targetCanonicalId).toBe(
+      "DOC-copy-through",
+    )
+  })
+
   test("write mode copies DOL source documents declared in contribution map", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {
@@ -597,6 +630,37 @@ describe("benford proposal automation", () => {
     )
   })
 
+  test("skips DVC drafts with legacy mapping output not present in live template", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-dvc-legacy-mapping",
+      estado: "draft_generated",
+      automationState: "ready",
+      canonicalType: "DVC",
+      outputIds: ["DVC-legacy-mapping"],
+      variantNames: ["Variante Test"],
+    })
+    const variantRoot = join(
+      vaultRoot,
+      "01 Contribuciones/CONTRIBUTION-2026-05-03-dvc-legacy-mapping/skill_outputs/explicit_knowledge/DVC-legacy-mapping/Variante Test",
+    )
+    writeFileSync(
+      join(variantRoot, "mapping_draft.md"),
+      "# Legacy mapping\n",
+      "utf8",
+    )
+
+    const check = checkProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+    })
+
+    expect(check.contributions.count).toBe(0)
+    expect(check.skippedContributions.map((item) => item.id)).toContain(
+      "CONTRIBUTION-2026-05-03-dvc-legacy-mapping",
+    )
+  })
+
   test("routes partial DVC modifications as one human-review PROP", () => {
     const vaultRoot = makeVault()
     writeExistingDvc(vaultRoot, "DVC-test", "Copa")
@@ -855,7 +919,77 @@ function makeVault(): string {
     "# source\n",
     "utf8",
   )
+  writeLiveTemplates(root)
   return root
+}
+
+function writeLiveTemplates(vaultRoot: string): void {
+  const explicitRoot = join(
+    vaultRoot,
+    "05 Benford Brain IMSS Mexico/01 Explicit Knowledge",
+  )
+  const docTemplate = join(
+    explicitRoot,
+    "DOC Documentos y Ejemplos/DOC-0000_template",
+  )
+  mkdirSync(docTemplate, { recursive: true })
+  writeFileSync(join(docTemplate, "spec.md"), "# DOC spec template\n", "utf8")
+  writeFileSync(
+    join(docTemplate, "schema.md"),
+    "# DOC schema template\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(docTemplate, "parser_config.md"),
+    "# DOC parser template\n",
+    "utf8",
+  )
+
+  const dvcVariant = join(
+    explicitRoot,
+    "DVC Documentos Variables Cliente/DVC-0000_template/Variante x",
+  )
+  mkdirSync(dvcVariant, { recursive: true })
+  writeFileSync(
+    join(
+      explicitRoot,
+      "DVC Documentos Variables Cliente/DVC-0000_template/README.md",
+    ),
+    "# DVC template\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(
+      explicitRoot,
+      "DVC Documentos Variables Cliente/DVC-0000_template/spec.md",
+    ),
+    "# LEGACY DO NOT USE - root spec\n",
+    "utf8",
+  )
+  writeFileSync(join(dvcVariant, "spec.md"), "# DVC variant spec\n", "utf8")
+  writeFileSync(join(dvcVariant, "raw_schema.md"), "# DVC raw schema\n", "utf8")
+  writeFileSync(
+    join(dvcVariant, "parser_config.md"),
+    "# DVC parser config\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(dvcVariant, "mapping.md"),
+    "# LEGACY DO NOT USE - mapping\n",
+    "utf8",
+  )
+
+  const dolTemplate = join(
+    explicitRoot,
+    "DOL Documentos de Leyes/DOL-0000_template",
+  )
+  mkdirSync(dolTemplate, { recursive: true })
+  writeFileSync(join(dolTemplate, "spec.md"), "# DOL spec template\n", "utf8")
+  writeFileSync(
+    join(dolTemplate, "document_transcript.md"),
+    "# DOL transcript template\n",
+    "utf8",
+  )
 }
 
 function writeContributionMap(
