@@ -354,6 +354,73 @@ describe("benford proposal automation", () => {
     expect(proposal).toContain("| Requiere humano sugerido | D | si |")
   })
 
+  test("write mode applies DVC examples declared in source_documents_map", () => {
+    const vaultRoot = makeVault()
+    writeContributionMap(vaultRoot, {
+      id: "CONTRIBUTION-2026-05-03-dvc-source-map",
+      estado: "draft_generated",
+      automationState: "ready",
+      canonicalType: "DVC",
+      outputIds: ["DVC-source-map"],
+      variantNames: ["Variante A", "Variante B"],
+      exampleFolders: ["Cliente A", "Cliente B"],
+      declareDvcExampleMaterials: false,
+    })
+    writeFileSync(
+      join(
+        vaultRoot,
+        "01 Contribuciones/CONTRIBUTION-2026-05-03-dvc-source-map/skill_outputs/explicit_knowledge/DVC-source-map/source_documents_map.md",
+      ),
+      `# Source Documents Map - DVC-source-map
+
+## Mapa de ejemplos por variante
+| Variante | Origen en materials | Copiar como ejemplo | Nota |
+|---|---|---|---|
+| Variante A | materials/source_documents/examples/Cliente A/example.pdf | si | Ejemplo A. |
+| Variante B | materials/source_documents/examples/Cliente B/example.pdf | si | Ejemplo B. |
+`,
+      "utf8",
+    )
+
+    const events = runProposalAutomations({
+      vaultRoot,
+      runtimeDir: join(vaultRoot, ".runtime"),
+      today: "2026-05-03",
+      write: true,
+    })
+
+    expect(events.map((event) => event.action)).toEqual([
+      "generate_proposal",
+      "route_draft",
+      "invoke_skill",
+    ])
+    expect(events[1]?.routerResult?.decision).toBe("approved_for_editor")
+    expect(events[2]?.editorResult?.canonicalMaterials).toEqual([
+      {
+        sourcePath:
+          "01 Contribuciones/CONTRIBUTION-2026-05-03-dvc-source-map/materials/source_documents/examples/Cliente A/example.pdf",
+        destinationPath:
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-source-map/Variante A/source_documents/examples/Cliente A/example.pdf",
+        action: "copy",
+      },
+      {
+        sourcePath:
+          "01 Contribuciones/CONTRIBUTION-2026-05-03-dvc-source-map/materials/source_documents/examples/Cliente B/example.pdf",
+        destinationPath:
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-source-map/Variante B/source_documents/examples/Cliente B/example.pdf",
+        action: "copy",
+      },
+    ])
+    expect(
+      existsSync(
+        join(
+          vaultRoot,
+          "05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-source-map/Variante A/source_documents/examples/Cliente A/example.pdf",
+        ),
+      ),
+    ).toBe(true)
+  })
+
   test("skips ready contributions that already reference generated proposals", () => {
     const vaultRoot = makeVault()
     writeContributionMap(vaultRoot, {

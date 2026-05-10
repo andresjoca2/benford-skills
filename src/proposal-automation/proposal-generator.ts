@@ -1403,6 +1403,12 @@ function discoverCanonicalMaterials(
     return filterExistingCanonicalMaterials(dedupeCanonicalMaterials(materials))
   }
   if (draftPackage.canonicalType === "DVC") {
+    collectDvcSourceDocumentMapMaterials(
+      config,
+      contribution,
+      draftPackage,
+      materials,
+    )
     return filterExistingCanonicalMaterials(
       pruneCoveredCanonicalMaterials(
         filterDvcVariantMaterials(
@@ -1498,6 +1504,81 @@ function collectDolSourceDocuments(
 
 function isDolSourceDocumentName(name: string): boolean {
   return /\.(?:pdf|docx?|html?|txt)$/i.test(name)
+}
+
+function collectDvcSourceDocumentMapMaterials(
+  config: RouterConfig,
+  contribution: ContributionPackage,
+  draftPackage: SupportedDraftPackage,
+  materials: CanonicalMaterial[],
+): void {
+  const sourceMapPath = join(draftPackage.path, "source_documents_map.md")
+  if (!existsSync(sourceMapPath)) return
+  const table = parseFirstMarkdownTable(
+    extractSection(
+      readFileSync(sourceMapPath, "utf8"),
+      "Mapa de ejemplos por variante",
+    ),
+  )
+  if (!table) return
+
+  const variantHeader = headerByName(table.headers, "Variante")
+  const sourceHeader = headerByName(table.headers, "Origen en materials")
+  const copyHeader = headerByName(table.headers, "Copiar como ejemplo")
+  const noteHeader = headerByName(table.headers, "Nota")
+  if (!variantHeader || !sourceHeader) return
+
+  const variants = new Set(
+    dvcVariants(draftPackage).map((variant) => variant.name),
+  )
+  for (const row of table.rows) {
+    const variant = stripTicks(row[variantHeader])
+    if (!variants.has(variant)) continue
+    const shouldCopy = normalizeName(stripTicks(row[copyHeader ?? ""])) || "si"
+    if (["no", "false", "n"].includes(shouldCopy)) continue
+    const sourcePath = resolveContributionSourcePath(
+      config,
+      contribution,
+      stripTicks(row[sourceHeader]),
+    )
+    if (!existsSync(sourcePath)) continue
+    const stat = statSync(sourcePath)
+    const destinationPath = dvcSourceMapDestinationPath(
+      variant,
+      stripTicks(row[sourceHeader]),
+      stat.isDirectory(),
+    )
+    materials.push({
+      action: stat.isDirectory() ? "copiar carpeta" : "copiar archivo",
+      sourcePath,
+      destinationPath,
+      sourceName: basename(sourcePath),
+      sourceOwner: variant,
+      type: "ejemplo_dvc",
+      preserveStructure: stat.isDirectory() ? "si" : "no",
+      note:
+        stripTicks(row[noteHeader ?? ""]) ||
+        "Copiar ejemplo fisico declarado en source_documents_map.md.",
+    })
+  }
+}
+
+function dvcSourceMapDestinationPath(
+  variant: string,
+  sourcePath: string,
+  isDirectory: boolean,
+): string {
+  const cleanSource = sourcePath.replace(/\\/g, "/").replace(/^\/+/, "")
+  const examplesPrefix = "materials/source_documents/examples/"
+  const relativeSource = cleanSource.startsWith(examplesPrefix)
+    ? cleanSource.slice(examplesPrefix.length)
+    : basename(cleanSource)
+  const destination =
+    `${variant}/source_documents/examples/${relativeSource}`.replace(
+      /\/+/g,
+      "/",
+    )
+  return `${destination}${isDirectory && !destination.endsWith("/") ? "/" : ""}`
 }
 
 function filterExistingCanonicalMaterials(
