@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Benford Vault — Document Tracker</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  background: #fafaf7;
+  color: #1a1a1a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.app { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+/* Header */
+header.hero {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; margin-bottom: 20px; padding-bottom: 16px;
+  border-bottom: 1px solid #e6e2d8;
+}
+.hero h1 { margin: 0 0 4px 0; font-size: 22px; font-weight: 600; letter-spacing: -0.2px; }
+.hero .sub { color: #6b6960; font-size: 12px; }
+.hero-stats { display: flex; gap: 14px; }
+.hero-right { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.refresh-btn { font-size: 12px; padding: 6px 12px; }
+.refresh-btn:disabled { opacity: 0.6; cursor: wait; }
+.refresh-btn .spin { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.stat {
+  background: #fff; border: 1px solid #e6e2d8; padding: 10px 14px;
+  border-radius: 8px; min-width: 80px;
+  display: flex; flex-direction: column; align-items: flex-start;
+}
+.stat .num { font-size: 20px; font-weight: 600; }
+.stat .lab { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b6960; margin-top: 2px; }
+.stat.ok .num { color: #1f7a3d; }
+.stat.bad .num { color: #b8423b; }
+
+/* Tabs */
+.tabs {
+  display: inline-flex; background: #ece9df; border-radius: 8px; padding: 3px;
+  margin-bottom: 16px;
+}
+.tab-btn {
+  border: 0; background: transparent; padding: 7px 14px;
+  border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;
+  color: #4a4840; transition: all 0.15s;
+}
+.tab-btn.active { background: #fff; color: #1a1a1a; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+/* Filters */
+.filters {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 12px; padding: 10px 12px; background: #fff;
+  border: 1px solid #e6e2d8; border-radius: 8px;
+}
+.filter-group { display: flex; gap: 4px; align-items: center; }
+.filter-group .lbl { font-size: 11px; color: #6b6960; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.chip {
+  border: 1px solid #d6d2c6; background: #fff;
+  padding: 4px 10px; border-radius: 999px; font-size: 11.5px; cursor: pointer;
+  color: #4a4840;
+}
+.chip.on { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.search {
+  margin-left: auto; padding: 6px 10px; font-size: 12.5px;
+  border: 1px solid #d6d2c6; border-radius: 6px; min-width: 220px; background: #fff;
+}
+.tog { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #4a4840; }
+
+/* Table */
+.table-wrap {
+  background: #fff; border: 1px solid #e6e2d8; border-radius: 10px; overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  background: #f5f2e9; text-align: left; font-weight: 600;
+  padding: 10px 12px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: #4a4840; border-bottom: 1px solid #e6e2d8;
+}
+tbody tr.row { border-bottom: 1px solid #f0ede4; }
+tbody tr.row:last-child { border-bottom: 0; }
+tbody td { padding: 10px 12px; vertical-align: top; }
+tbody tr.row.expandable { cursor: pointer; }
+tbody tr.row.expandable:hover { background: #fbf9f1; }
+tbody tr.row.open { background: #fdfbf3; }
+tbody tr.detail td { background: #fbf9f1; padding: 14px 18px; border-bottom: 1px solid #f0ede4; }
+
+/* Type pill */
+.type-pill {
+  display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10.5px;
+  font-weight: 600; letter-spacing: 0.3px;
+}
+.type-DOC { background: #e3edf7; color: #1d4e7a; }
+.type-DVC { background: #ede0f4; color: #5a2879; }
+.type-DOL { background: #f4e8d6; color: #735220; }
+.type-METH { background: #e6f4e6; color: #2a6b3a; }
+.type-TEST { background: #fae5d8; color: #8a4220; }
+
+/* Status badge */
+.status {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+}
+.status.green { background: #e0f3e3; color: #1f7a3d; }
+.status.red { background: #fae3e0; color: #b8423b; }
+.status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+/* Counts in cells */
+.count {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #ece9df; color: #4a4840; font-size: 11px; font-weight: 600;
+  padding: 1px 7px; border-radius: 999px; min-width: 18px;
+}
+.count.zero { background: #f5f2e9; color: #b8423b; }
+
+/* Fail chips (table column) */
+.fail-chips { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.fail-chip {
+  background: #fae3e0; border: 1px solid #f0c0bb; color: #8a2820;
+  padding: 1px 6px; border-radius: 3px; font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.1px;
+}
+.fail-chip.muted { background: #f5f2e9; color: #9b988c; border-color: #ece9df; font-weight: 400; }
+.fail-empty { color: #c8c5b9; font-size: 12px; }
+
+/* Detail panel */
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.detail-section h4 {
+  margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: #6b6960; font-weight: 600;
+}
+.detail-section { font-size: 12.5px; }
+.check-list { list-style: none; margin: 0; padding: 0; }
+.check-list li { padding: 3px 0; display: flex; align-items: center; gap: 8px; }
+.check { font-weight: 700; }
+.check.ok { color: #1f7a3d; }
+.check.bad { color: #b8423b; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: #4a4840; }
+
+.prop-list, .contrib-list { display: flex; flex-direction: column; gap: 4px; }
+.prop-item, .contrib-item {
+  background: #fff; border: 1px solid #e6e2d8; padding: 6px 9px;
+  border-radius: 6px; display: flex; align-items: center; gap: 8px;
+  font-size: 12px;
+}
+.prop-id { font-weight: 600; font-family: ui-monospace, monospace; font-size: 11.5px; }
+.state-pill {
+  font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.state-Applied { background: #e0f3e3; color: #1f7a3d; }
+.state-Draft { background: #f0ecdf; color: #735220; }
+.state-NeedsHumanDecision { background: #fae5d8; color: #8a4220; }
+.state-ApprovedforEditor { background: #e3edf7; color: #1d4e7a; }
+.state-Rejected { background: #f5e0de; color: #8a2820; }
+
+/* Action buttons */
+.actions { display: flex; gap: 6px; margin-top: 10px; }
+.btn {
+  border: 1px solid #d6d2c6; background: #fff; padding: 5px 10px;
+  font-size: 11px; border-radius: 5px; cursor: pointer; font-weight: 500;
+  color: #1a1a1a;
+  font-family: inherit;
+}
+.btn:hover { background: #fbf9f1; }
+.btn.primary { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.btn.primary:hover { background: #333; }
+.btn .ico { margin-right: 4px; }
+
+.path { font-family: ui-monospace, monospace; font-size: 10.5px; color: #6b6960; word-break: break-all; }
+
+.expand-arrow { display: inline-block; transition: transform 0.15s; color: #b0ad9f; margin-right: 6px; }
+tr.row.open .expand-arrow { transform: rotate(90deg); }
+
+.empty {
+  padding: 30px; text-align: center; color: #6b6960; font-size: 13px;
+  background: #fbf9f1;
+}
+
+.legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: #6b6960; }
+
+/* Variant cards inside detail */
+.variant-card {
+  background: #fff; border: 1px solid #e6e2d8; padding: 8px 10px;
+  border-radius: 6px; margin-bottom: 6px;
+}
+.variant-card .vname { font-weight: 600; font-size: 12px; margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+.variant-card .vfiles { font-size: 11px; color: #6b6960; }
+
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #1a1a1a; color: #fff; padding: 8px 14px; border-radius: 6px;
+  font-size: 12px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 1000;
+}
+.toast.show { opacity: 1; }
+
+a.opath { color: #1d4e7a; text-decoration: none; word-break: break-all; }
+a.opath:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header class="hero">
+  <div>
+    <h1>Benford Vault — Document Tracker</h1>
+    <div class="sub">Snapshot del estado de canónicos en <span class="mono" id="vaultPath"></span> · generado <span id="genAt"></span></div>
+  </div>
+  <div class="hero-right">
+    <div class="hero-stats" id="heroStats"></div>
+    <button class="btn primary refresh-btn" id="refreshBtn" title="Copia el comando para refrescar el snapshot">↻ Refrescar</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="explicit">Explicit Knowledge</button>
+  <button class="tab-btn" data-tab="task">Task Specific</button>
+</div>
+
+<div id="tab-explicit">
+  <div class="filters">
+    <div class="filter-group">
+      <span class="lbl">Tipo</span>
+      <button class="chip on" data-type="ALL">Todos</button>
+      <button class="chip" data-type="DOC">DOC</button>
+      <button class="chip" data-type="DVC">DVC</button>
+      <button class="chip" data-type="DOL">DOL</button>
+    </div>
+    <div class="filter-group">
+      <span class="lbl">Status</span>
+      <button class="chip on" data-status="ALL">Todos</button>
+      <button class="chip" data-status="green">OK</button>
+      <button class="chip" data-status="red">Pendiente</button>
+    </div>
+    <div class="filter-group">
+      <span class="lbl">Falla</span>
+      <button class="chip on" data-fail="ALL">Cualquiera</button>
+      <button class="chip" data-fail="files">Archivos</button>
+      <button class="chip" data-fail="examples">Examples</button>
+      <button class="chip" data-fail="prop">Sin PROP</button>
+    </div>
+    <label class="tog">
+      <input type="checkbox" id="showTpl"> Mostrar templates
+    </label>
+    <input class="search" id="search" type="text" placeholder="Buscar documento, PROP o contribution…">
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 30%">Documento</th>
+          <th style="width: 7%">Tipo</th>
+          <th style="width: 11%">Contribs</th>
+          <th style="width: 11%">PROPs</th>
+          <th style="width: 23%">Falla</th>
+          <th style="width: 18%">Canónico</th>
+        </tr>
+      </thead>
+      <tbody id="ekBody"></tbody>
+    </table>
+  </div>
+  <div class="legend">
+    <span><span class="status green"><span class="dot"></span>OK</span> = 4 archivos requeridos + ≥1 PROP aplicada + Examples poblados</span>
+    <span><span class="status red"><span class="dot"></span>Pendiente</span> = falla algún criterio (click para ver detalle)</span>
+  </div>
+</div>
+
+<div id="tab-task" style="display:none">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:50%">Documento</th>
+          <th style="width:10%">Tipo</th>
+          <th style="width:15%">Archivos</th>
+          <th style="width:25%">Carpeta</th>
+        </tr>
+      </thead>
+      <tbody id="tsBody"></tbody>
+    </table>
+  </div>
+  <div class="legend"><span>Solo se detectaron templates en Task Specific. Cuando se generen METH-* y TEST-* reales aparecerán aquí.</span></div>
+</div>
+
+<div class="toast" id="toast"></div>
+</div>
+
+<script id="vaultData" type="application/json">{"generated_at": "2026-05-11", "vault_mac": "/sessions/tender-elegant-sagan/mnt", "summary": {"green": 21, "red": 3, "by_type": {"DOC": {"total": 12, "green": 12, "red": 0}, "DVC": {"total": 10, "green": 7, "red": 3}, "DOL": {"total": 2, "green": 2, "red": 0}}}, "explicit": {"DOC": [{"id": "DOC-0000_template", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-0000_template", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-0000_template", "is_template": true, "criteria": {"files_ok": true, "examples_ok": false, "prop_applied": false}, "files": {"spec.md": {"exists": true, "size": 8457, "ok": true}, "schema.md": {"exists": true, "size": 4103, "ok": true}, "parser_config.md": {"exists": true, "size": 5561, "ok": true}, "changelog.md": {"exists": true, "size": 1109, "ok": true}}, "variants": [], "props": [], "contributions": [], "status": "red", "examples_dir": "Examples", "examples_count": 0}, {"id": "DOC-cedula-determinacion-bimestral", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-cedula-determinacion-bimestral", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-cedula-determinacion-bimestral", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 13017, "ok": true}, "schema.md": {"exists": true, "size": 10645, "ok": true}, "parser_config.md": {"exists": true, "size": 8339, "ok": true}, "changelog.md": {"exists": true, "size": 5348, "ok": true}}, "variants": [], "props": [{"id": "PROP-0001", "state": "04 Applied", "state_short": "Applied", "target": "DOC-cedula-determinacion-bimestral", "type": "DOC", "title": "PROP-0001 - DOC Cedula de Determinacion Bimestral", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0001", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0001"}], "contributions": ["CONTRIBUTION-2026-05-03-cedula-determinacion-bimestral", "CONTRIBUTION-2026-05-04-cedula-determinacion-mensual"], "status": "green", "examples_dir": "Examples", "examples_count": 11}, {"id": "DOC-cedula-determinacion-mensual", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-cedula-determinacion-mensual", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-cedula-determinacion-mensual", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 18084, "ok": true}, "schema.md": {"exists": true, "size": 16864, "ok": true}, "parser_config.md": {"exists": true, "size": 12813, "ok": true}, "changelog.md": {"exists": true, "size": 2869, "ok": true}}, "variants": [], "props": [{"id": "PROP-0002", "state": "04 Applied", "state_short": "Applied", "target": "DOC-cedula-determinacion-mensual", "type": "DOC", "title": "PROP-0002 - DOC Cedula Determinacion Mensual", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0002", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0002"}], "contributions": ["CONTRIBUTION-2026-05-03-cedula-determinacion-bimestral", "CONTRIBUTION-2026-05-04-cedula-determinacion-mensual"], "status": "green", "examples_dir": "Ejemplos", "examples_count": 23}, {"id": "DOC-cfdi-nomina", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-cfdi-nomina", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-cfdi-nomina", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 16017, "ok": true}, "schema.md": {"exists": true, "size": 13008, "ok": true}, "parser_config.md": {"exists": true, "size": 13351, "ok": true}, "changelog.md": {"exists": true, "size": 1527, "ok": true}}, "variants": [], "props": [{"id": "PROP-0003", "state": "04 Applied", "state_short": "Applied", "target": "DOC-cfdi-nomina", "type": "DOC", "title": "PROP-0003 - DOC Cfdi Nomina", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0003", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0003"}], "contributions": ["CONTRIBUTION-2026-05-04-cfdi-nomina"], "status": "green", "examples_dir": "Ejemplos", "examples_count": 14}, {"id": "DOC-constancia-presentacion-movimientos-afiliatorios", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-constancia-presentacion-movimientos-afiliatorios", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-constancia-presentacion-movimientos-afiliatorios", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 16423, "ok": true}, "schema.md": {"exists": true, "size": 16995, "ok": true}, "parser_config.md": {"exists": true, "size": 14325, "ok": true}, "changelog.md": {"exists": true, "size": 2095, "ok": true}}, "variants": [], "props": [{"id": "PROP-0008", "state": "04 Applied", "state_short": "Applied", "target": "DOC-constancia-presentacion-movimientos-afiliatorios", "type": "DOC", "title": "PROP-0008 - DOC Constancia Presentacion Movimientos Afiliatorios", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0008", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0008"}], "contributions": ["CONTRIBUTION-2026-05-04-constancia-presentacion-movimientos-afiliatorios"], "status": "green", "examples_dir": "Examples", "examples_count": 4}, {"id": "DOC-constancia-situacion-fiscal", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-constancia-situacion-fiscal", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-constancia-situacion-fiscal", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 11936, "ok": true}, "schema.md": {"exists": true, "size": 15359, "ok": true}, "parser_config.md": {"exists": true, "size": 10567, "ok": true}, "changelog.md": {"exists": true, "size": 1703, "ok": true}}, "variants": [], "props": [{"id": "PROP-0020", "state": "04 Applied", "state_short": "Applied", "target": "DOC-constancia-situacion-fiscal", "type": "DOC", "title": "PROP-0020 - DOC Constancia Situacion Fiscal", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0020", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0020"}], "contributions": ["CONTRIBUTION-2026-05-05-constancia-situacion-fiscal"], "status": "green", "examples_dir": "Ejemplos", "examples_count": 1}, {"id": "DOC-declaracion-anual-prima-riesgo-trabajo", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-declaracion-anual-prima-riesgo-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-declaracion-anual-prima-riesgo-trabajo", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 15303, "ok": true}, "schema.md": {"exists": true, "size": 5931, "ok": true}, "parser_config.md": {"exists": true, "size": 6642, "ok": true}, "changelog.md": {"exists": true, "size": 1824, "ok": true}}, "variants": [], "props": [{"id": "PROP-0025", "state": "04 Applied", "state_short": "Applied", "target": "DOC-declaracion-anual-prima-riesgo-trabajo", "type": "DOC", "title": "PROP-0025 - DOC Declaracion Anual Prima Riesgo Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0025", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0025"}], "contributions": ["CONTRIBUTION-2026-05-09-declaracion-anual-prima-riesgo-trabajo"], "status": "green", "examples_dir": "Examples", "examples_count": 9}, {"id": "DOC-determinacion-prima-riesgos-trabajo", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-determinacion-prima-riesgos-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-determinacion-prima-riesgos-trabajo", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 12515, "ok": true}, "schema.md": {"exists": true, "size": 13422, "ok": true}, "parser_config.md": {"exists": true, "size": 13083, "ok": true}, "changelog.md": {"exists": true, "size": 1806, "ok": true}}, "variants": [], "props": [{"id": "PROP-0019", "state": "04 Applied", "state_short": "Applied", "target": "DOC-determinacion-prima-riesgos-trabajo", "type": "DOC", "title": "PROP-0019 - DOC Determinacion Prima Riesgos Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0019", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0019"}], "contributions": ["CONTRIBUTION-2026-05-05-determinacion-prima-riesgos-trabajo", "CONTRIBUTION-2026-05-05-determinacion-prima-riesgos-trabajo-v2"], "status": "green", "examples_dir": "Examples", "examples_count": 1}, {"id": "DOC-disco-pago-sua", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-disco-pago-sua", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-disco-pago-sua", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 15757, "ok": true}, "schema.md": {"exists": true, "size": 22325, "ok": true}, "parser_config.md": {"exists": true, "size": 13372, "ok": true}, "changelog.md": {"exists": true, "size": 1560, "ok": true}}, "variants": [], "props": [{"id": "PROP-0026", "state": "04 Applied", "state_short": "Applied", "target": "DOC-disco-pago-sua", "type": "DOC", "title": "PROP-0026 - DOC Disco Pago Sua", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0026", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0026"}], "contributions": ["CONTRIBUTION-2026-05-04-cedula-determinacion-mensual", "CONTRIBUTION-2026-05-09-disco-pago-sua"], "status": "green", "examples_dir": "examples", "examples_count": 241}, {"id": "DOC-emision-bimestral-anticipada-eba", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-emision-bimestral-anticipada-eba", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-emision-bimestral-anticipada-eba", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 14050, "ok": true}, "schema.md": {"exists": true, "size": 8352, "ok": true}, "parser_config.md": {"exists": true, "size": 7094, "ok": true}, "changelog.md": {"exists": true, "size": 1758, "ok": true}}, "variants": [], "props": [{"id": "PROP-0027", "state": "04 Applied", "state_short": "Applied", "target": "DOC-emision-bimestral-anticipada-eba", "type": "DOC", "title": "PROP-0027 - DOC Emision Bimestral Anticipada Eba", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0027", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0027"}], "contributions": ["CONTRIBUTION-2026-05-09-emision-bimestral-anticipada-eba"], "status": "green", "examples_dir": "examples", "examples_count": 102}, {"id": "DOC-emision-mensual-anticipada-ema", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-emision-mensual-anticipada-ema", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-emision-mensual-anticipada-ema", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 12608, "ok": true}, "schema.md": {"exists": true, "size": 7751, "ok": true}, "parser_config.md": {"exists": true, "size": 6701, "ok": true}, "changelog.md": {"exists": true, "size": 1736, "ok": true}}, "variants": [], "props": [{"id": "PROP-0028", "state": "04 Applied", "state_short": "Applied", "target": "DOC-emision-mensual-anticipada-ema", "type": "DOC", "title": "PROP-0028 - DOC Emision Mensual Anticipada Ema", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0028", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0028"}], "contributions": ["CONTRIBUTION-2026-05-09-emision-mensual-anticipada-ema"], "status": "green", "examples_dir": "Examples", "examples_count": 104}, {"id": "DOC-reporte-general-movimientos-incidencias-ejercicio", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-reporte-general-movimientos-incidencias-ejercicio", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-reporte-general-movimientos-incidencias-ejercicio", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 15570, "ok": true}, "schema.md": {"exists": true, "size": 12608, "ok": true}, "parser_config.md": {"exists": true, "size": 12082, "ok": true}, "changelog.md": {"exists": true, "size": 2115, "ok": true}}, "variants": [], "props": [{"id": "PROP-0009", "state": "04 Applied", "state_short": "Applied", "target": "DOC-reporte-general-movimientos-incidencias-ejercicio", "type": "DOC", "title": "PROP-0009 - DOC Reporte General Movimientos Incidencias Ejercicio", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0009", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0009"}], "contributions": ["CONTRIBUTION-2026-05-04-reporte-general-movimientos-incidencias-ejercicio"], "status": "green", "examples_dir": "Examples", "examples_count": 2}, {"id": "DOC-reporte-riesgos-trabajo", "type": "DOC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-reporte-riesgos-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOC Documentos y Ejemplos/DOC-reporte-riesgos-trabajo", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 20993, "ok": true}, "schema.md": {"exists": true, "size": 16072, "ok": true}, "parser_config.md": {"exists": true, "size": 12482, "ok": true}, "changelog.md": {"exists": true, "size": 1659, "ok": true}}, "variants": [], "props": [{"id": "PROP-0030", "state": "04 Applied", "state_short": "Applied", "target": "DOC-reporte-riesgos-trabajo", "type": "DOC", "title": "PROP-0030 - DOC Reporte Riesgos Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0030", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0030"}], "contributions": ["CONTRIBUTION-2026-05-09-reporte-riesgos-trabajo"], "status": "green", "examples_dir": "examples", "examples_count": 2}], "DVC": [{"id": "DVC-0000_template", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template", "is_template": true, "criteria": {"files_ok": true, "examples_ok": false, "prop_applied": false}, "files": {"README.md": {"exists": true, "size": 1156, "ok": true}}, "variants": [{"name": "Variante x", "style": "new", "files": {"spec.md": {"exists": true, "size": 1153, "ok": true}, "changelog.md": {"exists": true, "size": 275, "ok": true}, "parser_config.md": {"exists": true, "size": 968, "ok": true}, "raw_schema.md": {"exists": true, "size": 1000, "ok": true}}, "files_ok": true, "examples_count": 0, "examples_ok": false, "examples_dir_rel": "source_documents/examples", "is_skeleton": true, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-0000_template/Variante x"}], "props": [], "contributions": [], "status": "red", "has_real_variant": false, "has_complete_variant": false}, {"id": "DVC-acumulado-nomina-mensual", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-acumulado-nomina-mensual", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-acumulado-nomina-mensual", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": true, "size": 14885, "ok": true}}, "variants": [{"name": "Variante legacy", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 8012, "ok": true}, "raw_schema.md": {"exists": true, "size": 8990, "ok": true}, "mapping.md": {"exists": true, "size": 12003, "ok": true}}, "files_ok": true, "examples_count": 12, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-acumulado-nomina-mensual/Variante legacy", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-acumulado-nomina-mensual/Variante legacy"}], "props": [{"id": "PROP-0013", "state": "04 Applied", "state_short": "Applied", "target": "DVC-acumulado-nomina-mensual", "type": "DVC", "title": "PROP-0013 - DVC Acumulado Nomina Mensual", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0013", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0013"}], "contributions": ["CONTRIBUTION-2026-05-04-acumulado-nomina-mensual"], "status": "green", "has_real_variant": true, "has_complete_variant": true}, {"id": "DVC-auxiliar-contable-gastos", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": true, "size": 15429, "ok": true}}, "variants": [{"name": "imt-plana-cuenta-externa", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 5158, "ok": true}, "raw_schema.md": {"exists": true, "size": 4774, "ok": true}, "mapping.md": {"exists": true, "size": 4600, "ok": true}}, "files_ok": true, "examples_count": 1, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/imt-plana-cuenta-externa", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/imt-plana-cuenta-externa"}, {"name": "saplayasj-aplanada-cuenta-renglon", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 4818, "ok": true}, "raw_schema.md": {"exists": true, "size": 5428, "ok": true}, "mapping.md": {"exists": true, "size": 4393, "ok": true}}, "files_ok": true, "examples_count": 1, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/saplayasj-aplanada-cuenta-renglon", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/saplayasj-aplanada-cuenta-renglon"}, {"name": "selim-agrupada-cuenta-header", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 5194, "ok": true}, "raw_schema.md": {"exists": true, "size": 5216, "ok": true}, "mapping.md": {"exists": true, "size": 4595, "ok": true}}, "files_ok": true, "examples_count": 2, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/selim-agrupada-cuenta-header", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-auxiliar-contable-gastos/selim-agrupada-cuenta-header"}], "props": [{"id": "PROP-0012", "state": "04 Applied", "state_short": "Applied", "target": "DVC-auxiliar-contable-gastos", "type": "DVC", "title": "PROP-0012 - DVC Auxiliar Contable Gastos", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0012", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0012"}], "contributions": ["CONTRIBUTION-2026-05-04-auxiliar-contable-gastos"], "status": "green", "has_real_variant": true, "has_complete_variant": true}, {"id": "DVC-balanza-comprobacion", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": true, "size": 14726, "ok": true}}, "variants": [{"name": "Variante SAP", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 4439, "ok": true}, "raw_schema.md": {"exists": true, "size": 5113, "ok": true}, "mapping.md": {"exists": true, "size": 3468, "ok": true}}, "files_ok": true, "examples_count": 2, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion/Variante SAP", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion/Variante SAP"}, {"name": "Variante Selim debe haber", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 4310, "ok": true}, "raw_schema.md": {"exists": true, "size": 4253, "ok": true}, "mapping.md": {"exists": true, "size": 3214, "ok": true}}, "files_ok": true, "examples_count": 9, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion/Variante Selim debe haber", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion/Variante Selim debe haber"}, {"name": "Variante Selim deudor acreedor", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 4189, "ok": true}, "raw_schema.md": {"exists": true, "size": 3636, "ok": true}, "mapping.md": {"exists": true, "size": 3232, "ok": true}}, "files_ok": true, "examples_count": 3, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion/Variante Selim deudor acreedor", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion/Variante Selim deudor acreedor"}, {"name": "Variante generico con naturaleza", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 4200, "ok": true}, "raw_schema.md": {"exists": true, "size": 4838, "ok": true}, "mapping.md": {"exists": true, "size": 3364, "ok": true}}, "files_ok": true, "examples_count": 1, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion/Variante generico con naturaleza", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-balanza-comprobacion/Variante generico con naturaleza"}], "props": [{"id": "PROP-0014", "state": "04 Applied", "state_short": "Applied", "target": "DVC-balanza-comprobacion", "type": "DVC", "title": "PROP-0014 - DVC Balanza Comprobacion", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0014", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0014"}], "contributions": ["CONTRIBUTION-2026-05-04-balanza-comprobacion-dvc"], "status": "green", "has_real_variant": true, "has_complete_variant": true}, {"id": "DVC-colaboradores-vigentes", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": true, "size": 2997, "ok": true}}, "variants": [{"name": "Constructora Parmol", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 7197, "ok": true}, "raw_schema.md": {"exists": true, "size": 7718, "ok": true}, "mapping.md": {"exists": true, "size": 7061, "ok": true}}, "files_ok": true, "examples_count": 1, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/Constructora Parmol", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/Constructora Parmol"}, {"name": "Copa", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 6975, "ok": true}, "raw_schema.md": {"exists": true, "size": 14485, "ok": true}, "mapping.md": {"exists": true, "size": 8788, "ok": true}}, "files_ok": true, "examples_count": 1, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/Copa", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/Copa"}, {"name": "Servicios Administrativos Playa San Jose", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 7049, "ok": true}, "raw_schema.md": {"exists": true, "size": 6882, "ok": true}, "mapping.md": {"exists": true, "size": 6179, "ok": true}}, "files_ok": true, "examples_count": 6, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/Servicios Administrativos Playa San Jose", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-colaboradores-vigentes/Servicios Administrativos Playa San Jose"}], "props": [{"id": "PROP-0006", "state": "04 Applied", "state_short": "Applied", "target": "DVC-colaboradores-vigentes", "type": "DVC", "title": "PROP-0006 - DVC Colaboradores Vigentes", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0006", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0006"}], "contributions": ["CONTRIBUTION-2026-05-04-colaboradores-vigentes", "CONTRIBUTION-2026-05-04-colaboradores-vigentes-copa"], "status": "green", "has_real_variant": true, "has_complete_variant": true}, {"id": "DVC-comprobante-pago-sua", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-comprobante-pago-sua", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-comprobante-pago-sua", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": true, "size": 14544, "ok": true}}, "variants": [{"name": "PDF BBVA comprobante aplicacion pago texto extraible", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 1140, "ok": true}, "raw_schema.md": {"exists": true, "size": 1352, "ok": true}, "mapping.md": {"exists": true, "size": 828, "ok": true}}, "files_ok": true, "examples_count": 12, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-comprobante-pago-sua/PDF BBVA comprobante aplicacion pago texto extraible", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-comprobante-pago-sua/PDF BBVA comprobante aplicacion pago texto extraible"}, {"name": "PDF Banorte IXE recibo bancario SUA texto extraible", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 1079, "ok": true}, "raw_schema.md": {"exists": true, "size": 1179, "ok": true}, "mapping.md": {"exists": true, "size": 814, "ok": true}}, "files_ok": true, "examples_count": 11, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-comprobante-pago-sua/PDF Banorte IXE recibo bancario SUA texto extraible", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-comprobante-pago-sua/PDF Banorte IXE recibo bancario SUA texto extraible"}, {"name": "PDF Citibanamex BancaNet SIPARE OCR", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 1189, "ok": true}, "raw_schema.md": {"exists": true, "size": 1195, "ok": true}, "mapping.md": {"exists": true, "size": 911, "ok": true}}, "files_ok": true, "examples_count": 97, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-comprobante-pago-sua/PDF Citibanamex BancaNet SIPARE OCR", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-comprobante-pago-sua/PDF Citibanamex BancaNet SIPARE OCR"}], "props": [{"id": "PROP-0007", "state": "04 Applied", "state_short": "Applied", "target": "DVC-comprobante-pago-sua", "type": "DVC", "title": "PROP-0007 - DVC Comprobante Pago Sua", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0007", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0007"}, {"id": "PROP-0015", "state": "04 Applied", "state_short": "Applied", "target": "DVC-comprobante-pago-sua", "type": "DVC", "title": "PROP-0015 - DVC Comprobante Pago Sua", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0015", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0015"}], "contributions": ["CONTRIBUTION-2026-05-04-comprobante-pago-sua", "CONTRIBUTION-2026-05-04-comprobante-pago-sua-v2"], "status": "green", "has_real_variant": true, "has_complete_variant": true}, {"id": "DVC-contrato-colectivo-trabajo", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-colectivo-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-colectivo-trabajo", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": true, "size": 14867, "ok": true}}, "variants": [{"name": "PDF escaneado con rubricas", "style": "legacy", "files": {"parser_config.md": {"exists": true, "size": 7140, "ok": true}, "raw_schema.md": {"exists": true, "size": 6968, "ok": true}, "mapping.md": {"exists": true, "size": 8916, "ok": true}}, "files_ok": true, "examples_count": 1, "examples_ok": true, "examples_dir_rel": "Ejemplos", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-colectivo-trabajo/PDF escaneado con rubricas", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-colectivo-trabajo/PDF escaneado con rubricas"}], "props": [{"id": "PROP-0016", "state": "04 Applied", "state_short": "Applied", "target": "DVC-contrato-colectivo-trabajo", "type": "DVC", "title": "PROP-0016 - DVC Contrato Colectivo Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0016", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0016"}], "contributions": ["CONTRIBUTION-2026-05-04-contrato-colectivo-trabajo"], "status": "green", "has_real_variant": true, "has_complete_variant": true}, {"id": "DVC-contrato-individual-trabajo", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-individual-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-individual-trabajo", "is_template": false, "criteria": {"files_ok": true, "examples_ok": false, "prop_applied": true}, "files": {"README.md": {"exists": true, "size": 15009, "ok": true}}, "variants": [{"name": "Variante PDF escaneado", "style": "new", "files": {"spec.md": {"exists": true, "size": 15828, "ok": true}, "changelog.md": {"exists": true, "size": 4017, "ok": true}, "parser_config.md": {"exists": true, "size": 4776, "ok": true}, "raw_schema.md": {"exists": true, "size": 4507, "ok": true}}, "files_ok": true, "examples_count": 0, "examples_ok": false, "examples_dir_rel": null, "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-individual-trabajo/Variante PDF escaneado", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-individual-trabajo/Variante PDF escaneado"}, {"name": "Variante PDF hibrido", "style": "new", "files": {"spec.md": {"exists": true, "size": 15824, "ok": true}, "changelog.md": {"exists": true, "size": 4015, "ok": true}, "parser_config.md": {"exists": true, "size": 4848, "ok": true}, "raw_schema.md": {"exists": true, "size": 4523, "ok": true}}, "files_ok": true, "examples_count": 0, "examples_ok": false, "examples_dir_rel": null, "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-individual-trabajo/Variante PDF hibrido", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-individual-trabajo/Variante PDF hibrido"}, {"name": "Variante PDF nativo", "style": "new", "files": {"spec.md": {"exists": true, "size": 15822, "ok": true}, "changelog.md": {"exists": true, "size": 4014, "ok": true}, "parser_config.md": {"exists": true, "size": 4749, "ok": true}, "raw_schema.md": {"exists": true, "size": 6191, "ok": true}}, "files_ok": true, "examples_count": 0, "examples_ok": false, "examples_dir_rel": null, "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-individual-trabajo/Variante PDF nativo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-contrato-individual-trabajo/Variante PDF nativo"}], "props": [{"id": "PROP-0017", "state": "04 Applied", "state_short": "Applied", "target": "DVC-contrato-individual-trabajo", "type": "DVC", "title": "PROP-0017 - DVC Contrato Individual Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0017", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0017"}, {"id": "PROP-0022", "state": "04 Applied", "state_short": "Applied", "target": "DVC-contrato-individual-trabajo", "type": "DVC", "title": "PROP-0022 - Reparacion DVC-contrato-individual-trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0022", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0022"}], "contributions": ["CONTRIBUTION-2026-05-05-contrato-individual-trabajo", "CONTRIBUTION-2026-05-09-repair-contrato-individual-trabajo"], "status": "red", "has_real_variant": true, "has_complete_variant": false}, {"id": "DVC-cuestionario-control-interno-imss-infonavit", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-cuestionario-control-interno-imss-infonavit", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-cuestionario-control-interno-imss-infonavit", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": true, "size": 1532, "ok": true}}, "variants": [{"name": "Variante RSM Merida", "style": "new", "files": {"spec.md": {"exists": true, "size": 3883, "ok": true}, "changelog.md": {"exists": true, "size": 2536, "ok": true}, "parser_config.md": {"exists": true, "size": 7350, "ok": true}, "raw_schema.md": {"exists": true, "size": 6632, "ok": true}}, "files_ok": true, "examples_count": 1, "examples_ok": true, "examples_dir_rel": "source_documents/examples", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-cuestionario-control-interno-imss-infonavit/Variante RSM Merida", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-cuestionario-control-interno-imss-infonavit/Variante RSM Merida"}], "props": [{"id": "PROP-0021", "state": "04 Applied", "state_short": "Applied", "target": "DVC-cuestionario-control-interno-imss-infonavit", "type": "DVC", "title": "PROP-0021 - DVC Cuestionario Control Interno Imss Infonavit", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0021", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0021"}, {"id": "PROP-0024", "state": "04 Applied", "state_short": "Applied", "target": "DVC-cuestionario-control-interno-imss-infonavit", "type": "DVC", "title": "PROP-0024", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0024", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0024"}], "contributions": ["CONTRIBUTION-2026-05-05-cuestionario-control-interno-rsm-merida", "CONTRIBUTION-2026-05-09-repair-cuestionario-control-interno-dvc"], "status": "green", "has_real_variant": true, "has_complete_variant": true}, {"id": "DVC-lista-de-raya", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-lista-de-raya", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-lista-de-raya", "is_template": false, "criteria": {"files_ok": false, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": false, "size": 0, "ok": false}}, "variants": [{"name": "Variante Proalmex NOM mensual", "style": "new", "files": {"spec.md": {"exists": true, "size": 4413, "ok": true}, "changelog.md": {"exists": true, "size": 3242, "ok": true}, "parser_config.md": {"exists": true, "size": 2280, "ok": true}, "raw_schema.md": {"exists": true, "size": 2463, "ok": true}}, "files_ok": true, "examples_count": 1, "examples_ok": true, "examples_dir_rel": "source_documents/examples", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-lista-de-raya/Variante Proalmex NOM mensual", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-lista-de-raya/Variante Proalmex NOM mensual"}, {"name": "Variante sistema columnar SAP", "style": "new", "files": {"spec.md": {"exists": true, "size": 7142, "ok": true}, "changelog.md": {"exists": true, "size": 3242, "ok": true}, "parser_config.md": {"exists": true, "size": 3084, "ok": true}, "raw_schema.md": {"exists": true, "size": 3733, "ok": true}}, "files_ok": true, "examples_count": 6, "examples_ok": true, "examples_dir_rel": "source_documents/examples", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-lista-de-raya/Variante sistema columnar SAP", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-lista-de-raya/Variante sistema columnar SAP"}, {"name": "Variante sistema narrativo", "style": "new", "files": {"spec.md": {"exists": true, "size": 5937, "ok": true}, "changelog.md": {"exists": true, "size": 3239, "ok": true}, "parser_config.md": {"exists": true, "size": 2540, "ok": true}, "raw_schema.md": {"exists": true, "size": 3920, "ok": true}}, "files_ok": true, "examples_count": 4, "examples_ok": true, "examples_dir_rel": "source_documents/examples", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-lista-de-raya/Variante sistema narrativo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-lista-de-raya/Variante sistema narrativo"}], "props": [{"id": "PROP-0029", "state": "04 Applied", "state_short": "Applied", "target": "DVC-lista-de-raya", "type": "DVC", "title": "PROP-0029 - DVC Lista De Raya", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0029", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0029"}], "contributions": ["CONTRIBUTION-2026-05-09-lista-de-raya"], "status": "red", "has_real_variant": true, "has_complete_variant": true}, {"id": "DVC-reportes-entradas-salidas", "type": "DVC", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-reportes-entradas-salidas", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-reportes-entradas-salidas", "is_template": false, "criteria": {"files_ok": false, "examples_ok": true, "prop_applied": true}, "files": {"README.md": {"exists": false, "size": 0, "ok": false}}, "variants": [{"name": "Variante IBERICA", "style": "new", "files": {"spec.md": {"exists": true, "size": 13918, "ok": true}, "changelog.md": {"exists": true, "size": 1815, "ok": true}, "parser_config.md": {"exists": true, "size": 7335, "ok": true}, "raw_schema.md": {"exists": true, "size": 12811, "ok": true}}, "files_ok": true, "examples_count": 12, "examples_ok": true, "examples_dir_rel": "source_documents/examples", "is_skeleton": false, "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-reportes-entradas-salidas/Variante IBERICA", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DVC Documentos Variables Cliente/DVC-reportes-entradas-salidas/Variante IBERICA"}], "props": [{"id": "PROP-0031", "state": "04 Applied", "state_short": "Applied", "target": "DVC-reportes-entradas-salidas", "type": "DVC", "title": "PROP-0031 - DVC Reportes Entradas Salidas", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0031", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0031"}], "contributions": ["CONTRIBUTION-2026-05-09-reportes-entradas-salidas"], "status": "red", "has_real_variant": true, "has_complete_variant": true}], "DOL": [{"id": "DOL-0000_template", "type": "DOL", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-0000_template", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-0000_template", "is_template": true, "criteria": {"files_ok": true, "examples_ok": false, "prop_applied": false}, "files": {"spec.md": {"exists": true, "size": 4727, "ok": true}, "changelog.md": {"exists": true, "size": 1203, "ok": true}, "document_transcript.md": {"exists": true, "size": 2352, "ok": true}}, "variants": [], "props": [], "contributions": [], "status": "red", "pdf_count": 0}, {"id": "DOL-ley-federal-trabajo-lft", "type": "DOL", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-ley-federal-trabajo-lft", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-ley-federal-trabajo-lft", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 12829, "ok": true}, "changelog.md": {"exists": true, "size": 1863, "ok": true}, "document_transcript.md": {"exists": true, "size": 1525546, "ok": true}}, "variants": [], "props": [{"id": "PROP-0010", "state": "04 Applied", "state_short": "Applied", "target": "DOL-ley-federal-trabajo-lft", "type": "DOL", "title": "PROP-0010 - DOL Ley Federal Trabajo Lft", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0010", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0010"}], "contributions": ["CONTRIBUTION-2026-05-04-ley-federal-trabajo-lft"], "status": "green", "pdf_count": 1}, {"id": "DOL-reglamento-lss-macerf", "type": "DOL", "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-reglamento-lss-macerf", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/01 Explicit Knowledge/DOL Documentos de Leyes/DOL-reglamento-lss-macerf", "is_template": false, "criteria": {"files_ok": true, "examples_ok": true, "prop_applied": true}, "files": {"spec.md": {"exists": true, "size": 8460, "ok": true}, "changelog.md": {"exists": true, "size": 1465, "ok": true}, "document_transcript.md": {"exists": true, "size": 386771, "ok": true}}, "variants": [], "props": [{"id": "PROP-0018", "state": "04 Applied", "state_short": "Applied", "target": "DOL-reglamento-lss-macerf", "type": "DOL", "title": "PROP-0018 - DOL Reglamento Lss Macerf", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0018", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0018"}, {"id": "PROP-0023", "state": "04 Applied", "state_short": "Applied", "target": "DOL-reglamento-lss-macerf", "type": "DOL", "title": "PROP-0023", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0023", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0023"}], "contributions": ["CONTRIBUTION-2026-05-05-reglamento-lss-macerf", "CONTRIBUTION-2026-05-09-repair-reglamento-lss-macerf"], "status": "green", "pdf_count": 1}]}, "task_specific": [{"id": "METH-0000_template", "type": "METH", "is_template": true, "n_files": 5, "files_list": ["README.md", "changelog.md", "office_context.md", "relation_to_dict.md", "test_inventory.md"], "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/02 Task Specific/Templates METH y TEST/METH-0000_template", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/02 Task Specific/Templates METH y TEST/METH-0000_template", "props": [], "props_applied": [], "contributions": []}, {"id": "TEST-0000_template", "type": "TEST", "is_template": true, "n_files": 5, "files_list": ["README.md", "changelog.md", "evidence_sources.md", "sop.md", "workpaper_model.md"], "folder_rel": "Benford Vault V3/05 Benford Brain IMSS Mexico/02 Task Specific/Templates METH y TEST/TEST-0000_template", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/05 Benford Brain IMSS Mexico/02 Task Specific/Templates METH y TEST/TEST-0000_template", "props": [], "props_applied": [], "contributions": []}], "props": [{"id": "PROP-0001", "state": "04 Applied", "state_short": "Applied", "target": "DOC-cedula-determinacion-bimestral", "type": "DOC", "title": "PROP-0001 - DOC Cedula de Determinacion Bimestral", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0001", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0001"}, {"id": "PROP-0002", "state": "04 Applied", "state_short": "Applied", "target": "DOC-cedula-determinacion-mensual", "type": "DOC", "title": "PROP-0002 - DOC Cedula Determinacion Mensual", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0002", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0002"}, {"id": "PROP-0003", "state": "04 Applied", "state_short": "Applied", "target": "DOC-cfdi-nomina", "type": "DOC", "title": "PROP-0003 - DOC Cfdi Nomina", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0003", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0003"}, {"id": "PROP-0004", "state": "04 Applied", "state_short": "Applied", "target": "DVC-colaboradores-vigentes-constructora-parmol", "type": "DVC", "title": "PROP-0004 - DVC Colaboradores Vigentes Constructora Parmol", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0004", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0004"}, {"id": "PROP-0005", "state": "04 Applied", "state_short": "Applied", "target": "DVC-colaboradores-vigentes-servicios-administrativos-playa-san-jose", "type": "DVC", "title": "PROP-0005 - DVC Colaboradores Vigentes Servicios Administrativos Playa San Jose", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0005", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0005"}, {"id": "PROP-0006", "state": "04 Applied", "state_short": "Applied", "target": "DVC-colaboradores-vigentes", "type": "DVC", "title": "PROP-0006 - DVC Colaboradores Vigentes", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0006", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0006"}, {"id": "PROP-0007", "state": "04 Applied", "state_short": "Applied", "target": "DVC-comprobante-pago-sua", "type": "DVC", "title": "PROP-0007 - DVC Comprobante Pago Sua", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0007", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0007"}, {"id": "PROP-0008", "state": "04 Applied", "state_short": "Applied", "target": "DOC-constancia-presentacion-movimientos-afiliatorios", "type": "DOC", "title": "PROP-0008 - DOC Constancia Presentacion Movimientos Afiliatorios", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0008", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0008"}, {"id": "PROP-0009", "state": "04 Applied", "state_short": "Applied", "target": "DOC-reporte-general-movimientos-incidencias-ejercicio", "type": "DOC", "title": "PROP-0009 - DOC Reporte General Movimientos Incidencias Ejercicio", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0009", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0009"}, {"id": "PROP-0010", "state": "04 Applied", "state_short": "Applied", "target": "DOL-ley-federal-trabajo-lft", "type": "DOL", "title": "PROP-0010 - DOL Ley Federal Trabajo Lft", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0010", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0010"}, {"id": "PROP-0011", "state": "04 Applied", "state_short": "Applied", "target": "DVC-colaboradores-vigentes-copa", "type": "DVC", "title": "PROP-0011 - DVC Colaboradores Vigentes Copa", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0011", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0011"}, {"id": "PROP-0012", "state": "04 Applied", "state_short": "Applied", "target": "DVC-auxiliar-contable-gastos", "type": "DVC", "title": "PROP-0012 - DVC Auxiliar Contable Gastos", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0012", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0012"}, {"id": "PROP-0013", "state": "04 Applied", "state_short": "Applied", "target": "DVC-acumulado-nomina-mensual", "type": "DVC", "title": "PROP-0013 - DVC Acumulado Nomina Mensual", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0013", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0013"}, {"id": "PROP-0014", "state": "04 Applied", "state_short": "Applied", "target": "DVC-balanza-comprobacion", "type": "DVC", "title": "PROP-0014 - DVC Balanza Comprobacion", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0014", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0014"}, {"id": "PROP-0015", "state": "04 Applied", "state_short": "Applied", "target": "DVC-comprobante-pago-sua", "type": "DVC", "title": "PROP-0015 - DVC Comprobante Pago Sua", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0015", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0015"}, {"id": "PROP-0016", "state": "04 Applied", "state_short": "Applied", "target": "DVC-contrato-colectivo-trabajo", "type": "DVC", "title": "PROP-0016 - DVC Contrato Colectivo Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0016", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0016"}, {"id": "PROP-0017", "state": "04 Applied", "state_short": "Applied", "target": "DVC-contrato-individual-trabajo", "type": "DVC", "title": "PROP-0017 - DVC Contrato Individual Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0017", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0017"}, {"id": "PROP-0018", "state": "04 Applied", "state_short": "Applied", "target": "DOL-reglamento-lss-macerf", "type": "DOL", "title": "PROP-0018 - DOL Reglamento Lss Macerf", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0018", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0018"}, {"id": "PROP-0019", "state": "04 Applied", "state_short": "Applied", "target": "DOC-determinacion-prima-riesgos-trabajo", "type": "DOC", "title": "PROP-0019 - DOC Determinacion Prima Riesgos Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0019", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0019"}, {"id": "PROP-0020", "state": "04 Applied", "state_short": "Applied", "target": "DOC-constancia-situacion-fiscal", "type": "DOC", "title": "PROP-0020 - DOC Constancia Situacion Fiscal", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0020", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0020"}, {"id": "PROP-0021", "state": "04 Applied", "state_short": "Applied", "target": "DVC-cuestionario-control-interno-imss-infonavit", "type": "DVC", "title": "PROP-0021 - DVC Cuestionario Control Interno Imss Infonavit", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0021", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0021"}, {"id": "PROP-0022", "state": "04 Applied", "state_short": "Applied", "target": "DVC-contrato-individual-trabajo", "type": "DVC", "title": "PROP-0022 - Reparacion DVC-contrato-individual-trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0022", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0022"}, {"id": "PROP-0023", "state": "04 Applied", "state_short": "Applied", "target": "DOL-reglamento-lss-macerf", "type": "DOL", "title": "PROP-0023", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0023", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0023"}, {"id": "PROP-0024", "state": "04 Applied", "state_short": "Applied", "target": "DVC-cuestionario-control-interno-imss-infonavit", "type": "DVC", "title": "PROP-0024", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0024", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0024"}, {"id": "PROP-0025", "state": "04 Applied", "state_short": "Applied", "target": "DOC-declaracion-anual-prima-riesgo-trabajo", "type": "DOC", "title": "PROP-0025 - DOC Declaracion Anual Prima Riesgo Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0025", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0025"}, {"id": "PROP-0026", "state": "04 Applied", "state_short": "Applied", "target": "DOC-disco-pago-sua", "type": "DOC", "title": "PROP-0026 - DOC Disco Pago Sua", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0026", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0026"}, {"id": "PROP-0027", "state": "04 Applied", "state_short": "Applied", "target": "DOC-emision-bimestral-anticipada-eba", "type": "DOC", "title": "PROP-0027 - DOC Emision Bimestral Anticipada Eba", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0027", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0027"}, {"id": "PROP-0028", "state": "04 Applied", "state_short": "Applied", "target": "DOC-emision-mensual-anticipada-ema", "type": "DOC", "title": "PROP-0028 - DOC Emision Mensual Anticipada Ema", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0028", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0028"}, {"id": "PROP-0029", "state": "04 Applied", "state_short": "Applied", "target": "DVC-lista-de-raya", "type": "DVC", "title": "PROP-0029 - DVC Lista De Raya", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0029", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0029"}, {"id": "PROP-0030", "state": "04 Applied", "state_short": "Applied", "target": "DOC-reporte-riesgos-trabajo", "type": "DOC", "title": "PROP-0030 - DOC Reporte Riesgos Trabajo", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0030", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0030"}, {"id": "PROP-0031", "state": "04 Applied", "state_short": "Applied", "target": "DVC-reportes-entradas-salidas", "type": "DVC", "title": "PROP-0031 - DVC Reportes Entradas Salidas", "applied": true, "folder_rel": "Benford Vault V3/02 Proposals/04 Applied/PROP-0031", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/02 Proposals/04 Applied/PROP-0031"}], "contributions": [{"id": "CONTRIBUTION-2026-05-03-cedula-determinacion-bimestral", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-03-cedula-determinacion-bimestral", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-03-cedula-determinacion-bimestral"}, {"id": "CONTRIBUTION-2026-05-03-colaboradores-vigentes-variantes", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-03-colaboradores-vigentes-variantes", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-03-colaboradores-vigentes-variantes"}, {"id": "CONTRIBUTION-2026-05-03-comprobante-pago-sua", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-03-comprobante-pago-sua", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-03-comprobante-pago-sua"}, {"id": "CONTRIBUTION-2026-05-04-acumulado-nomina-mensual", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-acumulado-nomina-mensual", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-acumulado-nomina-mensual"}, {"id": "CONTRIBUTION-2026-05-04-auxiliar-contable-gastos", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-auxiliar-contable-gastos", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-auxiliar-contable-gastos"}, {"id": "CONTRIBUTION-2026-05-04-balanza-comprobacion-dvc", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-balanza-comprobacion-dvc", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-balanza-comprobacion-dvc"}, {"id": "CONTRIBUTION-2026-05-04-cedula-determinacion-mensual", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-cedula-determinacion-mensual", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-cedula-determinacion-mensual"}, {"id": "CONTRIBUTION-2026-05-04-cfdi-nomina", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-cfdi-nomina", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-cfdi-nomina"}, {"id": "CONTRIBUTION-2026-05-04-colaboradores-vigentes", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-colaboradores-vigentes", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-colaboradores-vigentes"}, {"id": "CONTRIBUTION-2026-05-04-colaboradores-vigentes-copa", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-colaboradores-vigentes-copa", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-colaboradores-vigentes-copa"}, {"id": "CONTRIBUTION-2026-05-04-comprobante-pago-sua", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-comprobante-pago-sua", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-comprobante-pago-sua"}, {"id": "CONTRIBUTION-2026-05-04-comprobante-pago-sua-v2", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-comprobante-pago-sua-v2", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-comprobante-pago-sua-v2"}, {"id": "CONTRIBUTION-2026-05-04-constancia-presentacion-movimientos-afiliatorios", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-constancia-presentacion-movimientos-afiliatorios", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-constancia-presentacion-movimientos-afiliatorios"}, {"id": "CONTRIBUTION-2026-05-04-contrato-colectivo-trabajo", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-contrato-colectivo-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-contrato-colectivo-trabajo"}, {"id": "CONTRIBUTION-2026-05-04-ley-federal-trabajo-lft", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-ley-federal-trabajo-lft", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-ley-federal-trabajo-lft"}, {"id": "CONTRIBUTION-2026-05-04-reporte-general-movimientos-incidencias-ejercicio", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-reporte-general-movimientos-incidencias-ejercicio", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-04-reporte-general-movimientos-incidencias-ejercicio"}, {"id": "CONTRIBUTION-2026-05-05-constancia-situacion-fiscal", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-constancia-situacion-fiscal", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-constancia-situacion-fiscal"}, {"id": "CONTRIBUTION-2026-05-05-contrato-individual-trabajo", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-contrato-individual-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-contrato-individual-trabajo"}, {"id": "CONTRIBUTION-2026-05-05-cuestionario-control-interno-rsm-merida", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-cuestionario-control-interno-rsm-merida", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-cuestionario-control-interno-rsm-merida"}, {"id": "CONTRIBUTION-2026-05-05-determinacion-prima-riesgos-trabajo", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-determinacion-prima-riesgos-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-determinacion-prima-riesgos-trabajo"}, {"id": "CONTRIBUTION-2026-05-05-determinacion-prima-riesgos-trabajo-v2", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-determinacion-prima-riesgos-trabajo-v2", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-determinacion-prima-riesgos-trabajo-v2"}, {"id": "CONTRIBUTION-2026-05-05-reglamento-lss-macerf", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-reglamento-lss-macerf", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-05-reglamento-lss-macerf"}, {"id": "CONTRIBUTION-2026-05-06-resumen-finiquitos-dc-montejo", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-06-resumen-finiquitos-dc-montejo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-06-resumen-finiquitos-dc-montejo"}, {"id": "CONTRIBUTION-2026-05-09-declaracion-anual-prima-riesgo-trabajo", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-declaracion-anual-prima-riesgo-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-declaracion-anual-prima-riesgo-trabajo"}, {"id": "CONTRIBUTION-2026-05-09-disco-pago-sua", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-disco-pago-sua", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-disco-pago-sua"}, {"id": "CONTRIBUTION-2026-05-09-emision-bimestral-anticipada-eba", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-emision-bimestral-anticipada-eba", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-emision-bimestral-anticipada-eba"}, {"id": "CONTRIBUTION-2026-05-09-emision-mensual-anticipada-ema", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-emision-mensual-anticipada-ema", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-emision-mensual-anticipada-ema"}, {"id": "CONTRIBUTION-2026-05-09-lista-de-raya", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-lista-de-raya", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-lista-de-raya"}, {"id": "CONTRIBUTION-2026-05-09-repair-contrato-individual-trabajo", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-repair-contrato-individual-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-repair-contrato-individual-trabajo"}, {"id": "CONTRIBUTION-2026-05-09-repair-cuestionario-control-interno-dvc", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-repair-cuestionario-control-interno-dvc", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-repair-cuestionario-control-interno-dvc"}, {"id": "CONTRIBUTION-2026-05-09-repair-reglamento-lss-macerf", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-repair-reglamento-lss-macerf", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-repair-reglamento-lss-macerf"}, {"id": "CONTRIBUTION-2026-05-09-reporte-riesgos-trabajo", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-reporte-riesgos-trabajo", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-reporte-riesgos-trabajo"}, {"id": "CONTRIBUTION-2026-05-09-reportes-entradas-salidas", "team": "01 Internal Team", "folder_rel": "Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-reportes-entradas-salidas", "folder_mac": "/sessions/tender-elegant-sagan/mnt/Benford Vault V3/01 Contribuciones/01 Internal Team/CONTRIBUTION-2026-05-09-reportes-entradas-salidas"}]}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('vaultData').textContent);
+const STATE = { tab: 'explicit', type: 'ALL', status: 'ALL', fail: 'ALL', search: '', showTpl: false, openRow: null };
+
+// Header
+document.getElementById('vaultPath').textContent = DATA.vault_mac.split('/').slice(-2).join('/');
+document.getElementById('genAt').textContent = DATA.generated_at;
+
+const heroStats = document.getElementById('heroStats');
+heroStats.innerHTML = `
+  <div class="stat ok"><span class="num">${DATA.summary.green}</span><span class="lab">OK</span></div>
+  <div class="stat bad"><span class="num">${DATA.summary.red}</span><span class="lab">Pendientes</span></div>
+  <div class="stat"><span class="num">${DATA.props.length}</span><span class="lab">PROPs</span></div>
+  <div class="stat"><span class="num">${DATA.contributions.length}</span><span class="lab">Contribs</span></div>
+`;
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    STATE.tab = b.dataset.tab;
+    document.getElementById('tab-explicit').style.display = STATE.tab === 'explicit' ? '' : 'none';
+    document.getElementById('tab-task').style.display = STATE.tab === 'task' ? '' : 'none';
+  };
+});
+
+// Filter chips
+document.querySelectorAll('.chip[data-type]').forEach(c => {
+  c.onclick = () => {
+    document.querySelectorAll('.chip[data-type]').forEach(x => x.classList.remove('on'));
+    c.classList.add('on'); STATE.type = c.dataset.type; renderEK();
+  };
+});
+document.querySelectorAll('.chip[data-status]').forEach(c => {
+  c.onclick = () => {
+    document.querySelectorAll('.chip[data-status]').forEach(x => x.classList.remove('on'));
+    c.classList.add('on'); STATE.status = c.dataset.status; renderEK();
+  };
+});
+document.querySelectorAll('.chip[data-fail]').forEach(c => {
+  c.onclick = () => {
+    document.querySelectorAll('.chip[data-fail]').forEach(x => x.classList.remove('on'));
+    c.classList.add('on'); STATE.fail = c.dataset.fail; renderEK();
+  };
+});
+document.getElementById('showTpl').onchange = (e) => { STATE.showTpl = e.target.checked; renderEK(); };
+document.getElementById('search').oninput = (e) => { STATE.search = e.target.value.toLowerCase(); renderEK(); };
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function copyPath(path, label) {
+  navigator.clipboard.writeText(path).then(() => showToast(`Path copiado: ${label || 'carpeta'}`));
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+function stateClass(s) { return 'state-' + s.replace(/\s+/g, ''); }
+
+// Returns array of short fail keys: 'files', 'examples', 'prop'
+function failKeysFor(c) {
+  const out = [];
+  if (c.status === 'green') return out;
+  if (c.criteria && !c.criteria.files_ok) out.push('files');
+  if (c.criteria && !c.criteria.examples_ok) out.push('examples');
+  if (c.criteria && !c.criteria.prop_applied) out.push('prop');
+  return out;
+}
+
+const FAIL_LABELS = {
+  files: 'archivos',
+  examples: 'examples',
+  prop: 'sin PROP'
+};
+
+function failChipsHtml(c) {
+  const keys = failKeysFor(c);
+  if (c.status === 'green') return '<span class="fail-empty">—</span>';
+  if (keys.length === 0) return '<span class="fail-chip muted">sin criterio</span>';
+  return '<div class="fail-chips">' +
+    keys.map(k => `<span class="fail-chip" title="${FAIL_LABELS[k]}">${FAIL_LABELS[k]}</span>`).join('') +
+    '</div>';
+}
+
+function buildDetail(c) {
+  // Files checklist
+  let filesHtml = '<ul class="check-list">';
+  for (const [fname, info] of Object.entries(c.files)) {
+    const ok = info.ok;
+    filesHtml += `<li><span class="check ${ok?'ok':'bad'}">${ok?'✓':'✕'}</span> <span class="mono">${fname}</span> ${info.exists ? `<span style="color:#9b988c">(${info.size} bytes)</span>` : '<span style="color:#b8423b">(falta)</span>'}</li>`;
+  }
+  filesHtml += '</ul>';
+
+  // Variants
+  let variantsHtml = '';
+  if (c.variants && c.variants.length > 0) {
+    variantsHtml = '<div class="detail-section"><h4>Variantes</h4>';
+    for (const v of c.variants) {
+      const skel = v.is_skeleton ? '<span style="background:#f0ecdf;color:#735220;padding:1px 5px;border-radius:3px;font-size:10px">SKELETON</span>' : '';
+      let styleBadge = '';
+      if (v.style === 'new') styleBadge = '<span style="background:#e0f3e3;color:#1f7a3d;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">NUEVO</span>';
+      else if (v.style === 'legacy') styleBadge = '<span style="background:#f4e8d6;color:#735220;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">LEGACY</span>';
+      else if (v.style === 'incomplete') styleBadge = '<span style="background:#fae3e0;color:#8a2820;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">INCOMPLETO</span>';
+      const fileChks = Object.entries(v.files).map(([fn, fi]) => `<span class="check ${fi.ok?'ok':'bad'}">${fi.ok?'✓':'✕'}</span>${fn}`).join('  ');
+      variantsHtml += `<div class="variant-card">
+        <div class="vname">${escapeHtml(v.name)} ${styleBadge} ${skel}
+          <span class="check ${v.examples_ok?'ok':'bad'}">${v.examples_ok?'✓':'✕'} ejemplos (${v.examples_count})</span>
+          <button class="btn" style="margin-left:auto" onclick="copyPath(${JSON.stringify(v.folder_mac)}, ${JSON.stringify(v.name)})">Copiar path</button>
+        </div>
+        <div class="vfiles">${fileChks}</div>
+      </div>`;
+    }
+    variantsHtml += '</div>';
+  }
+
+  // PROPs
+  let propsHtml = '<div class="detail-section"><h4>PROPs (' + c.props.length + ')</h4>';
+  if (c.props.length === 0) {
+    propsHtml += '<div style="color:#b8423b;font-size:12px">⚠ No hay PROPs vinculadas a este canónico</div>';
+  } else {
+    propsHtml += '<div class="prop-list">';
+    for (const p of c.props) {
+      propsHtml += `<div class="prop-item">
+        <span class="prop-id">${p.id}</span>
+        <span class="state-pill ${stateClass(p.state_short)}">${p.state_short}</span>
+        <span style="color:#6b6960;font-size:11.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.title || '')}</span>
+        <button class="btn" onclick="copyPath(${JSON.stringify(p.folder_mac)}, ${JSON.stringify(p.id)})">Copiar</button>
+      </div>`;
+    }
+    propsHtml += '</div>';
+  }
+  propsHtml += '</div>';
+
+  // Contributions
+  let contribsHtml = '<div class="detail-section"><h4>Contributions (' + c.contributions.length + ')</h4>';
+  if (c.contributions.length === 0) {
+    contribsHtml += '<div style="color:#9b988c;font-size:12px">No hay contributions vinculadas</div>';
+  } else {
+    contribsHtml += '<div class="contrib-list">';
+    for (const cid of c.contributions) {
+      const co = DATA.contributions.find(x => x.id === cid);
+      const team = co ? co.team : '';
+      const macP = co ? co.folder_mac : '';
+      contribsHtml += `<div class="contrib-item">
+        <span class="mono" style="font-size:11px">${escapeHtml(cid)}</span>
+        <span style="font-size:11px;color:#6b6960">${escapeHtml(team)}</span>
+        <button class="btn" style="margin-left:auto" onclick="copyPath(${JSON.stringify(macP)}, ${JSON.stringify(cid)})">Copiar</button>
+      </div>`;
+    }
+    contribsHtml += '</div>';
+  }
+  contribsHtml += '</div>';
+
+  // Failed criteria summary
+  let failHtml = '';
+  if (c.status === 'red') {
+    const reasons = [];
+    if (!c.criteria.files_ok) reasons.push('faltan archivos requeridos');
+    if (!c.criteria.examples_ok) {
+      if (c.type === 'DVC') reasons.push('ninguna variante real con archivos completos + ejemplos');
+      else if (c.type === 'DOL') reasons.push('falta PDF fuente de la ley');
+      else reasons.push('Examples vacío');
+    }
+    if (!c.criteria.prop_applied) reasons.push('ninguna PROP en 04 Applied');
+    failHtml = `<div style="background:#fae3e0;border:1px solid #f0c0bb;border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:12px;color:#8a2820">
+      <strong>Pendiente:</strong> ${reasons.join(' · ')}
+    </div>`;
+  }
+
+  return `
+    ${failHtml}
+    <div class="detail-grid">
+      <div>
+        <div class="detail-section">
+          <h4>Archivos canónicos requeridos</h4>
+          ${filesHtml}
+        </div>
+        ${variantsHtml}
+        <div class="detail-section" style="margin-top:14px">
+          <h4>Carpeta del canónico</h4>
+          <div class="path">${escapeHtml(c.folder_mac)}</div>
+          <div class="actions">
+            <button class="btn primary" onclick="copyPath(${JSON.stringify(c.folder_mac)}, ${JSON.stringify(c.id)})">📋 Copiar path</button>
+            <a class="btn" href="${'file://'+encodeURI(c.folder_mac)}">🗂 Abrir en Finder</a>
+          </div>
+        </div>
+      </div>
+      <div>
+        ${propsHtml}
+        ${contribsHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderEK() {
+  const all = [...DATA.explicit.DOC, ...DATA.explicit.DVC, ...DATA.explicit.DOL];
+  let items = all.filter(c => STATE.showTpl || !c.is_template);
+  if (STATE.type !== 'ALL') items = items.filter(c => c.type === STATE.type);
+  if (STATE.status !== 'ALL') items = items.filter(c => c.status === STATE.status);
+  if (STATE.fail !== 'ALL') items = items.filter(c => failKeysFor(c).includes(STATE.fail));
+  if (STATE.search) {
+    const s = STATE.search;
+    items = items.filter(c =>
+      c.id.toLowerCase().includes(s) ||
+      c.props.some(p => p.id.toLowerCase().includes(s)) ||
+      c.contributions.some(cid => cid.toLowerCase().includes(s))
+    );
+  }
+
+  const body = document.getElementById('ekBody');
+  if (items.length === 0) {
+    body.innerHTML = '<tr><td colspan="6" class="empty">Sin documentos que coincidan con los filtros.</td></tr>';
+    return;
+  }
+
+  let html = '';
+  for (const c of items) {
+    const propsCount = c.props.length;
+    const contribsCount = c.contributions.length;
+    const statusLabel = c.status === 'green' ? 'OK' : 'Pendiente';
+    const tplBadge = c.is_template ? '<span style="background:#f0ecdf;color:#735220;padding:1px 5px;border-radius:3px;font-size:10px;margin-left:6px">TEMPLATE</span>' : '';
+    html += `<tr class="row expandable" data-id="${escapeHtml(c.id)}" onclick="toggleRow(${JSON.stringify(c.id)})">
+      <td><span class="expand-arrow">▶</span><strong>${escapeHtml(c.id)}</strong>${tplBadge}</td>
+      <td><span class="type-pill type-${c.type}">${c.type}</span></td>
+      <td><span class="count ${contribsCount===0?'zero':''}">${contribsCount}</span></td>
+      <td><span class="count ${propsCount===0?'zero':''}">${propsCount}</span></td>
+      <td>${failChipsHtml(c)}</td>
+      <td><span class="status ${c.status}"><span class="dot"></span>${statusLabel}</span></td>
+    </tr>
+    <tr class="detail" id="detail-${escapeHtml(c.id)}" style="display:none"><td colspan="6">${buildDetail(c)}</td></tr>`;
+  }
+  body.innerHTML = html;
+}
+
+function toggleRow(id) {
+  const detail = document.getElementById('detail-' + id);
+  const row = detail.previousElementSibling;
+  const isOpen = detail.style.display !== 'none';
+  // Close all
+  document.querySelectorAll('tr.detail').forEach(d => d.style.display = 'none');
+  document.querySelectorAll('tr.row').forEach(r => r.classList.remove('open'));
+  if (!isOpen) {
+    detail.style.display = '';
+    row.classList.add('open');
+  }
+}
+
+function renderTS() {
+  const body = document.getElementById('tsBody');
+  if (DATA.task_specific.length === 0) {
+    body.innerHTML = '<tr><td colspan="4" class="empty">No hay documentos Task Specific aún.</td></tr>';
+    return;
+  }
+  let html = '';
+  for (const t of DATA.task_specific) {
+    const tplBadge = t.is_template ? '<span style="background:#f0ecdf;color:#735220;padding:1px 5px;border-radius:3px;font-size:10px;margin-left:6px">TEMPLATE</span>' : '';
+    html += `<tr class="row">
+      <td><strong>${escapeHtml(t.id)}</strong>${tplBadge}</td>
+      <td><span class="type-pill type-${t.type}">${t.type}</span></td>
+      <td><span class="count">${t.n_files}</span></td>
+      <td>
+        <button class="btn" onclick="copyPath(${JSON.stringify(t.folder_mac)}, ${JSON.stringify(t.id)})">📋 Copiar path</button>
+        <a class="btn" href="${'file://'+encodeURI(t.folder_mac)}">🗂 Finder</a>
+      </td>
+    </tr>`;
+  }
+  body.innerHTML = html;
+}
+
+renderEK();
+renderTS();
+
+// ---------- Refresh button ----------
+// El dashboard es HTML estático: para refrescar hay que correr el script
+// desde el repo. Click copia el comando al clipboard.
+const REFRESH_CMD = 'cd ~/Documents/GitHub/benford-skills && bun run dashboard:refresh';
+const refreshBtn = document.getElementById('refreshBtn');
+refreshBtn.onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(REFRESH_CMD);
+    showToast('Comando copiado. Pégalo en terminal y recarga esta página (Cmd+R).');
+  } catch (e) {
+    showToast('Corre en terminal: ' + REFRESH_CMD);
+  }
+};
+</script>
+</body>
+</html>

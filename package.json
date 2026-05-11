@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "link:local": "bash scripts/link-local-skills.sh",
+    "dashboard:refresh": "python3 dashboard/build_snapshot.py",
+    "dashboard:link": "bash scripts/link-dashboard-to-vault.sh",
     "router": "bun run scripts/benford-router.ts",
     "automations": "bun run scripts/benford-automations.ts",
     "canonical-editor": "bun run scripts/benford-canonical-editor.ts",

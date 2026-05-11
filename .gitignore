@@ -27,3 +27,6 @@ vault/**/*.CSV
 # Local router config and runtime locks
 .benford-router.json
 .benford-runtime/
+
+# Dashboard raw snapshot (regenerated; index.html embebido es el que se commitea)
+dashboard/vault_snapshot.json
