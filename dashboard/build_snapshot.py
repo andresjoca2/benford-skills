@@ -59,7 +59,10 @@ def resolve_vault_root(cli_arg: str | None) -> Path:
 # ---------------- Reglas DVC / DOC / DOL ----------------
 REQUIRED = {
     "DOC": ["spec.md", "schema.md", "parser_config.md", "changelog.md"],
-    "DVC": ["README.md"],
+    # DVC: el canónico solo es contenedor de variantes. No requiere archivos
+    # propios. El status verde se determina por tener ≥1 variante completa
+    # (ver parse_canonical → examples_ok = has_complete_variant).
+    "DVC": [],
     "DOL": ["spec.md", "changelog.md", "document_transcript.md"],
 }
 DVC_VARIANT_REQUIRED_NEW = ["spec.md", "changelog.md", "parser_config.md", "raw_schema.md"]

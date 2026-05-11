@@ -44,7 +44,7 @@ Luego recarga el dashboard (Cmd+R). El botón "Refrescar" del UI copia este coma
 - Examples: carpeta `Ejemplos/` o `Examples/` con ≥1 archivo
 
 **DVC** (Documentos Variables Cliente):
-- Canónico requiere: `README.md`
+- Canónico no requiere archivos propios (es solo un contenedor de variantes).
 - Variantes válidas con cualquiera de los dos templates:
   - **NUEVO**: `spec.md`, `changelog.md`, `parser_config.md`, `raw_schema.md` a nivel variante; ejemplos en `source_documents/examples/`
   - **LEGACY**: `parser_config.md`, `raw_schema.md`, `mapping.md` a nivel variante; ejemplos en `Examples/` o `Ejemplos/`
