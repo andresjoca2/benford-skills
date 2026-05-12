@@ -76,6 +76,9 @@ function buildPrompt(job: OpenClawQueuedJob) {
   const minScore = Math.max(Math.min(Number(input.brief?.minScoreThreshold || 75), 100), 0)
   const reviewBatchSize = Math.max(Math.min(Number(input.brief?.reviewBatchSize || 10), maxCompanies), 1)
   const fastPrefetch = job.skill === "find_companies" && input.brief?.discoveryMode === "fast_prefetch"
+  const alreadySeenCompanies = input.memory?.alreadySeenCompanies
+  const seenCompanies = Array.isArray(alreadySeenCompanies) ? alreadySeenCompanies.length : 0
+  const usefulFollowUpBatch = fastPrefetch && seenCompanies > 0
   const schema =
     job.skill === "find_companies"
       ? {
@@ -101,7 +104,7 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "You are running a Benford Backoffice prospecting job.",
     "Treat this as an independent fresh run. Ignore any previous conversation, prior test prompts, or earlier empty outputs.",
     "Use the find-companies skill if it is available at skills/find-companies/SKILL.md in the OpenClaw workspace.",
-    `Your task is to research the market and return ${maxCompanies} NEW real company/business candidates that match the campaign brief.`,
+    `Your task is to research the market and return up to ${maxCompanies} NEW real company/business candidates that match the campaign brief.`,
     "Use available research/browser/search tools when useful. Prefer primary company websites and credible public sources.",
     ...(fastPrefetch
       ? [
@@ -112,10 +115,15 @@ function buildPrompt(job: OpenClawQueuedJob) {
           "Keep rationale and evidence notes concise, specific, and based on the source signal.",
         ]
       : []),
-    "For find_companies jobs, actively search until you reach maxCompanies.",
+    ...(usefulFollowUpBatch
+      ? [
+          `This is a follow-up run with ${seenCompanies} already-seen companies in memory. A useful result is ${reviewBatchSize} strong new candidates; do not burn the whole timeout trying to fill every remaining slot.`,
+          `If you can find more quickly, return more, up to ${maxCompanies}. If you have ${reviewBatchSize} solid non-duplicate candidates, return them immediately as valid JSON.`,
+        ]
+      : ["For first-pass find_companies jobs, actively search until you reach maxCompanies."]),
     "For maxCompanies <= 10, do not stop at 4-5 candidates. Use at least six distinct search/source angles before returning fewer than maxCompanies.",
     "For maxCompanies > 10, prioritize source diversity and breadth over exhaustive per-company enrichment.",
-    "For broad markets such as LATAM fintech, assume enough qualified candidates exist and return exactly maxCompanies unless every remaining result is duplicated or conflicts with the brief.",
+    "For broad first-pass markets such as LATAM fintech, assume enough qualified candidates exist and return maxCompanies unless every remaining result is duplicated or conflicts with the brief.",
     "Do not return companies, domains, LinkedIn URLs, or suppressed values already present in memory.",
     "Treat approved, rejected, do_not_contact, and free-text feedback in memory as product signal for the next batch.",
     "Lean into patterns from approved companies and avoid patterns explicitly rejected by the operator.",
@@ -124,7 +132,7 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "Every returned company must include evidence with a URL and a note explaining what was found.",
     "Each candidate must be an actual company, business, firm, clinic, practice, or person-owned business. Do not return directories, generic categories, search result pages, or lead-list vendors as final candidates.",
     "Set domain only when it is the candidate's official website domain. If evidence is a directory, marketplace, maps page, or listing site, leave domain empty and put that URL only in evidence.",
-    `Return exactly ${maxCompanies} companies when the market is broad enough. Never pad with duplicates, directories, or entities that conflict with the brief.`,
+    `Return up to ${maxCompanies} companies when the market is broad enough. Never pad with duplicates, directories, or entities that conflict with the brief.`,
     "Return only valid JSON. Do not include markdown, prose, or code fences.",
     "",
     `Skill: ${job.skill}`,

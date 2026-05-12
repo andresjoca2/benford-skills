@@ -111,12 +111,15 @@ The frontend sends:
   "replaceQueuedRun": true,
   "revealCachedCompanies": true,
   "reviewBatchSize": 10,
-  "prefetchCompanies": 30
+  "prefetchCompanies": 20
 }
 ```
 
 This means the second click is instant if there are hidden candidates. Only when
 the hidden queue is empty does it enqueue another OpenClaw job.
+The UI chooses an interactive prefetch size from the campaign limit and caps it
+at 20 so follow-up runs do not spend the full timeout trying to fill oversized
+batches.
 
 The next job input includes:
 

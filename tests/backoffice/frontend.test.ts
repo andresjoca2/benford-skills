@@ -103,7 +103,7 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("Re-ejecutar búsqueda")
     expect(screen).toContain("replaceQueuedRun: true")
     expect(screen).toContain("revealCachedCompanies: true")
-    expect(screen).toContain("prefetchCompanies: 30")
+    expect(screen).toContain("companyPrefetchSize")
     expect(screen).toContain("Mostrar 10 cacheadas")
     expect(screen).toContain("onClick={onRerun}")
     expect(screen).toContain("scoreFilterOn")
@@ -453,6 +453,36 @@ describe("clo backoffice local database", () => {
     } finally {
       if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
       db.prepare("DELETE FROM companies WHERE domain LIKE 'prefetch-queue-company-%.example'").run()
+    }
+  })
+
+  test("caps interactive company prefetch requests to avoid oversized reruns", () => {
+    setupDatabase()
+    let campaignId = ""
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Company Prefetch Cap",
+        objective: "Encontrar partnerships de alto fit.",
+        searchMode: "companies",
+        maxCompanies: 50,
+        maxRuntimeSeconds: 900,
+      })
+      campaignId = campaign?.id ?? ""
+
+      const created = campaignId
+        ? createCampaignRun(campaignId, { prefetchCompanies: 30, reviewBatchSize: 10 })
+        : null
+      const runId = created && "run" in created ? created.run?.id ?? "" : ""
+      const job = db
+        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ?")
+        .get(runId)
+      const input = job ? JSON.parse(job.input_json) : {}
+
+      expect(input.brief?.maxCompanies).toBe(20)
+      expect(input.brief?.reviewBatchSize).toBe(10)
+    } finally {
+      if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
     }
   })
 

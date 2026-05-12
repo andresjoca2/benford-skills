@@ -9,6 +9,12 @@ const BATCH_TABS = [
   { id:"contenido", label:"Contenido", meta:"4 plantillas" },
 ];
 
+const companyPrefetchSize = (brief) => {
+  const configured = Number(brief?.maxCompanies || 10);
+  const batch = Number.isFinite(configured) && configured > 0 ? configured : 10;
+  return Math.min(20, Math.max(10, Math.floor(batch)));
+};
+
 const BatchDetailScreen = ({ batchId, onBack }) => {
   const fallback = window.DATA.BATCHES.find(x => x.id === batchId) || window.DATA.BATCHES[0];
   const [detail, setDetail] = useStateBd(fallback);
@@ -177,7 +183,7 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
               brief={b.brief}
               activeRun={activeRun}
               hiddenCount={companies?.hiddenCount || 0}
-              onRerun={()=>launchRun({ replaceQueuedRun: true, revealCachedCompanies: true, reviewBatchSize: 10, prefetchCompanies: 30 })}
+              onRerun={()=>launchRun({ replaceQueuedRun: true, revealCachedCompanies: true, reviewBatchSize: 10, prefetchCompanies: companyPrefetchSize(b.brief) })}
               rerunBusy={runBusy}
               onOpenAutoSearch={()=>setAutoSearchOpen(true)}
             />

@@ -173,6 +173,8 @@ const inspectableTables = [
   "schema_migrations",
 ] as const
 
+const FIND_COMPANIES_INTERACTIVE_PREFETCH_CAP = 20
+
 export function setupDatabase() {
   seedDevelopmentData()
 }
@@ -519,10 +521,13 @@ export function createCampaignRun(
 
   const brief = campaign.brief
   const mission = brief.searchMode || "companies"
+  const briefCompanyLimit = Math.max(10, positiveInteger(brief.maxCompanies, 10))
   const requestedCompanies = mission === "people"
     ? brief.maxCompanies
-    : positiveInteger(options.prefetchCompanies, Math.max(10, brief.maxCompanies || 0))
-  const runMaxCompanies = mission === "people" ? brief.maxCompanies : Math.max(10, requestedCompanies)
+    : positiveInteger(options.prefetchCompanies, briefCompanyLimit)
+  const runMaxCompanies = mission === "people"
+    ? brief.maxCompanies
+    : Math.min(FIND_COMPANIES_INTERACTIVE_PREFETCH_CAP, Math.max(10, requestedCompanies))
   const runMaxRuntimeSeconds = effectiveRunTimeoutSeconds(mission, brief.maxRuntimeSeconds)
   const runId = uniqueId("run", `${campaignId}_${mission}`)
   const jobSkill = mission === "people" ? "find_people" : "find_companies"

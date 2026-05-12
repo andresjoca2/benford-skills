@@ -101,7 +101,7 @@ Body:
   "replaceQueuedRun": true,
   "revealCachedCompanies": true,
   "reviewBatchSize": 10,
-  "prefetchCompanies": 30
+  "prefetchCompanies": 20
 }
 ```
 
@@ -111,7 +111,7 @@ Rules:
 - `replaceQueuedRun` cancels a queued run before creating the new run
 - `revealCachedCompanies` reveals the next hidden review lot before creating a new OpenClaw job
 - `reviewBatchSize` controls how many cached candidates become visible; current UI sends 10
-- `prefetchCompanies` asks OpenClaw for a larger batch so future review lots can be instant
+- `prefetchCompanies` asks OpenClaw for a larger batch so future review lots can be instant; current UI caps interactive company prefetches at 20 to keep reruns responsive
 - `people` briefs enqueue `find_people`
 - `companies` and `companies_then_people` briefs enqueue `find_companies`
 

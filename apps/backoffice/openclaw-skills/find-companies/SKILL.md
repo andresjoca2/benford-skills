@@ -19,7 +19,7 @@ Find candidates that can eventually lead to a person to contact. In a company-fi
 
 For interactive batch discovery, target `maxCompanies` but do not crawl exhaustively. When `maxCompanies <= 10`, treat the requested count as an exact batch size unless the market is truly exhausted. Do not stop at 4-5 candidates in broad markets such as LATAM fintech, SaaS, agencies, clinics, restaurants, or professional services. Try at least six high-signal search/source angles, at least two city/region variants when the market is geographic, and both primary websites and credible secondary sources before returning fewer than requested. Return a smaller list only when the remaining candidates are weak, duplicated, directory-only, or conflict with negative signals.
 
-When the job brief says `discoveryMode: "fast_prefetch"`, optimize for breadth and review velocity. Return the requested `maxCompanies` as a first-pass discovery batch, knowing the backoffice will show only `reviewBatchSize` candidates immediately and cache the rest for later. Use concise source checks; one strong official or credible public source is enough per candidate. Do not deep-crawl every candidate unless the entity identity or brief fit is unclear.
+When the job brief says `discoveryMode: "fast_prefetch"`, optimize for breadth and review velocity. On first-pass runs, return the requested `maxCompanies` as a discovery batch when the market is broad enough, knowing the backoffice will show only `reviewBatchSize` candidates immediately and cache the rest for later. On follow-up runs where memory already includes prior companies and feedback, treat `reviewBatchSize` strong new candidates as a useful complete result; return more only if they are quick to find. Use concise source checks; one strong official or credible public source is enough per candidate. Do not deep-crawl every candidate unless the entity identity or brief fit is unclear.
 
 ## Source Ladder
 
@@ -61,6 +61,8 @@ Use this scoring model:
 - subtract for negative signals, weak evidence, directory-only evidence, or unclear entity identity.
 
 Return fewer than maxCompanies only if weak, duplicated, directory-only, or off-brief candidates are the only remaining options after multiple search/source angles. Do not pad the list.
+
+For follow-up fast_prefetch runs, never time out trying to fill the full requested count after a solid review batch is available. Returning 10 strong non-duplicate companies is better than returning nothing after exhausting the timeout.
 
 ## Feedback Memory
 
