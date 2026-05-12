@@ -30,3 +30,5 @@ vault/**/*.CSV
 
 # Dashboard raw snapshot (regenerated; index.html embebido es el que se commitea)
 dashboard/vault_snapshot.json
+apps/backoffice/.data/
+.gstack/

@@ -13,8 +13,51 @@ Use this repo for:
 - deterministic engines
 - tests and fixtures
 - operational wrappers
+- the local Benford backoffice app under `apps/backoffice`
 
 Do not use this repo for canonical Benford Brain content.
+
+## Repo Layout
+
+This repo now separates reusable Benford automation assets from the local
+backoffice product:
+
+```text
+apps/backoffice/          Local backoffice app and Bun dev server
+dashboard/                Static Vault Tracker dashboard and build script
+src/                      Source skills and deterministic engines
+skills/                   Packaged/installable skills
+scripts/                  CLI entrypoints and operational wrappers
+tests/                    Bun tests
+```
+
+The backoffice can orchestrate existing engines and skills. Its first local
+backend layer uses SQLite under `apps/backoffice/.data/`, which is intentionally
+ignored by Git.
+
+## Benford Backoffice
+
+Start the local app:
+
+```bash
+bun run backoffice:dev
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+Backoffice-specific checks:
+
+```bash
+bun run backoffice:test
+bun run backoffice:typecheck
+```
+
+See `apps/backoffice/README.md` for the current frontend and local SQLite
+backend notes.
 
 ## Local Codex Skill Install
 
