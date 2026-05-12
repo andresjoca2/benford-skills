@@ -1,12 +1,14 @@
 # Find Companies Milestone
 
-Goal:
+Status: first milestone operational on the OpenClaw host.
+
+Current loop:
 
 ```text
 laptop browser -> remote backoffice API -> real SQLite on OpenClaw/Hostinger -> worker -> OpenClaw -> 10 more companies -> review feedback -> next 10
 ```
 
-Do not work on `find_people` for this milestone.
+Do not work on `find_people` until the company loop is stable and fast enough.
 
 ## Runtime
 
@@ -55,8 +57,9 @@ BENFORD_BACKOFFICE_DB_PATH=/path/to/local-or-mounted/backoffice.sqlite \
 bun run backoffice:worker:openclaw
 ```
 
-The preferred milestone shape is server and worker both remote, with no mounted
-SQLite over SSH.
+This is now the active milestone shape: server and worker both run remote, with
+no mounted SQLite over SSH. The local test SQLite database was deleted after the
+remote DB became the source of truth.
 
 When syncing the `find-companies` skill from inside the OpenClaw host, copy it
 directly instead of using the SSH sync script:
@@ -97,7 +100,7 @@ That browser session is local, but the API and SQLite writes are remote.
    - `company_candidates`
    - `agent_events`
 9. Review companies in the UI.
-10. Before accepting/rejecting, write feedback in `Feedback para la siguiente búsqueda`.
+10. Before accepting/rejecting, optionally write feedback in `Motivo`.
 11. Click accept/reject.
 12. Click `Re-ejecutar búsqueda` again.
 
@@ -131,35 +134,62 @@ The next job input includes:
 }
 ```
 
-OpenClaw is instructed to use that memory to avoid repeats and bias the next 10
-toward accepted patterns.
+OpenClaw is instructed to use that memory to avoid repeats and bias the next
+batch toward accepted patterns. The memory is frozen when the run is created; any
+feedback written after that point is used by the next run.
+
+## Known Issue
+
+The milestone works, but load/run latency is still too high. Current suspects:
+
+- large API payloads or expensive frontend rendering on detail screens
+- OpenClaw agent context size
+- web-search latency
+- too much work in one `find_companies` turn
+
+This is the next optimization track. Do not confuse it with the old local SQLite
+prototype; the operational DB is remote and already working.
 
 ## Quick Checks
+
+The OpenClaw host currently does not require `sqlite3`; use Bun for quick checks.
 
 See queued/running jobs:
 
 ```bash
-sqlite3 apps/backoffice/.data/backoffice.sqlite \
-  "SELECT id, skill, status, created_at FROM openclaw_jobs ORDER BY created_at DESC LIMIT 10;"
+PATH=/root/.bun/bin:$PATH bun -e '
+import { Database } from "bun:sqlite";
+const db = new Database("apps/backoffice/.data/backoffice.sqlite");
+console.log(db.query("SELECT id, skill, status, created_at FROM openclaw_jobs ORDER BY created_at DESC LIMIT 10").all());
+'
 ```
 
 See latest saved companies:
 
 ```bash
-sqlite3 apps/backoffice/.data/backoffice.sqlite \
-  "SELECT c.name, c.domain, cc.score, cc.status FROM company_candidates cc JOIN companies c ON c.id = cc.company_id ORDER BY cc.created_at DESC LIMIT 20;"
+PATH=/root/.bun/bin:$PATH bun -e '
+import { Database } from "bun:sqlite";
+const db = new Database("apps/backoffice/.data/backoffice.sqlite");
+console.log(db.query("SELECT c.name, c.domain, cc.score, cc.status FROM company_candidates cc JOIN companies c ON c.id = cc.company_id ORDER BY cc.created_at DESC LIMIT 20").all());
+'
 ```
 
 See cached companies waiting to be revealed:
 
 ```bash
-sqlite3 apps/backoffice/.data/backoffice.sqlite \
-  "SELECT COUNT(*) FROM company_candidates WHERE review_visible = 0;"
+PATH=/root/.bun/bin:$PATH bun -e '
+import { Database } from "bun:sqlite";
+const db = new Database("apps/backoffice/.data/backoffice.sqlite");
+console.log(db.query("SELECT COUNT(*) AS hidden FROM company_candidates WHERE review_visible = 0").get());
+'
 ```
 
 See latest events:
 
 ```bash
-sqlite3 /var/lib/benford-backoffice/backoffice.sqlite \
-  "SELECT event_type, message, created_at FROM agent_events ORDER BY id DESC LIMIT 20;"
+PATH=/root/.bun/bin:$PATH bun -e '
+import { Database } from "bun:sqlite";
+const db = new Database("apps/backoffice/.data/backoffice.sqlite");
+console.log(db.query("SELECT event_type, message, created_at FROM agent_events ORDER BY id DESC LIMIT 20").all());
+'
 ```

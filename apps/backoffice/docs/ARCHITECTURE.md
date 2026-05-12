@@ -23,7 +23,7 @@ Browser UI
   -> web/browser/tool execution
 ```
 
-Current local app:
+Current app code:
 
 ```text
 apps/backoffice/dev.ts
@@ -68,12 +68,14 @@ GitHub
   schema, migrations, code, docs
 
 Local laptop
-  development SQLite
-  apps/backoffice/.data/backoffice.sqlite
+  browser/UI access through localhost tunnel
+  no operational SQLite
 
 OpenClaw / Hostinger
   operational SQLite
-  /var/lib/benford-backoffice/backoffice.sqlite
+  /root/benford/benford-skills/apps/backoffice/.data/backoffice.sqlite
+  Bun backoffice API
+  backoffice worker
 ```
 
 The DB path is controlled by:
@@ -81,6 +83,10 @@ The DB path is controlled by:
 ```text
 BENFORD_BACKOFFICE_DB_PATH
 ```
+
+The initial local test database was deleted after the remote loop became the
+source of truth. If a local isolated test DB is needed, create it explicitly with
+`BENFORD_BACKOFFICE_DB_PATH`.
 
 ## Existing OpenClaw Host
 
@@ -110,7 +116,17 @@ http://127.0.0.1:3000/
 
 ## Server Processes
 
-V1 expected processes:
+Current manual processes:
+
+```text
+bun run backoffice:dev
+  Serves the Mission Panel and API on the OpenClaw host.
+
+bun run backoffice:worker
+  Claims queued jobs, invokes OpenClaw, validates output, and writes results.
+```
+
+Target service processes:
 
 ```text
 benford-backoffice.service

@@ -14,6 +14,18 @@ Reconsider when:
 - the backoffice needs multi-host workers
 - operational data becomes too important for file-level backup discipline
 
+### Remote SQLite Is Operational Source Of Truth
+
+Decision: after the first `find_companies` milestone, the operational SQLite DB
+lives on the OpenClaw host. The initial laptop/local test DB was deleted.
+
+Reason: the server and worker must share one real database while OpenClaw runs
+jobs and writes candidates. Keeping a local test DB around made it too easy to
+look at stale data.
+
+Constraint: local development can still create an isolated DB with
+`BENFORD_BACKOFFICE_DB_PATH`, but it must not be treated as production state.
+
 ### Backoffice Owns State
 
 Decision: OpenClaw does not write directly to SQLite.
@@ -37,6 +49,21 @@ Reason: the CLI is already installed and talks to the gateway. A driver interfac
 Decision: keep OpenClaw prospecting skills under `apps/backoffice/openclaw-skills/` and sync them to the OpenClaw workspace.
 
 Reason: campaign discovery behavior, output schemas, source policy, and scoring rules must be reviewed and versioned with the backoffice contract.
+
+### Research Agent For Current Company Discovery
+
+Decision: current `find_companies` runs use `research-agent` through
+`OPENCLAW_FIND_COMPANIES_AGENT`.
+
+Reason: it has the web research behavior needed for this milestone. This is an
+operational routing choice, not a product decision that `prospecting-agent`
+should never own discovery.
+
+Reconsider when:
+
+- `prospecting-agent` is configured to use web search reliably
+- a lighter dedicated `find-companies-fast` path exists
+- OpenClaw context size becomes the dominant latency bottleneck
 
 ### Person-Centered Outbound
 

@@ -35,13 +35,25 @@ The code should hide this behind:
 runOpenClawJob(job): Promise<OpenClawJobResult>
 ```
 
-For local development against the remote host, use:
+For the current remote milestone, run the worker on the OpenClaw host with:
+
+```bash
+OPENCLAW_COMMAND=/usr/bin/openclaw \
+OPENCLAW_FIND_COMPANIES_AGENT=research-agent \
+BENFORD_BACKOFFICE_DB_PATH=apps/backoffice/.data/backoffice.sqlite \
+bun run backoffice:worker
+```
+
+For local development against the remote host over SSH, use:
 
 ```bash
 bun run backoffice:worker:openclaw
 ```
 
-The worker currently sends the prompt over SSH using base64 transport to avoid shell quoting bugs.
+When `OPENCLAW_SSH_TARGET` is set, the worker sends the prompt over SSH using
+base64 transport to avoid shell quoting bugs. When the worker runs on the
+OpenClaw host, leave `OPENCLAW_SSH_TARGET` empty and call `/usr/bin/openclaw`
+directly.
 Each job is sent with an explicit `--session-id` derived from the run/job id so local tests and previous conversations do not bleed into the next campaign run.
 
 Current routing:
@@ -106,10 +118,12 @@ Minimum shape:
     "positiveSignals": "Founder visible...",
     "negativeSignals": "Banca tradicional...",
     "searchMode": "companies",
-    "maxCompanies": 10,
+    "maxCompanies": 20,
     "maxPeople": 0,
-    "maxRuntimeSeconds": 900,
-    "minScoreThreshold": 75
+    "maxRuntimeSeconds": 120,
+    "minScoreThreshold": 75,
+    "reviewBatchSize": 10,
+    "discoveryMode": "fast_prefetch"
   },
   "memory": {
     "alreadySeenCompanies": [],
@@ -124,7 +138,10 @@ Minimum shape:
 }
 ```
 
-`memory.feedback` should include the operator's reason for acceptance or rejection when available. The next run must treat this feedback as product signal, not merely audit text.
+`memory.feedback` includes only non-empty operator text from accept/reject review.
+The next run must treat this feedback as product signal, not merely audit text.
+Feedback written after a run is created belongs to the next run, because job
+input is frozen in `openclaw_jobs.input_json` at creation time.
 
 ## Job Output
 

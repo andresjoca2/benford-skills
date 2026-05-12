@@ -74,7 +74,7 @@ Body fields:
   "runBudgetCents": 2000,
   "maxCompanies": 10,
   "maxPeople": 0,
-  "maxRuntimeSeconds": 900,
+  "maxRuntimeSeconds": 120,
   "minScoreThreshold": 75
 }
 ```
@@ -91,11 +91,27 @@ Returns person candidates for the Personas tab inside a campaign.
 
 ### `POST /api/campaigns/:id/runs`
 
-Creates a queued agent run and its first queued OpenClaw job.
+Creates a queued agent run and its first queued OpenClaw job, or reveals cached
+hidden company candidates when requested.
+
+Body:
+
+```json
+{
+  "replaceQueuedRun": true,
+  "revealCachedCompanies": true,
+  "reviewBatchSize": 10,
+  "prefetchCompanies": 30
+}
+```
 
 Rules:
 
 - only one `queued` or `running` run per campaign
+- `replaceQueuedRun` cancels a queued run before creating the new run
+- `revealCachedCompanies` reveals the next hidden review lot before creating a new OpenClaw job
+- `reviewBatchSize` controls how many cached candidates become visible; current UI sends 10
+- `prefetchCompanies` asks OpenClaw for a larger batch so future review lots can be instant
 - `people` briefs enqueue `find_people`
 - `companies` and `companies_then_people` briefs enqueue `find_companies`
 
@@ -146,9 +162,10 @@ Allowed statuses:
 approved, rejected, maybe, needs_more_research, do_not_contact, new
 ```
 
-Writes candidate status, `feedback`, and an `agent_events` record. `do_not_contact`
-also writes `suppression_list`; `needs_more_research` enqueues a research job.
-The feedback text is memory for the next run and should be sent in `openclaw_jobs.input_json.memory.feedback`.
+Writes candidate status and an `agent_events` record. Non-empty `feedback` also
+writes a `feedback` row. `do_not_contact` also writes `suppression_list`;
+`needs_more_research` enqueues a research job. Non-empty feedback text is memory
+for the next run and is sent in `openclaw_jobs.input_json.memory.feedback`.
 
 ### `POST /api/candidates/person/:id/review`
 
@@ -244,4 +261,5 @@ The next endpoints to add are:
 GET  /api/runs/:id/events/stream
 ```
 
-The remaining API work before worker integration is the realtime SSE stream.
+Worker integration for `find_companies` is operational. The remaining API work is
+the realtime SSE stream and clearer run retry/timeout controls.

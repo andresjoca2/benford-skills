@@ -4,6 +4,8 @@ The current schema is defined in:
 
 ```text
 apps/backoffice/db/migrations/0001_core.sql
+apps/backoffice/db/migrations/0002_brain_snapshot.sql
+apps/backoffice/db/migrations/0003_company_candidate_review_queue.sql
 ```
 
 Development seed data is defined in:
@@ -205,6 +207,16 @@ Operational meaning:
 - `needs_more_research`: should create or queue a future `research_company` job.
 - `do_not_contact`: should insert a matching row into `suppression_list`.
 
+Review queue fields:
+
+- `review_visible`: `1` means visible in the current review lot. `0` means saved
+  in SQLite but hidden until the next cached reveal.
+- `review_revealed_at`: timestamp when the candidate became visible.
+
+The current `find_companies` loop can prefetch more candidates than it reveals.
+The UI reviews visible candidates in lots of 10; `POST /api/campaigns/:id/runs`
+can reveal the next hidden lot without calling OpenClaw.
+
 ### `people`
 
 Global deduped person table.
@@ -223,6 +235,10 @@ Campaign-specific candidate state for a person. Uses the same status set as comp
 ### `feedback`
 
 Human feedback and decisions. This is not only audit data: accepted/rejected rationale should feed the next OpenClaw run as memory.
+
+Only non-empty textbox feedback creates a row in this table. A plain accept/reject
+without text still updates candidate status, but does not add empty memory to
+future agent runs.
 
 Subject types:
 
@@ -276,4 +292,7 @@ not create or send outreach automatically.
 - Never hand-edit an operational SQLite DB.
 - Schema changes go through `apps/backoffice/db/migrations`.
 - Development data goes through `apps/backoffice/db/seeds`.
-- Runtime DB files stay ignored under `.data` locally and `/var/lib/benford-backoffice` on OpenClaw.
+- Runtime DB files stay ignored under `.data`.
+- Current operational DB path on OpenClaw:
+  `/root/benford/benford-skills/apps/backoffice/.data/backoffice.sqlite`.
+- The laptop-local prototype DB was deleted after the remote DB became the source of truth.

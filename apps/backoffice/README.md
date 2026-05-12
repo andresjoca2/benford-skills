@@ -3,9 +3,10 @@
 Frontend local del backoffice de Clo. Esta version reemplaza el scaffold
 anterior por el proyecto de Claude Design en `Clo_s_Backoffice.zip`.
 
-La primera capa backend usa SQLite local con `bun:sqlite`. Campaigns,
-Prospectos/Personas y Empresas ya se hidratan desde endpoints locales; las
-demás pantallas siguen usando datos mock mientras se conectan por fases.
+El primer milestone operativo ya corre con el servidor y worker en OpenClaw.
+La UI se abre desde la laptop por tunnel/local browser, pero la API y la base
+operativa escriben en el SQLite remoto del host OpenClaw. Campaigns, corridas,
+Empresas, review feedback y cola de candidatos ya usan endpoints reales.
 
 ## Comandos
 
@@ -32,7 +33,7 @@ apps/backoffice/
 ├── db/
 │   ├── migrations/        # schema SQLite versionado
 │   └── seeds/             # datos dev separados del schema
-├── .data/                 # SQLite local ignorado por Git
+├── .data/                 # artefactos locales ignorados por Git; no es la DB operativa
 ├── public/uploads/        # assets del proyecto de Claude Design
 └── src/
     ├── clo/               # pantallas JSX del design
@@ -44,10 +45,14 @@ apps/backoffice/
 
 - No depende de React/Babel desde CDN; `dev.ts` transpila `.jsx` al vuelo.
 - `src/vendor/react-lite.js` existe solo para esta fase de prototipo.
-- La base local vive en `apps/backoffice/.data/backoffice.sqlite`.
-- Se puede cambiar la ruta con `BENFORD_BACKOFFICE_DB_PATH`.
+- La base operativa actual vive en OpenClaw:
+  `/root/benford/benford-skills/apps/backoffice/.data/backoffice.sqlite`.
+- La base local de pruebas inicial fue borrada. Para desarrollo aislado se puede
+  crear una nueva con `BENFORD_BACKOFFICE_DB_PATH`.
 - Si existe una base prototipo anterior, el migrator conserva sus tablas como
   `legacy_*` y crea el schema nuevo desde migraciones.
+- El servidor y worker remotos se levantan siguiendo
+  `docs/FIND_COMPANIES_MILESTONE.md`.
 
 ## Documentacion de producto
 

@@ -1,10 +1,31 @@
 # Roadmap
 
+## Current Status
+
+The first `find_companies` milestone is operational on the OpenClaw host.
+
+Current production-like loop:
+
+```text
+laptop browser over SSH tunnel
+  -> remote Bun backoffice API
+  -> remote SQLite
+  -> long-running worker
+  -> OpenClaw agent
+  -> company candidates
+  -> human review + feedback
+  -> next run memory
+```
+
+Known active issue: initial load and some runs feel slow. A separate performance
+pass should focus on API payload size, UI rendering, OpenClaw context size, and
+fast/deep discovery modes.
+
 ## Done / In Progress
 
 ### Phase 1 - SQLite Foundation
 
-Implemented locally:
+Implemented:
 
 - `db/migrations/0001_core.sql`
 - `db/seeds/dev.sql`
@@ -15,7 +36,7 @@ Implemented locally:
 
 ### Phase 2 - Backend-Backed Screens
 
-Implemented locally:
+Implemented:
 
 - campaign list endpoint
 - campaign detail endpoint
@@ -30,7 +51,7 @@ Implemented locally:
 
 ### Phase 3 - Runs And Review Actions
 
-Implemented locally:
+Implemented:
 
 - run creation endpoint
 - company/person review endpoints
@@ -50,7 +71,7 @@ Rules:
 
 ### Phase 4 - OpenClaw Worker
 
-Implemented locally:
+Implemented:
 
 - worker process
 - queued job claim loop
@@ -60,31 +81,35 @@ Implemented locally:
 - persistence of proposed companies
 - event writes for each step
 - SSH transport to `openclaw` host
-- `prospecting-agent` execution
+- `research-agent` execution for current `find_companies` discovery
 - versioned `find-companies` skill source
 - review feedback memory for the next `find_companies` run
 - stronger `find_companies` prompt for 10 new non-duplicate companies
 - OpenClaw request/response event writes
+- server and worker running against the real OpenClaw SQLite path
+- remote loop verified: search companies, review with feedback, search again
+- cached review batches: reveal next visible lot before calling OpenClaw again
+- idempotent migration for `review_visible` / `review_revealed_at`
 
 Remaining:
 
-- run backend and worker against the real OpenClaw/Hostinger SQLite path
-- verify the remote loop: search 10 companies, review with feedback, search 10 more
 - deploy worker as a long-running service on the OpenClaw host
+- improve timeout/retry visibility for failed runs
+- reduce latency of initial load and agent runs
 - persist `find_people` outputs later, after the companies loop works
 
 ### Phase 4.5 - Discovery Quality Controls
 
-Implemented locally:
+Implemented:
 
 - campaign-level minimum score threshold, initially defaulting to 75
 - UI filtering by score without deleting lower-score candidates from SQLite
 - frontend-only automatic search modal with compute, company, people, and score limits
 
-Add:
+Remaining:
 
 - source escalation policy: primary/public sources first, paid or bulk sources only when needed
-- feedback-aware reruns that learn from accepted/rejected companies
+- make fast vs deep discovery explicit in campaign/run controls
 
 ### Phase 5 - Mission Panel Realtime
 
@@ -100,9 +125,8 @@ Use Server-Sent Events.
 
 On OpenClaw host:
 
-- pull latest `main`
-- install dependencies
-- run backoffice manually once
+- pull the current GitHub branch/commit
+- run backoffice manually once against the remote SQLite DB
 - create `benford-backoffice.service`
 - create `benford-backoffice-worker.service`
 - back up SQLite regularly
