@@ -417,33 +417,17 @@ def build_snapshot(vault_root: Path) -> dict:
     }
 
 
-def inject_into_html(snapshot: dict) -> None:
-    if not ARTIFACT_HTML.exists():
-        print(f"WARN: no encontré {ARTIFACT_HTML}; solo escribí el JSON.")
-        return
-    html = ARTIFACT_HTML.read_text(encoding="utf-8")
-    snap_str = json.dumps(snapshot, ensure_ascii=False)
-    new_html, n = re.subn(
-        r'(<script[^>]*id="vaultData"[^>]*>)([\s\S]*?)(</script>)',
-        lambda m: m.group(1) + snap_str + m.group(3),
-        html,
-        count=1,
-    )
-    if n != 1:
-        sys.exit('ERROR: no encontré <script id="vaultData"> en index.html')
-    ARTIFACT_HTML.write_text(new_html, encoding="utf-8")
-    print(f"injected → {ARTIFACT_HTML.name} ({len(new_html)} bytes)")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Benford Vault snapshot")
     parser.add_argument("--vault-root", help="Path al Benford Vault V3", default=None)
-    parser.add_argument("--no-inject", action="store_true", help="Solo escribe el JSON, no inyecta en index.html")
+    parser.add_argument("--out", help="Path de salida del JSON", default=None)
     args = parser.parse_args()
 
     vault_root = resolve_vault_root(args.vault_root)
     if not vault_root.exists():
         sys.exit(f"ERROR: vault no existe: {vault_root}")
+
+    out_path = Path(args.out).expanduser().resolve() if args.out else SNAPSHOT_OUT_DEFAULT
 
     print(f"vault: {vault_root}")
     snapshot = build_snapshot(vault_root)
@@ -451,11 +435,9 @@ def main() -> None:
     print(f"summary: green={s['green']} red={s['red']}  DOC={s['by_type']['DOC']} DVC={s['by_type']['DVC']} DOL={s['by_type']['DOL']}")
     print(f"props={len(snapshot['props'])} contribs={len(snapshot['contributions'])} task_specific={len(snapshot['task_specific'])}")
 
-    SNAPSHOT_OUT.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2))
-    print(f"snapshot → {SNAPSHOT_OUT.name} ({SNAPSHOT_OUT.stat().st_size} bytes)")
-
-    if not args.no_inject:
-        inject_into_html(snapshot)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2))
+    print(f"snapshot → {out_path} ({out_path.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":

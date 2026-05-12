@@ -14,7 +14,7 @@ const NEW_CAMPAIGN_DEFAULTS = {
   runBudgetDollars: "0",
   maxCompanies: "10",
   maxPeople: "0",
-  maxRuntimeSeconds: "900",
+  maxRuntimeSeconds: "120",
   minScoreThreshold: "75",
 };
 

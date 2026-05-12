@@ -45,9 +45,6 @@ Fields include:
 - `max_companies`
 - `max_people`
 - `max_runtime_seconds`
-
-Planned field:
-
 - `min_score_threshold` - default 75. The backend should keep lower-score candidates in SQLite, while the UI can default to showing candidates at or above the threshold.
 
 Planned automatic search settings:

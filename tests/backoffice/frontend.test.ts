@@ -13,6 +13,7 @@ import {
   db,
   getCampaignDetail,
   getDatabaseTable,
+  hiddenCompanyCandidateCount,
   listDatabaseTables,
   listCampaignCompanyCandidates,
   listCampaigns,
@@ -21,6 +22,7 @@ import {
   listProspects,
   reviewCompanyCandidate,
   reviewPersonCandidate,
+  revealCachedCompanyCandidates,
   setupDatabase,
   updateCampaignBrief,
 } from "../../apps/backoffice/src/server/db.ts"
@@ -96,12 +98,21 @@ describe("clo backoffice frontend", () => {
 
   test("wires the company rerun button to campaign run creation", async () => {
     const screen = await readFile(path.join(appRoot, "src/clo/screen-batch.jsx"), "utf8")
+    const devServer = await readFile(path.join(appRoot, "dev.ts"), "utf8")
 
     expect(screen).toContain("Re-ejecutar búsqueda")
     expect(screen).toContain("replaceQueuedRun: true")
+    expect(screen).toContain("revealCachedCompanies: true")
+    expect(screen).toContain("prefetchCompanies: 30")
+    expect(screen).toContain("Mostrar 10 cacheadas")
     expect(screen).toContain("onClick={onRerun}")
     expect(screen).toContain("scoreFilterOn")
     expect(screen).toContain("minScoreThreshold")
+    expect(screen).toContain("<span className=\"form-label\">Motivo</span>")
+    expect(screen).toContain("reviewCompanyCandidate(company.candidateId, status, feedback || undefined)")
+    expect(screen).toContain("if (next) setSelectedId(next.id)")
+    expect(screen).toContain("onMouseDown={(event)=>submitCompanyReview")
+    expect(devServer).toContain("startDevOpenClawWorkerOnce")
   })
 
   test("opens campaign detail through a stable hash route", async () => {
@@ -139,6 +150,7 @@ describe("clo backoffice local database", () => {
 
       expect(migration).toContain("0001_core")
       expect(migration).toContain("0002_campaign_min_score_threshold")
+      expect(migration).toContain("0003_company_candidate_review_queue")
       expect(tables).toContain("campaigns")
       expect(tables).toContain("people")
       expect(tables).toContain("person_candidates")
@@ -147,6 +159,98 @@ describe("clo backoffice local database", () => {
       expect(briefColumns).toContain("max_companies")
       expect(briefColumns).toContain("max_people")
       expect(briefColumns).toContain("min_score_threshold")
+      const candidateColumns = database
+        .query<{ name: string }, []>('PRAGMA table_info("company_candidates")')
+        .all()
+        .map((row) => row.name)
+      expect(candidateColumns).toContain("review_visible")
+      expect(candidateColumns).toContain("review_revealed_at")
+    } finally {
+      database.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("imports preserved legacy campaign and company data into the core schema", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "backoffice-legacy-test-"))
+    const database = new Database(path.join(dir, "backoffice.sqlite"), { create: true })
+
+    try {
+      database.exec(`
+        CREATE TABLE campaigns (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          criteria TEXT NOT NULL DEFAULT '',
+          created_label TEXT NOT NULL DEFAULT '',
+          runs INTEGER NOT NULL DEFAULT 0,
+          last_run_label TEXT NOT NULL DEFAULT '',
+          total INTEGER NOT NULL DEFAULT 0,
+          contacted INTEGER NOT NULL DEFAULT 0,
+          replied INTEGER NOT NULL DEFAULT 0,
+          qualified INTEGER NOT NULL DEFAULT 0,
+          pending INTEGER NOT NULL DEFAULT 0,
+          status_kind TEXT NOT NULL DEFAULT 'draft',
+          status_label TEXT NOT NULL DEFAULT 'Borrador',
+          owner_name TEXT NOT NULL DEFAULT '',
+          owner_initials TEXT NOT NULL DEFAULT '',
+          owner_color TEXT NOT NULL DEFAULT '#71717A',
+          progress_kind TEXT NOT NULL DEFAULT 'info',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE companies (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          domain TEXT NOT NULL DEFAULT '',
+          industry TEXT NOT NULL DEFAULT '',
+          size TEXT NOT NULL DEFAULT '',
+          country TEXT NOT NULL DEFAULT '',
+          prospects INTEGER NOT NULL DEFAULT 0,
+          contacted INTEGER NOT NULL DEFAULT 0,
+          replied INTEGER NOT NULL DEFAULT 0,
+          last_label TEXT NOT NULL DEFAULT '',
+          owner_initials TEXT NOT NULL DEFAULT '',
+          owner_color TEXT NOT NULL DEFAULT '#71717A',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          logo_color TEXT NOT NULL DEFAULT '#71717A',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          day_label TEXT NOT NULL,
+          severity TEXT NOT NULL,
+          type TEXT NOT NULL,
+          text TEXT NOT NULL,
+          time_label TEXT NOT NULL,
+          actor TEXT NOT NULL,
+          source TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO campaigns (id, name, criteria, status_kind, owner_name)
+        VALUES ('legacy_campaign_1', 'Legacy Campaign', 'Fintech legacy criteria', 'running', 'Manu');
+        INSERT INTO companies (id, name, domain, industry, size, country, tags_json)
+        VALUES ('legacy_company_1', 'Legacy Company', 'legacy-company.mx', 'Fintech', '11-50', 'MX', '["legacy"]');
+      `)
+
+      migrateDatabase(database)
+
+      const campaign = database.query<{ name: string }, []>("SELECT name FROM campaigns WHERE id = 'legacy_campaign_1'").get()
+      const company = database.query<{ domain: string }, []>("SELECT domain FROM companies WHERE id = 'legacy_company_1'").get()
+      const candidate = database
+        .query<{ count: number }, []>(
+          "SELECT COUNT(*) AS count FROM company_candidates WHERE campaign_id = 'legacy_campaign_1' AND company_id = 'legacy_company_1'",
+        )
+        .get()
+      const legacyTables = database
+        .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'legacy_%'")
+        .all()
+        .map((row) => row.name)
+
+      expect(campaign?.name).toBe("Legacy Campaign")
+      expect(company?.domain).toBe("legacy-company.mx")
+      expect(candidate?.count).toBe(1)
+      expect(legacyTables.some((name) => name.startsWith("legacy_campaigns_"))).toBe(true)
     } finally {
       database.close()
       rmSync(dir, { recursive: true, force: true })
@@ -283,11 +387,72 @@ describe("clo backoffice local database", () => {
       expect(job?.skill).toBe("find_companies")
       expect(input.brief?.maxCompanies).toBe(10)
       expect(input.brief?.minScoreThreshold).toBe(75)
+      expect(input.brief?.discoveryMode).toBe("fast_prefetch")
 
       const cancelled = cancelCampaignRun(runId)
       expect(cancelled && "run" in cancelled ? cancelled.run?.status : "").toBe("cancelled")
     } finally {
       if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+    }
+  })
+
+  test("prefetches larger company batches and reveals cached candidates in review lots", () => {
+    setupDatabase()
+    let campaignId = ""
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Company Prefetch Queue",
+        objective: "Encontrar empresas fintech B2B en tandas cacheadas.",
+        industry: "Fintech",
+        countryRegion: "LATAM",
+        searchMode: "companies",
+        maxCompanies: 10,
+        maxRuntimeSeconds: 900,
+      })
+      campaignId = campaign?.id ?? ""
+      const created = campaignId
+        ? createCampaignRun(campaignId, { prefetchCompanies: 12, reviewBatchSize: 5 })
+        : null
+      const runId = created && "run" in created ? created.run?.id ?? "" : ""
+      const job = db
+        .query<{ id: string; input_json: string }, [string]>("SELECT id, input_json FROM openclaw_jobs WHERE run_id = ?")
+        .get(runId)
+      const input = job ? JSON.parse(job.input_json) : {}
+
+      expect(input.brief?.maxCompanies).toBe(12)
+      expect(input.brief?.reviewBatchSize).toBe(5)
+      expect(input.brief?.discoveryMode).toBe("fast_prefetch")
+
+      if (job) {
+        completeOpenClawJob(job.id, {
+          companies: Array.from({ length: 12 }).map((_, index) => ({
+            name: `Prefetch Queue Company ${index + 1}`,
+            domain: `prefetch-queue-company-${index + 1}.example`,
+            linkedin_url: "",
+            country: "MX",
+            city: "",
+            industry: "Fintech",
+            employee_range: "11-50",
+            description: "Empresa de prueba para cola cacheada.",
+            score: 95 - index,
+            rationale: "Calza con fintech B2B.",
+            evidence: [{ type: "website", url: `https://prefetch-queue-company-${index + 1}.example`, note: "Sitio de prueba." }],
+          })),
+        })
+      }
+
+      expect(listCampaignCompanyCandidates(campaignId)).toHaveLength(5)
+      expect(hiddenCompanyCandidateCount(campaignId)).toBe(7)
+      expect(revealCachedCompanyCandidates(campaignId, 5)).toBe(5)
+      expect(listCampaignCompanyCandidates(campaignId)).toHaveLength(10)
+      expect(hiddenCompanyCandidateCount(campaignId)).toBe(2)
+      const revealViaRun = createCampaignRun(campaignId, { revealCachedCompanies: true, reviewBatchSize: 10 })
+      expect(revealViaRun && "revealed" in revealViaRun ? revealViaRun.revealed : 0).toBe(2)
+      expect(hiddenCompanyCandidateCount(campaignId)).toBe(0)
+    } finally {
+      if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      db.prepare("DELETE FROM companies WHERE domain LIKE 'prefetch-queue-company-%.example'").run()
     }
   })
 
@@ -328,6 +493,140 @@ describe("clo backoffice local database", () => {
       expect(input.brief?.minScoreThreshold).toBe(75)
     } finally {
       if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+    }
+  })
+
+  test("injects company review feedback into the next find_companies run memory", () => {
+    setupDatabase()
+    let campaignId = ""
+    const domain = "feedback-loop-company.example"
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Company Feedback Loop",
+        objective: "Encontrar empresas B2B con equipo operativo claro.",
+        industry: "Operaciones B2B",
+        countryRegion: "Mexico",
+        searchMode: "companies",
+        maxCompanies: 10,
+      })
+      campaignId = campaign?.id ?? ""
+      const first = campaignId ? createCampaignRun(campaignId) : null
+      const firstRunId = first && "run" in first ? first.run?.id ?? "" : ""
+      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ?").get(firstRunId)
+
+      if (firstJob) {
+        completeOpenClawJob(firstJob.id, {
+          companies: [
+            {
+              name: "Feedback Loop Company",
+              domain,
+              linkedin_url: "https://linkedin.com/company/feedback-loop-company",
+              country: "MX",
+              city: "CDMX",
+              industry: "Operaciones B2B",
+              employee_range: "11-50",
+              description: "Empresa usada para probar memoria de feedback.",
+              score: 91,
+              rationale: "Calza con operación B2B.",
+              evidence: [{ type: "website", url: `https://${domain}`, note: "Sitio oficial." }],
+            },
+          ],
+        })
+      }
+
+      const candidate = listCampaignCompanyCandidates(campaignId).find((item) => item.domain === domain)
+      if (candidate?.candidateId) {
+        reviewCompanyCandidate(candidate.candidateId, {
+          status: "approved",
+          feedback: "Buen fit: operación B2B clara, sitio propio y señales de compra.",
+          createdBy: "Test",
+        })
+      }
+
+      const second = campaignId ? createCampaignRun(campaignId) : null
+      const secondRunId = second && "run" in second ? second.run?.id ?? "" : ""
+      const secondJob = db.query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ?").get(secondRunId)
+      const input = secondJob ? JSON.parse(secondJob.input_json) : {}
+
+      expect(input.memory?.alreadySeenCompanies).toContain("Feedback Loop Company")
+      expect(input.memory?.alreadySeenDomains).toContain(domain)
+      expect(input.memory?.approvedCompanies).toContain("Feedback Loop Company")
+      expect(input.memory?.feedback?.[0]?.text).toContain("operación B2B clara")
+    } finally {
+      if (campaignId) {
+        db.prepare("DELETE FROM feedback WHERE campaign_id = ? OR created_by = 'Test'").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      db.prepare("DELETE FROM companies WHERE domain = ?").run(domain)
+    }
+  })
+
+  test("does not inject empty review text into next run feedback memory", () => {
+    setupDatabase()
+    let campaignId = ""
+    const domain = "empty-feedback-company.example"
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Empty Feedback",
+        objective: "Encontrar empresas B2B.",
+        industry: "B2B",
+        countryRegion: "Mexico",
+        searchMode: "companies",
+        maxCompanies: 10,
+      })
+      campaignId = campaign?.id ?? ""
+      const first = campaignId ? createCampaignRun(campaignId) : null
+      const firstRunId = first && "run" in first ? first.run?.id ?? "" : ""
+      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ?").get(firstRunId)
+
+      if (firstJob) {
+        completeOpenClawJob(firstJob.id, {
+          companies: [
+            {
+              name: "Empty Feedback Company",
+              domain,
+              linkedin_url: "",
+              country: "MX",
+              city: "CDMX",
+              industry: "B2B",
+              employee_range: "1-10",
+              description: "Empresa usada para probar feedback vacío.",
+              score: 82,
+              rationale: "Calza para la prueba.",
+              evidence: [{ type: "website", url: `https://${domain}`, note: "Sitio oficial." }],
+            },
+          ],
+        })
+      }
+
+      const candidate = listCampaignCompanyCandidates(campaignId).find((item) => item.domain === domain)
+      if (candidate?.candidateId) {
+        reviewCompanyCandidate(candidate.candidateId, {
+          status: "rejected",
+          feedback: "   ",
+          createdBy: "Test",
+        })
+      }
+
+      const second = campaignId ? createCampaignRun(campaignId) : null
+      const secondRunId = second && "run" in second ? second.run?.id ?? "" : ""
+      const secondJob = db.query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ?").get(secondRunId)
+      const input = secondJob ? JSON.parse(secondJob.input_json) : {}
+      const feedbackRows = db
+        .query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM feedback WHERE campaign_id = ? AND created_by = 'Test'")
+        .get(campaignId)
+
+      expect(input.memory?.rejectedCompanies).toContain("Empty Feedback Company")
+      expect(input.memory?.feedback || []).toHaveLength(0)
+      expect(feedbackRows?.count).toBe(0)
+    } finally {
+      if (campaignId) {
+        db.prepare("DELETE FROM feedback WHERE campaign_id = ? OR created_by = 'Test'").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      db.prepare("DELETE FROM companies WHERE domain = ?").run(domain)
     }
   })
 

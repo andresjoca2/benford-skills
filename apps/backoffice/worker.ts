@@ -2,6 +2,8 @@ import {
   claimNextOpenClawJob,
   completeOpenClawJob,
   failOpenClawJob,
+  recordOpenClawRequested,
+  recordOpenClawResponded,
   setupDatabase,
 } from "./src/server/db.ts"
 import { runOpenClawJob } from "./src/server/openclaw-adapter.ts"
@@ -17,7 +19,9 @@ async function processOneJob() {
 
   console.log(`[backoffice-worker] claimed ${job.id} ${job.skill}`)
   try {
+    recordOpenClawRequested(job)
     const result = await runOpenClawJob(job)
+    recordOpenClawResponded(job, result)
     completeOpenClawJob(job.id, result.output)
     console.log(`[backoffice-worker] completed ${job.id}`)
   } catch (error) {

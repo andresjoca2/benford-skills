@@ -62,19 +62,27 @@ Implemented locally:
 - SSH transport to `openclaw` host
 - `prospecting-agent` execution
 - versioned `find-companies` skill source
+- review feedback memory for the next `find_companies` run
+- stronger `find_companies` prompt for 10 new non-duplicate companies
+- OpenClaw request/response event writes
 
 Remaining:
 
-- persist `find_people` outputs
+- run backend and worker against the real OpenClaw/Hostinger SQLite path
+- verify the remote loop: search 10 companies, review with feedback, search 10 more
 - deploy worker as a long-running service on the OpenClaw host
+- persist `find_people` outputs later, after the companies loop works
 
 ### Phase 4.5 - Discovery Quality Controls
 
-Add:
+Implemented locally:
 
 - campaign-level minimum score threshold, initially defaulting to 75
 - UI filtering by score without deleting lower-score candidates from SQLite
 - frontend-only automatic search modal with compute, company, people, and score limits
+
+Add:
+
 - source escalation policy: primary/public sources first, paid or bulk sources only when needed
 - feedback-aware reruns that learn from accepted/rejected companies
 

@@ -58,6 +58,7 @@ campanas internas con OpenClaw.
 - `docs/DATA_MODEL.md`: tablas, estados, dedupe y catalogo de eventos.
 - `docs/API.md`: endpoints actuales y proximos endpoints.
 - `docs/OPENCLAW_CONTRACT.md`: contrato backend/worker/OpenClaw.
+- `docs/FIND_COMPANIES_MILESTONE.md`: runbook para cerrar el loop remoto de empresas.
 - `docs/ROADMAP.md`: fases y siguiente trabajo.
 - `docs/DECISIONS.md`: decisiones aceptadas, diferidas y rechazadas.
 - `docs/BACKOFFICE_SYSTEM_FLOW.excalidraw`: diagrama del flujo completo.

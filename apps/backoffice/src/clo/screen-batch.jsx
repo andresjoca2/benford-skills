@@ -80,9 +80,13 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
     setRunBusy(true);
     setNotice("");
     window.BackofficeAPI?.createCampaignRun(batchId, options)
-      .then(() => fetchDetail())
-      .then(() => {
-        setNotice("Corrida encolada.");
+      .then((result) => fetchDetail().then(() => result))
+      .then((result) => {
+        if (result?.revealed) {
+          setNotice(`${result.revealed} empresas cacheadas listas para revisar.`);
+        } else {
+          setNotice("Corrida encolada.");
+        }
       })
       .catch((error) => {
         console.warn("No se pudo lanzar corrida", error);
@@ -172,7 +176,8 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
               companies={companies}
               brief={b.brief}
               activeRun={activeRun}
-              onRerun={()=>launchRun({ replaceQueuedRun: true })}
+              hiddenCount={companies?.hiddenCount || 0}
+              onRerun={()=>launchRun({ replaceQueuedRun: true, revealCachedCompanies: true, reviewBatchSize: 10, prefetchCompanies: 30 })}
               rerunBusy={runBusy}
               onOpenAutoSearch={()=>setAutoSearchOpen(true)}
             />
@@ -221,7 +226,7 @@ const emptyBrief = {
   runBudgetCents: 0,
   maxCompanies: 10,
   maxPeople: 0,
-  maxRuntimeSeconds: 900,
+  maxRuntimeSeconds: 120,
   minScoreThreshold: 75,
 };
 
@@ -453,7 +458,7 @@ const _seedEmpresaState = (id) => {
   return "rechazada";
 };
 
-const BatchEmpresas = ({ companies, brief, activeRun, onRerun, rerunBusy, onOpenAutoSearch }) => {
+const BatchEmpresas = ({ companies, brief, activeRun, hiddenCount = 0, onRerun, rerunBusy, onOpenAutoSearch }) => {
   const companiesKey = (companies || []).map(c => `${c.id}:${c.candidateId}:${c.review}:${c.match}`).join("|");
   const minScoreThreshold = Math.min(100, Math.max(0, Number(brief?.minScoreThreshold ?? 75) || 75));
   const seed = React.useMemo(()=>{
@@ -471,6 +476,7 @@ const BatchEmpresas = ({ companies, brief, activeRun, onRerun, rerunBusy, onOpen
   const [tab, setTab] = React.useState("todas");
   const [scoreFilterOn, setScoreFilterOn] = React.useState(true);
   const [selectedId, setSelectedId] = React.useState(seed[0]?.id);
+  const [reviewFeedback, setReviewFeedback] = React.useState("");
 
   React.useEffect(()=>{
     setState(seed);
@@ -495,6 +501,10 @@ const BatchEmpresas = ({ companies, brief, activeRun, onRerun, rerunBusy, onOpen
   }, [tab, filtered.length, scoreFilterOn, minScoreThreshold]);
 
   const selected = filtered.find(c=>c.id===selectedId) || filtered[0];
+  React.useEffect(()=>{
+    const item = state.find(c=>c.id===selectedId);
+    setReviewFeedback(item?.userFeedback || "");
+  }, [selectedId, companiesKey]);
   const searchProgress = activeRun
     ? activeRun.status === "running"
       ? 58
@@ -505,26 +515,31 @@ const BatchEmpresas = ({ companies, brief, activeRun, onRerun, rerunBusy, onOpen
       ? "Buscando empresas"
       : "Búsqueda en cola"
     : "";
+  const rerunLabel = hiddenCount > 0
+    ? `Mostrar 10 cacheadas (${hiddenCount})`
+    : "Re-ejecutar búsqueda";
 
   const setCompanyReview = (id, val) => {
-    setState(s => s.map(r => r.id===id ? {...r, review: val} : r));
+    const feedback = reviewFeedback.trim();
+    const order = state.filter(c => c.review==="pendiente" && c.id!==id);
+    const currentIndex = state.findIndex(c=>c.id===id);
+    const next = order.find(c => state.findIndex(row=>row.id===c.id) > currentIndex) || order[0];
+    setState(s => s.map(r => r.id===id ? {...r, review: val, userFeedback: feedback} : r));
+    if (next) setSelectedId(next.id);
     const company = state.find(r => r.id === id);
     const status = val === "aceptada" ? "approved" : val === "rechazada" ? "rejected" : "new";
     if (!company?.candidateId) return;
 
-    window.BackofficeAPI?.updateCompanyCandidateStatus(company.candidateId, status)
+    window.BackofficeAPI?.reviewCompanyCandidate(company.candidateId, status, feedback || undefined)
       .then((updated) => {
         if (updated) setState(s => s.map(r => r.id===id ? {...r, ...updated} : r));
       })
       .catch((error) => console.warn("No se pudo guardar revisión de empresa", error));
   };
-
-  // Move to next pending company
-  const goNext = () => {
-    const order = state.filter(c => c.review==="pendiente");
-    const idx = order.findIndex(c=>c.id===selectedId);
-    const next = order[idx+1] || order[0];
-    if (next) setSelectedId(next.id);
+  const submitCompanyReview = (event, id, val) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCompanyReview(id, val);
   };
 
   return (
@@ -546,7 +561,7 @@ const BatchEmpresas = ({ companies, brief, activeRun, onRerun, rerunBusy, onOpen
             <Icons.Bot size={13}/> Búsqueda automática
           </button>
           <button className="primary-btn" onClick={onRerun} disabled={rerunBusy || activeRun?.status === "running"}>
-            <Icons.Refresh size={13}/> {rerunBusy ? "Encolando" : activeRun?.status === "running" ? "Buscando" : "Re-ejecutar búsqueda"}
+            <Icons.Refresh size={13}/> {rerunBusy ? "Encolando" : activeRun?.status === "running" ? "Buscando" : rerunLabel}
           </button>
         </div>
       </div>
@@ -577,6 +592,9 @@ const BatchEmpresas = ({ companies, brief, activeRun, onRerun, rerunBusy, onOpen
               <div className="card-title" style={{fontSize:13}}>Empresas · {filtered.length}</div>
               {scoreFilterOn && hiddenByScore > 0 && (
                 <div style={{fontSize:11.5, color:"var(--fg-3)", marginTop:3}}>{hiddenByScore} debajo de {minScoreThreshold} guardadas en SQLite</div>
+              )}
+              {hiddenCount > 0 && (
+                <div style={{fontSize:11.5, color:"var(--fg-3)", marginTop:3}}>{hiddenCount} en cola cacheada para el siguiente lote</div>
               )}
             </div>
           </div>
@@ -640,24 +658,35 @@ const BatchEmpresas = ({ companies, brief, activeRun, onRerun, rerunBusy, onOpen
                   </div>
                 </div>
               </div>
-              <div className="card-actions">
-                {selected.review!=="rechazada" && (
-                  <button className="review-btn reject" onClick={()=>setCompanyReview(selected.id,"rechazada")}>
-                    <Icons.X size={12} sw={2.4}/> Rechazar empresa
-                  </button>
-                )}
-                {selected.review!=="aceptada" && (
-                  <button className="review-btn accept" onClick={()=>setCompanyReview(selected.id,"aceptada")}>
-                    <Icons.Check size={12} sw={2.4}/> Aceptar empresa
-                  </button>
-                )}
-                <button className="primary-btn" onClick={goNext}>
-                  Siguiente <Icons.ChevronRight size={12}/>
-                </button>
-              </div>
             </div>
 
             <div style={{padding:"18px 20px", display:"grid", gap:16}}>
+              <div style={{display:"grid", gridTemplateColumns:"minmax(220px, 1fr) auto", alignItems:"end", gap:10}}>
+                <label className="form-row" style={{margin:0, gap:4}}>
+                  <span className="form-label">Motivo</span>
+                  <textarea
+                    className="ang-textarea"
+                    rows={1}
+                    style={{minHeight:38, height:38, padding:"7px 10px", fontSize:12.5, lineHeight:1.35}}
+                    value={reviewFeedback}
+                    onChange={(event)=>setReviewFeedback(event.target.value)}
+                    placeholder="Por qué sí o por qué no aplica."
+                  />
+                </label>
+                <div className="card-actions" style={{justifyContent:"flex-end", marginLeft:0, paddingBottom:1}}>
+                  {selected.review!=="rechazada" && (
+                    <button type="button" className="review-btn reject" onMouseDown={(event)=>submitCompanyReview(event, selected.id, "rechazada")}>
+                      <Icons.X size={12} sw={2.4}/> Rechazar empresa
+                    </button>
+                  )}
+                  {selected.review!=="aceptada" && (
+                    <button type="button" className="review-btn accept" onMouseDown={(event)=>submitCompanyReview(event, selected.id, "aceptada")}>
+                      <Icons.Check size={12} sw={2.4}/> Aceptar empresa
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div style={{display:"grid", gridTemplateColumns:"repeat(4, minmax(0, 1fr))", gap:10}}>
                 <div className="kpi" style={{minHeight:72}}>
                   <div className="kpi-lbl">Score</div>

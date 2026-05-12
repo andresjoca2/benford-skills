@@ -10,7 +10,8 @@ The worker runs on the OpenClaw host and invokes:
 
 ```bash
 openclaw agent \
-  --agent prospecting-agent \
+  --agent <agent-id> \
+  --thinking <level> \
   --json \
   --timeout <seconds> \
   --message "<mission prompt>"
@@ -41,6 +42,13 @@ bun run backoffice:worker:openclaw
 ```
 
 The worker currently sends the prompt over SSH using base64 transport to avoid shell quoting bugs.
+Each job is sent with an explicit `--session-id` derived from the run/job id so local tests and previous conversations do not bleed into the next campaign run.
+
+Current routing:
+
+- `find_companies`: `OPENCLAW_FIND_COMPANIES_AGENT`, defaulting to `research-agent` for web discovery.
+- Other skills: `OPENCLAW_AGENT`, defaulting to `prospecting-agent`.
+- `find_companies` thinking defaults to `off` through `OPENCLAW_FIND_COMPANIES_THINKING` to keep interactive prospecting runs fast.
 
 ## Skills
 
@@ -100,10 +108,13 @@ Minimum shape:
     "searchMode": "companies",
     "maxCompanies": 10,
     "maxPeople": 0,
-    "maxRuntimeSeconds": 900
+    "maxRuntimeSeconds": 900,
+    "minScoreThreshold": 75
   },
   "memory": {
     "alreadySeenCompanies": [],
+    "alreadySeenDomains": [],
+    "alreadySeenLinkedinUrls": [],
     "approvedCompanies": [],
     "rejectedCompanies": [],
     "suppression": [],

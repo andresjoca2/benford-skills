@@ -1,6 +1,7 @@
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+import { spawnSync } from "node:child_process"
 import {
   companyLogoMap,
   cancelCampaignRun,
@@ -11,6 +12,7 @@ import {
   dbPath,
   getCampaignDetail,
   getDatabaseTable,
+  hiddenCompanyCandidateCount,
   listCampaignCompanyCandidates,
   listCampaigns,
   listCompanies,
@@ -20,6 +22,7 @@ import {
   listProspects,
   reviewCompanyCandidate,
   reviewPersonCandidate,
+  revealCachedCompanyCandidates,
   setupDatabase,
   updateCampaignBrief,
   updateCompanyCandidateStatus,
@@ -120,9 +123,71 @@ async function readJson(request: Request) {
   }
 }
 
+const brainSnapshotPath = path.join(appRoot, ".data", "vault_snapshot.json")
+const brainBuildScript = path.join(appRoot, "scripts", "build_snapshot.py")
+
+function readBrainSnapshot() {
+  if (!existsSync(brainSnapshotPath)) return null
+  try {
+    return JSON.parse(readFileSync(brainSnapshotPath, "utf8"))
+  } catch (error) {
+    console.error("Failed to parse vault_snapshot.json:", error)
+    return null
+  }
+}
+
+function refreshBrainSnapshot(): { ok: true } | { ok: false; error: string } {
+  if (!existsSync(brainBuildScript)) {
+    return { ok: false, error: `build script not found: ${brainBuildScript}` }
+  }
+  const result = spawnSync("python3", [brainBuildScript], {
+    cwd: path.resolve(appRoot, "..", ".."),
+    encoding: "utf8",
+  })
+  if (result.error) return { ok: false, error: result.error.message }
+  if (result.status !== 0) {
+    return { ok: false, error: (result.stderr || result.stdout || "unknown error").trim() }
+  }
+  return { ok: true }
+}
+
+let devWorkerRunning = false
+
+function startDevOpenClawWorkerOnce() {
+  if (Bun.env.BENFORD_BACKOFFICE_DISABLE_AUTO_WORKER === "1" || devWorkerRunning) return
+  devWorkerRunning = true
+  const proc = Bun.spawn(["bun", "run", "backoffice:worker:openclaw", "--", "--once"], {
+    cwd: path.resolve(appRoot, "..", ".."),
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  proc.exited.finally(() => {
+    devWorkerRunning = false
+  })
+}
+
 async function serveApi(request: Request, url: URL) {
   if (url.pathname === "/api/health") {
     return json({ ok: true, database: dbPath })
+  }
+
+  if (url.pathname === "/api/brain/snapshot") {
+    const snapshot = readBrainSnapshot()
+    if (!snapshot) {
+      return json(
+        { error: "Snapshot no generado todavía. Corre POST /api/brain/snapshot/refresh." },
+        { status: 404 },
+      )
+    }
+    return json({ snapshot })
+  }
+
+  if (url.pathname === "/api/brain/snapshot/refresh") {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const result = refreshBrainSnapshot()
+    if (!result.ok) return json({ error: result.error }, { status: 500 })
+    const snapshot = readBrainSnapshot()
+    return json({ snapshot })
   }
 
   const tableMatch = url.pathname.match(/^\/api\/tables\/([^/]+)$/)
@@ -140,7 +205,17 @@ async function serveApi(request: Request, url: URL) {
   if (campaignCandidatesMatch) {
     const campaignId = campaignCandidatesMatch[1]
     if (!campaignId) return json({ error: "Campaign not found" }, { status: 404 })
-    return json({ candidates: listCampaignCompanyCandidates(campaignId) })
+    return json({ candidates: listCampaignCompanyCandidates(campaignId), hiddenCount: hiddenCompanyCandidateCount(campaignId) })
+  }
+
+  const campaignRevealCompaniesMatch = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/candidates\/reveal$/)
+  if (campaignRevealCompaniesMatch) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const campaignId = campaignRevealCompaniesMatch[1]
+    if (!campaignId) return json({ error: "Campaign not found" }, { status: 404 })
+    const body = await readJson(request)
+    const revealed = revealCachedCompanyCandidates(campaignId, numberBodyValue(body, "limit") || 10)
+    return json({ revealed, hiddenCount: hiddenCompanyCandidateCount(campaignId) })
   }
 
   const campaignPeopleMatch = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/people$/)
@@ -156,9 +231,15 @@ async function serveApi(request: Request, url: URL) {
     const campaignId = campaignRunsMatch[1]
     if (!campaignId) return json({ error: "Campaign not found" }, { status: 404 })
     const body = await readJson(request)
-    const result = createCampaignRun(campaignId, { replaceQueuedRun: body.replaceQueuedRun === true })
+    const result = createCampaignRun(campaignId, {
+      replaceQueuedRun: body.replaceQueuedRun === true,
+      revealCachedCompanies: body.revealCachedCompanies === true,
+      reviewBatchSize: numberBodyValue(body, "reviewBatchSize"),
+      prefetchCompanies: numberBodyValue(body, "prefetchCompanies"),
+    })
     if (!result) return json({ error: "Campaign not found" }, { status: 404 })
     if ("error" in result) return json(result, { status: 409 })
+    if ("run" in result) startDevOpenClawWorkerOnce()
     return json(result, { status: 201 })
   }
 

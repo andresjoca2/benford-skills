@@ -54,7 +54,9 @@ const BackofficeAPI = {
 
   async campaignCandidates(id) {
     const data = await this.getJson(`/api/campaigns/${encodeURIComponent(id)}/candidates`);
-    return data.candidates || [];
+    const candidates = data.candidates || [];
+    candidates.hiddenCount = data.hiddenCount || 0;
+    return candidates;
   },
 
   async campaignPeople(id) {
@@ -63,8 +65,11 @@ const BackofficeAPI = {
   },
 
   async createCampaignRun(id, options = {}) {
-    const data = await this.postJson(`/api/campaigns/${encodeURIComponent(id)}/runs`, options);
-    return data.run;
+    return this.postJson(`/api/campaigns/${encodeURIComponent(id)}/runs`, options);
+  },
+
+  async revealCampaignCandidates(id, limit = 10) {
+    return this.postJson(`/api/campaigns/${encodeURIComponent(id)}/candidates/reveal`, { limit });
   },
 
   async cancelRun(id) {
@@ -127,6 +132,19 @@ const BackofficeAPI = {
     const data = await this.postJson("/api/companies", input);
     if (data.logos) window.DATA.COMPANIES_LOGO = data.logos;
     return data.company;
+  },
+
+  async brainSnapshot() {
+    const response = await fetch("/api/brain/snapshot", { headers: { Accept: "application/json" } });
+    if (response.status === 404) return null; // snapshot todavía no generado
+    if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+    const data = await response.json();
+    return data.snapshot;
+  },
+
+  async refreshBrainSnapshot() {
+    const data = await this.postJson("/api/brain/snapshot/refresh", {});
+    return data.snapshot;
   },
 };
 

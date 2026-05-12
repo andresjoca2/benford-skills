@@ -17,9 +17,11 @@ export async function runOpenClawJob(job: OpenClawQueuedJob): Promise<RunOpenCla
 
   const prompt = buildPrompt(job)
   const command = Bun.env.OPENCLAW_COMMAND || "openclaw"
-  const agent = Bun.env.OPENCLAW_AGENT || "prospecting-agent"
+  const agent = resolveOpenClawAgent(job)
+  const thinking = resolveOpenClawThinking(job)
   const timeoutSeconds = Math.max(Number(job.timeoutSeconds || 0), 1)
-  const proc = spawnOpenClaw(command, agent, timeoutSeconds, prompt)
+  const sessionId = openClawSessionId(job)
+  const proc = spawnOpenClaw(command, agent, thinking, sessionId, timeoutSeconds, prompt)
 
   let timer: ReturnType<typeof setTimeout> | undefined
   const killed = new Promise<never>((_, reject) => {
@@ -47,12 +49,12 @@ export async function runOpenClawJob(job: OpenClawQueuedJob): Promise<RunOpenCla
   }
 }
 
-function spawnOpenClaw(command: string, agent: string, timeoutSeconds: number, prompt: string) {
+function spawnOpenClaw(command: string, agent: string, thinking: string, sessionId: string, timeoutSeconds: number, prompt: string) {
   const sshTarget = Bun.env.OPENCLAW_SSH_TARGET
   if (sshTarget) {
     const remoteCommand = Bun.env.OPENCLAW_REMOTE_COMMAND || "openclaw"
     const promptBase64 = Buffer.from(prompt, "utf8").toString("base64")
-    const script = `exec ${remoteCommand} agent --agent ${quoteShell(agent)} --json --timeout ${timeoutSeconds} --message "$(printf %s "$OPENCLAW_MSG_B64" | base64 -d)"`
+    const script = `exec ${remoteCommand} agent --agent ${quoteShell(agent)} --thinking ${quoteShell(thinking)} --session-id ${quoteShell(sessionId)} --json --timeout ${timeoutSeconds} --message "$(printf %s "$OPENCLAW_MSG_B64" | base64 -d)"`
     const remote = `OPENCLAW_MSG_B64=${quoteShell(promptBase64)} bash -lc ${quoteShell(script)}`
     return Bun.spawn(["ssh", "-o", "ClearAllForwardings=yes", sshTarget, remote], {
       stdout: "pipe",
@@ -60,7 +62,7 @@ function spawnOpenClaw(command: string, agent: string, timeoutSeconds: number, p
     })
   }
 
-  const shellCommand = `${command} agent --agent ${quoteShell(agent)} --json --timeout ${timeoutSeconds} --message "$OPENCLAW_MSG"`
+  const shellCommand = `${command} agent --agent ${quoteShell(agent)} --thinking ${quoteShell(thinking)} --session-id ${quoteShell(sessionId)} --json --timeout ${timeoutSeconds} --message "$OPENCLAW_MSG"`
   return Bun.spawn(["bash", "-lc", shellCommand], {
     env: { ...Bun.env, OPENCLAW_MSG: prompt },
     stdout: "pipe",
@@ -69,6 +71,11 @@ function spawnOpenClaw(command: string, agent: string, timeoutSeconds: number, p
 }
 
 function buildPrompt(job: OpenClawQueuedJob) {
+  const input = job.input as { brief?: { discoveryMode?: string; maxCompanies?: number; minScoreThreshold?: number; reviewBatchSize?: number }; memory?: Record<string, unknown> }
+  const maxCompanies = Math.max(Math.min(Number(input.brief?.maxCompanies || 10), 50), 1)
+  const minScore = Math.max(Math.min(Number(input.brief?.minScoreThreshold || 75), 100), 0)
+  const reviewBatchSize = Math.max(Math.min(Number(input.brief?.reviewBatchSize || 10), maxCompanies), 1)
+  const fastPrefetch = job.skill === "find_companies" && input.brief?.discoveryMode === "fast_prefetch"
   const schema =
     job.skill === "find_companies"
       ? {
@@ -92,11 +99,32 @@ function buildPrompt(job: OpenClawQueuedJob) {
 
   return [
     "You are running a Benford Backoffice prospecting job.",
+    "Treat this as an independent fresh run. Ignore any previous conversation, prior test prompts, or earlier empty outputs.",
     "Use the find-companies skill if it is available at skills/find-companies/SKILL.md in the OpenClaw workspace.",
-    "Your task is to research the market and return real candidates that match the campaign brief.",
+    `Your task is to research the market and return ${maxCompanies} NEW real company/business candidates that match the campaign brief.`,
     "Use available research/browser/search tools when useful. Prefer primary company websites and credible public sources.",
+    ...(fastPrefetch
+      ? [
+          `This is fast_prefetch mode: the UI will initially review ${reviewBatchSize} companies and cache the rest for later reveal.`,
+          "Optimize for a broad, deduped first-pass batch instead of deep research on every company.",
+          "Use search results, official sites, credible directories, and public profiles to identify candidates quickly.",
+          "One good official or credible source is enough per candidate for this pass. Do not deep-crawl every site unless needed to avoid a bad match.",
+          "Keep rationale and evidence notes concise, specific, and based on the source signal.",
+        ]
+      : []),
+    "For find_companies jobs, actively search until you reach maxCompanies.",
+    "For maxCompanies <= 10, do not stop at 4-5 candidates. Use at least six distinct search/source angles before returning fewer than maxCompanies.",
+    "For maxCompanies > 10, prioritize source diversity and breadth over exhaustive per-company enrichment.",
+    "For broad markets such as LATAM fintech, assume enough qualified candidates exist and return exactly maxCompanies unless every remaining result is duplicated or conflicts with the brief.",
+    "Do not return companies, domains, LinkedIn URLs, or suppressed values already present in memory.",
+    "Treat approved, rejected, do_not_contact, and free-text feedback in memory as product signal for the next batch.",
+    "Lean into patterns from approved companies and avoid patterns explicitly rejected by the operator.",
     "Respect maxCompanies, maxPeople, country/region, positive signals, and negative signals from the input.",
+    `Prefer candidates scoring ${minScore}+ when possible, but still return lower scores if they are the best real matches after searching.`,
     "Every returned company must include evidence with a URL and a note explaining what was found.",
+    "Each candidate must be an actual company, business, firm, clinic, practice, or person-owned business. Do not return directories, generic categories, search result pages, or lead-list vendors as final candidates.",
+    "Set domain only when it is the candidate's official website domain. If evidence is a directory, marketplace, maps page, or listing site, leave domain empty and put that URL only in evidence.",
+    `Return exactly ${maxCompanies} companies when the market is broad enough. Never pad with duplicates, directories, or entities that conflict with the brief.`,
     "Return only valid JSON. Do not include markdown, prose, or code fences.",
     "",
     `Skill: ${job.skill}`,
@@ -145,12 +173,26 @@ function quoteShell(value: string) {
   return `'${value.replace(/'/g, "'\\''")}'`
 }
 
+function resolveOpenClawAgent(job: OpenClawQueuedJob) {
+  if (job.skill === "find_companies") return Bun.env.OPENCLAW_FIND_COMPANIES_AGENT || Bun.env.OPENCLAW_AGENT || "research-agent"
+  return Bun.env.OPENCLAW_AGENT || "prospecting-agent"
+}
+
+function resolveOpenClawThinking(job: OpenClawQueuedJob) {
+  if (job.skill === "find_companies") return Bun.env.OPENCLAW_FIND_COMPANIES_THINKING || Bun.env.OPENCLAW_THINKING || "off"
+  return Bun.env.OPENCLAW_THINKING || "minimal"
+}
+
+function openClawSessionId(job: OpenClawQueuedJob) {
+  return `backoffice-${job.runId}-${job.id}`.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 160)
+}
+
 function mockOutput(job: OpenClawQueuedJob) {
   if (job.skill !== "find_companies") return {}
   const input = job.input as { brief?: { industry?: string; countryRegion?: string; maxCompanies?: number } }
   const industry = input.brief?.industry || "Software"
   const country = input.brief?.countryRegion || "MX"
-  const max = Math.max(Math.min(Number(input.brief?.maxCompanies || 10), 10), 1)
+  const max = Math.max(Math.min(Number(input.brief?.maxCompanies || 10), 50), 1)
   const runSuffix = job.runId.replace(/^run_/, "").slice(-10).replace(/[^a-z0-9]+/gi, "-") || "local"
   return {
     companies: Array.from({ length: max }).map((_, index) => ({

@@ -60,6 +60,8 @@ type CompanyCandidateRow = {
   score: number
   rationale: string
   evidence_json: string
+  user_feedback: string
+  review_visible: number
   name: string
   domain: string
   linkedin_url: string
@@ -319,7 +321,7 @@ export function createCampaign(input: {
       nonNegativeInteger(input.runBudgetCents, 0),
       nonNegativeInteger(input.maxCompanies, 10),
       nonNegativeInteger(input.maxPeople, 0),
-      nonNegativeInteger(input.maxRuntimeSeconds, 900),
+      nonNegativeInteger(input.maxRuntimeSeconds, 120),
       scoreThreshold(input.minScoreThreshold, 75),
     )
   })()
@@ -426,7 +428,7 @@ export function updateCampaignBrief(
     runBudgetCents: 0,
     maxCompanies: 10,
     maxPeople: 0,
-    maxRuntimeSeconds: 900,
+    maxRuntimeSeconds: 120,
     minScoreThreshold: 75,
   }
   const searchMode = ["companies", "people", "companies_then_people"].includes(input.searchMode ?? "")
@@ -487,9 +489,20 @@ export function updateCampaignBrief(
   return getCampaignDetail(campaignId)
 }
 
-export function createCampaignRun(campaignId: string, options: { replaceQueuedRun?: boolean } = {}) {
+export function createCampaignRun(
+  campaignId: string,
+  options: { replaceQueuedRun?: boolean; revealCachedCompanies?: boolean; reviewBatchSize?: number; prefetchCompanies?: number } = {},
+) {
   const campaign = getCampaignDetail(campaignId)
   if (!campaign) return null
+
+  const reviewBatchSize = positiveInteger(options.reviewBatchSize, 10)
+  if (options.revealCachedCompanies) {
+    const revealed = revealCachedCompanyCandidates(campaignId, reviewBatchSize)
+    if (revealed > 0) {
+      return { revealed, hiddenCompanyCandidates: hiddenCompanyCandidateCount(campaignId) }
+    }
+  }
 
   const active = db
     .query<RunRow, [string]>(`
@@ -506,7 +519,11 @@ export function createCampaignRun(campaignId: string, options: { replaceQueuedRu
 
   const brief = campaign.brief
   const mission = brief.searchMode || "companies"
-  const runMaxCompanies = mission === "people" ? brief.maxCompanies : Math.max(10, brief.maxCompanies || 0)
+  const requestedCompanies = mission === "people"
+    ? brief.maxCompanies
+    : positiveInteger(options.prefetchCompanies, Math.max(10, brief.maxCompanies || 0))
+  const runMaxCompanies = mission === "people" ? brief.maxCompanies : Math.max(10, requestedCompanies)
+  const runMaxRuntimeSeconds = effectiveRunTimeoutSeconds(mission, brief.maxRuntimeSeconds)
   const runId = uniqueId("run", `${campaignId}_${mission}`)
   const jobSkill = mission === "people" ? "find_people" : "find_companies"
   const jobId = uniqueId("job", `${runId}_${jobSkill}`)
@@ -514,7 +531,7 @@ export function createCampaignRun(campaignId: string, options: { replaceQueuedRu
     budget_cents: brief.runBudgetCents,
     max_companies: runMaxCompanies,
     max_people: brief.maxPeople,
-    max_runtime_seconds: brief.maxRuntimeSeconds,
+    max_runtime_seconds: runMaxRuntimeSeconds,
     min_score_threshold: brief.minScoreThreshold,
   }
   const context = {
@@ -544,9 +561,11 @@ export function createCampaignRun(campaignId: string, options: { replaceQueuedRu
       searchMode: brief.searchMode,
       maxCompanies: runMaxCompanies,
       maxPeople: brief.maxPeople,
-      maxRuntimeSeconds: brief.maxRuntimeSeconds,
+      maxRuntimeSeconds: runMaxRuntimeSeconds,
       runBudgetCents: brief.runBudgetCents,
       minScoreThreshold: brief.minScoreThreshold,
+      reviewBatchSize,
+      discoveryMode: jobSkill === "find_companies" ? "fast_prefetch" : "standard",
     },
     memory: campaignMemory(campaign.id),
     outputContract: "Return only JSON matching the requested schema.",
@@ -584,7 +603,7 @@ export function createCampaignRun(campaignId: string, options: { replaceQueuedRu
     db.prepare(`
       INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json, timeout_seconds)
       VALUES (?, ?, ?, ?, 'queued', ?, ?)
-    `).run(jobId, runId, campaignId, jobSkill, JSON.stringify(jobInput), brief.maxRuntimeSeconds)
+    `).run(jobId, runId, campaignId, jobSkill, JSON.stringify(jobInput), runMaxRuntimeSeconds)
 
     insertEvent({
       campaignId,
@@ -649,6 +668,37 @@ export function reviewPersonCandidate(
   return reviewCandidate("person_candidate", candidateId, input)
 }
 
+export function recordOpenClawRequested(job: { id: string; runId: string; campaignId: string; skill: string; timeoutSeconds: number }) {
+  insertEvent({
+    campaignId: job.campaignId,
+    runId: job.runId,
+    jobId: job.id,
+    subjectType: "job",
+    subjectId: job.id,
+    level: "info",
+    eventType: "openclaw.requested",
+    message: `Solicitud enviada a OpenClaw para ${job.skill}.`,
+    payload: { skill: job.skill, timeoutSeconds: job.timeoutSeconds },
+  })
+}
+
+export function recordOpenClawResponded(
+  job: { id: string; runId: string; campaignId: string; skill: string },
+  result: { stdout?: string; stderr?: string },
+) {
+  insertEvent({
+    campaignId: job.campaignId,
+    runId: job.runId,
+    jobId: job.id,
+    subjectType: "job",
+    subjectId: job.id,
+    level: "info",
+    eventType: "openclaw.responded",
+    message: `OpenClaw respondió para ${job.skill}.`,
+    payload: { skill: job.skill, stdoutBytes: result.stdout?.length ?? 0, stderrBytes: result.stderr?.length ?? 0 },
+  })
+}
+
 export function listCampaignCompanyCandidates(campaignId: string) {
   const rows = db
     .query<CompanyCandidateRow, [string]>(`
@@ -661,6 +711,8 @@ export function listCampaignCompanyCandidates(campaignId: string) {
         cc.score,
         cc.rationale,
         cc.evidence_json,
+        cc.user_feedback,
+        cc.review_visible,
         c.name,
         c.domain,
         c.linkedin_url,
@@ -671,7 +723,7 @@ export function listCampaignCompanyCandidates(campaignId: string) {
         c.description
       FROM company_candidates cc
       JOIN companies c ON c.id = cc.company_id
-      WHERE cc.campaign_id = ?
+      WHERE cc.campaign_id = ? AND cc.review_visible = 1
       ORDER BY cc.score DESC, c.name ASC
     `)
     .all(campaignId)
@@ -703,6 +755,8 @@ export function listCampaignCompanyCandidates(campaignId: string) {
     review: reviewState(row.status),
     rationale: row.rationale,
     evidence: parseJson(row.evidence_json, []),
+    userFeedback: row.user_feedback,
+    reviewVisible: row.review_visible === 1,
     prospects: peopleByCompany[row.company_id]?.length ?? 0,
     contacted: row.status === "approved" ? 1 : 0,
     replied: 0,
@@ -714,6 +768,50 @@ export function listCampaignCompanyCandidates(campaignId: string) {
 
 export function updateCompanyCandidateStatus(candidateId: string, status: string) {
   return reviewCompanyCandidate(candidateId, { status })
+}
+
+export function hiddenCompanyCandidateCount(campaignId: string) {
+  return (
+    db
+      .query<{ count: number }, [string]>(
+        "SELECT COUNT(*) AS count FROM company_candidates WHERE campaign_id = ? AND review_visible = 0",
+      )
+      .get(campaignId)?.count ?? 0
+  )
+}
+
+export function revealCachedCompanyCandidates(campaignId: string, limit = 10) {
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 50)
+  const rows = db
+    .query<{ id: string }, [string]>(`
+      SELECT id
+      FROM company_candidates
+      WHERE campaign_id = ? AND review_visible = 0
+      ORDER BY score DESC, created_at ASC
+      LIMIT ${safeLimit}
+    `)
+    .all(campaignId)
+  if (rows.length === 0) return 0
+
+  db.transaction(() => {
+    const update = db.prepare(`
+      UPDATE company_candidates
+      SET review_visible = 1, review_revealed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `)
+    for (const row of rows) update.run(row.id)
+    insertEvent({
+      campaignId,
+      subjectType: "company_candidate",
+      subjectId: "",
+      level: "info",
+      eventType: "company.cache_revealed",
+      message: `${rows.length} empresas cacheadas reveladas para revisión.`,
+      payload: { count: rows.length },
+    })
+  })()
+
+  return rows.length
 }
 
 export function claimNextOpenClawJob() {
@@ -819,6 +917,19 @@ export function failOpenClawJob(jobId: string, error: unknown) {
       message,
       payload: { skill: job.skill },
     })
+    if (/timed out|timeout/i.test(message)) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "job",
+        subjectId: job.id,
+        level: "error",
+        eventType: "openclaw.timeout",
+        message,
+        payload: { skill: job.skill, timeoutSeconds: job.timeout_seconds },
+      })
+    }
   })()
 
   return getOpenClawJob(job.id)
@@ -1251,6 +1362,7 @@ function reviewCandidate(
   const feedback = typeof input.feedback === "string" ? input.feedback.trim() : ""
   const createdBy = typeof input.createdBy === "string" ? input.createdBy.trim() : "Manu"
   const feedbackId = uniqueId("feedback", `${candidateId}_${status}`)
+  const hasFeedback = feedback.length > 0
 
   db.transaction(() => {
     db.prepare(`UPDATE ${table} SET status = ?, user_feedback = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
@@ -1258,29 +1370,31 @@ function reviewCandidate(
       feedback,
       candidateId,
     )
-    db.prepare(`
-      INSERT INTO feedback (
-        id,
-        campaign_id,
-        run_id,
-        subject_type,
-        subject_id,
-        feedback_type,
-        sentiment,
-        text,
-        created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      feedbackId,
-      row.campaign_id,
-      row.run_id,
-      subjectType,
-      candidateId,
-      status,
-      feedbackSentiment(status),
-      feedback,
-      createdBy,
-    )
+    if (hasFeedback) {
+      db.prepare(`
+        INSERT INTO feedback (
+          id,
+          campaign_id,
+          run_id,
+          subject_type,
+          subject_id,
+          feedback_type,
+          sentiment,
+          text,
+          created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        feedbackId,
+        row.campaign_id,
+        row.run_id,
+        subjectType,
+        candidateId,
+        status,
+        feedbackSentiment(status),
+        feedback,
+        createdBy,
+      )
+    }
 
     if (status === "do_not_contact") insertSuppressionForCandidate(subjectType, row, feedback, createdBy)
     if (status === "needs_more_research") enqueueResearchJob(subjectType, row)
@@ -1293,7 +1407,7 @@ function reviewCandidate(
       level: status === "approved" ? "success" : status === "do_not_contact" ? "warning" : "info",
       eventType: `${subjectType}.reviewed`,
       message: `${row.name} marcado como ${status}.`,
-      payload: { status, feedback },
+      payload: hasFeedback ? { status, feedback } : { status },
     })
   })()
 
@@ -1410,23 +1524,74 @@ function numberOrZero(value: number | null | undefined) {
 }
 
 function campaignMemory(campaignId: string) {
+  const totalCompanies = db
+    .query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM company_candidates WHERE campaign_id = ?")
+    .get(campaignId)?.count ?? 0
   const companies = db
-    .query<{ name: string; status: string }, [string]>(`
-      SELECT c.name, cc.status
+    .query<{ name: string; domain: string; linkedin_url: string; status: string; user_feedback: string }, [string]>(`
+      SELECT c.name, c.domain, c.linkedin_url, cc.status, cc.user_feedback
       FROM company_candidates cc
       JOIN companies c ON c.id = cc.company_id
       WHERE cc.campaign_id = ?
+      ORDER BY cc.updated_at DESC, cc.created_at DESC
+      LIMIT 250
+    `)
+    .all(campaignId)
+  const feedback = db
+    .query<
+      {
+        subject_id: string
+        feedback_type: string
+        text: string
+        company_name: string | null
+        created_at: string
+      },
+      [string]
+    >(`
+      SELECT
+        f.subject_id,
+        f.feedback_type,
+        f.text,
+        c.name AS company_name,
+        f.created_at
+      FROM feedback f
+      LEFT JOIN company_candidates cc ON cc.id = f.subject_id AND f.subject_type = 'company_candidate'
+      LEFT JOIN companies c ON c.id = cc.company_id
+      WHERE f.campaign_id = ?
+        AND f.subject_type = 'company_candidate'
+        AND f.text <> ''
+      ORDER BY f.created_at DESC
+      LIMIT 20
     `)
     .all(campaignId)
   const suppression = db.query<{ value: string }, []>("SELECT value FROM suppression_list ORDER BY created_at DESC LIMIT 100").all()
 
   return {
+    memoryStats: {
+      totalSeenCompanies: totalCompanies,
+      includedSeenCompanies: companies.length,
+      includedFeedbackItems: feedback.length,
+      truncatedSeenCompanies: Math.max(totalCompanies - companies.length, 0),
+    },
     alreadySeenCompanies: companies.map((row) => row.name),
+    alreadySeenDomains: companies.map((row) => row.domain).filter(Boolean),
+    alreadySeenLinkedinUrls: companies.map((row) => row.linkedin_url).filter(Boolean),
     approvedCompanies: companies.filter((row) => row.status === "approved").map((row) => row.name),
     rejectedCompanies: companies.filter((row) => row.status === "rejected" || row.status === "do_not_contact").map((row) => row.name),
     suppression: suppression.map((row) => row.value),
-    feedback: [],
+    feedback: feedback.map((row) => ({
+      company: row.company_name || row.subject_id,
+      type: row.feedback_type,
+      text: row.text,
+      createdAt: row.created_at,
+    })),
   }
+}
+
+function effectiveRunTimeoutSeconds(mission: string, value: unknown) {
+  const configured = nonNegativeInteger(value, mission === "people" ? 300 : 900)
+  if (mission === "people") return configured
+  return Math.min(Math.max(configured, 30), 900)
 }
 
 function getOpenClawJob(jobId: string) {
@@ -1512,13 +1677,59 @@ function normalizeEvidenceOutput(value: unknown) {
 
 function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unknown>) {
   const companies = Array.isArray(output.companies) ? output.companies : []
+  const input = parseJson<{ brief?: { reviewBatchSize?: number } }>(job.input_json, {})
+  const reviewBatchSize = positiveInteger(input.brief?.reviewBatchSize, companies.length || 10)
+  let visibleInserted = 0
   for (const company of companies) {
     if (!company || typeof company !== "object" || Array.isArray(company)) continue
     const candidate = company as ReturnType<typeof normalizeCompanyOutput>
     if (!candidate.name) continue
 
+    insertEvent({
+      campaignId: job.campaign_id,
+      runId: job.run_id,
+      jobId: job.id,
+      subjectType: "company_candidate",
+      subjectId: "",
+      level: "info",
+      eventType: "company.proposed",
+      message: `${candidate.name} propuesta por OpenClaw.`,
+      payload: { domain: candidate.domain, linkedinUrl: candidate.linkedin_url, score: candidate.score },
+    })
+    if (isSuppressedCompanyCandidate(candidate)) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "company_candidate",
+        subjectId: "",
+        level: "warning",
+        eventType: "company.suppressed",
+        message: `${candidate.name} omitida por suppression_list.`,
+        payload: { domain: candidate.domain, linkedinUrl: candidate.linkedin_url },
+      })
+      continue
+    }
+
     const companyId = upsertCompanyFromCandidate(candidate, job.run_id)
     const candidateId = stableId("company_candidate", job.campaign_id, companyId)
+    const existingCandidate = db
+      .query<{ id: string }, [string, string]>("SELECT id FROM company_candidates WHERE campaign_id = ? AND company_id = ? LIMIT 1")
+      .get(job.campaign_id, companyId)
+    if (existingCandidate) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "company_candidate",
+        subjectId: existingCandidate.id,
+        level: "info",
+        eventType: "company.dedupe_skipped",
+        message: `${candidate.name} ya existía en esta campaña.`,
+        payload: { companyId, score: candidate.score },
+      })
+      continue
+    }
     db.prepare(`
       INSERT OR IGNORE INTO company_candidates (
         id,
@@ -1528,20 +1739,22 @@ function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unkno
         status,
         score,
         rationale,
-        evidence_json
-      ) VALUES (?, ?, ?, ?, 'new', ?, ?, ?)
-    `).run(candidateId, job.campaign_id, job.run_id, companyId, candidate.score, candidate.rationale, JSON.stringify(candidate.evidence))
-    db.prepare(`
-      UPDATE company_candidates
-      SET
-        run_id = ?,
-        score = ?,
-        rationale = ?,
-        evidence_json = ?,
-        status = CASE WHEN status IN ('approved', 'rejected', 'do_not_contact') THEN status ELSE 'new' END,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE campaign_id = ? AND company_id = ?
-    `).run(job.run_id, candidate.score, candidate.rationale, JSON.stringify(candidate.evidence), job.campaign_id, companyId)
+        evidence_json,
+        review_visible,
+        review_revealed_at
+      ) VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?, CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END)
+    `).run(
+      candidateId,
+      job.campaign_id,
+      job.run_id,
+      companyId,
+      candidate.score,
+      candidate.rationale,
+      JSON.stringify(candidate.evidence),
+      visibleInserted < reviewBatchSize ? 1 : 0,
+      visibleInserted < reviewBatchSize ? 1 : 0,
+    )
+    visibleInserted += 1
     insertEvent({
       campaignId: job.campaign_id,
       runId: job.run_id,
@@ -1551,9 +1764,25 @@ function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unkno
       level: "info",
       eventType: "company.saved",
       message: `${candidate.name} guardada como empresa candidata.`,
-      payload: { companyId, score: candidate.score },
+      payload: { companyId, score: candidate.score, reviewVisible: visibleInserted <= reviewBatchSize },
     })
   }
+}
+
+function isSuppressedCompanyCandidate(company: ReturnType<typeof normalizeCompanyOutput>) {
+  const checks: Array<[string, string]> = []
+  if (company.domain) checks.push(["domain", normalizeName(company.domain)])
+  if (company.linkedin_url) checks.push(["linkedin_url", company.linkedin_url.toLowerCase()])
+  if (company.name) checks.push(["company", normalizeName(company.name)])
+
+  return checks.some(([scope, normalizedValue]) => {
+    const row = db
+      .query<{ count: number }, [string, string]>(
+        "SELECT COUNT(*) AS count FROM suppression_list WHERE scope = ? AND normalized_value = ?",
+      )
+      .get(scope, normalizedValue)
+    return Boolean(row && row.count > 0)
+  })
 }
 
 function upsertCompanyFromCandidate(company: ReturnType<typeof normalizeCompanyOutput>, runId: string) {
@@ -1670,6 +1899,12 @@ function nonNegativeInteger(value: unknown, fallback: unknown) {
   const parsed = typeof value === "number" ? value : Number(value)
   if (Number.isFinite(parsed) && parsed >= 0) return Math.floor(parsed)
   return typeof fallback === "number" && fallback >= 0 ? Math.floor(fallback) : 0
+}
+
+function positiveInteger(value: unknown, fallback: unknown) {
+  const parsed = nonNegativeInteger(value, fallback)
+  if (parsed > 0) return parsed
+  return typeof fallback === "number" && fallback > 0 ? Math.floor(fallback) : 1
 }
 
 function scoreThreshold(value: unknown, fallback: unknown) {

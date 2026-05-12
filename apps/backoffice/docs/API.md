@@ -74,14 +74,7 @@ Body fields:
   "runBudgetCents": 2000,
   "maxCompanies": 10,
   "maxPeople": 0,
-  "maxRuntimeSeconds": 900
-}
-```
-
-Planned field:
-
-```json
-{
+  "maxRuntimeSeconds": 900,
   "minScoreThreshold": 75
 }
 ```
