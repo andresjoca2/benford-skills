@@ -89,16 +89,31 @@ That browser session is local, but the API and SQLite writes are remote.
 2. Confirm `Modo` is `companies` or `companies_then_people`.
 3. Confirm `Máx. empresas` is `10`.
 4. Click `Re-ejecutar búsqueda`.
-5. The API creates `agent_runs` and a `find_companies` row in `openclaw_jobs`.
-6. The worker claims the job, calls OpenClaw, and expects JSON with `companies`.
-7. The backend validates, dedupes, applies suppression, and writes:
+5. If cached companies exist, the API reveals the next 10 immediately without calling OpenClaw.
+6. If the cache is empty, the API creates `agent_runs` and a `find_companies` row in `openclaw_jobs`.
+7. The worker claims the job, calls OpenClaw in `fast_prefetch` mode, and expects JSON with up to 30 `companies`.
+8. The backend validates, dedupes, applies suppression, shows the first 10, and hides the rest in the review queue:
    - `companies`
    - `company_candidates`
    - `agent_events`
-8. Review companies in the UI.
-9. Before accepting/rejecting, write feedback in `Feedback para la siguiente búsqueda`.
-10. Click accept/reject.
-11. Click `Re-ejecutar búsqueda` again.
+9. Review companies in the UI.
+10. Before accepting/rejecting, write feedback in `Feedback para la siguiente búsqueda`.
+11. Click accept/reject.
+12. Click `Re-ejecutar búsqueda` again.
+
+The frontend sends:
+
+```json
+{
+  "replaceQueuedRun": true,
+  "revealCachedCompanies": true,
+  "reviewBatchSize": 10,
+  "prefetchCompanies": 30
+}
+```
+
+This means the second click is instant if there are hidden candidates. Only when
+the hidden queue is empty does it enqueue another OpenClaw job.
 
 The next job input includes:
 
@@ -124,15 +139,22 @@ toward accepted patterns.
 See queued/running jobs:
 
 ```bash
-sqlite3 /var/lib/benford-backoffice/backoffice.sqlite \
+sqlite3 apps/backoffice/.data/backoffice.sqlite \
   "SELECT id, skill, status, created_at FROM openclaw_jobs ORDER BY created_at DESC LIMIT 10;"
 ```
 
 See latest saved companies:
 
 ```bash
-sqlite3 /var/lib/benford-backoffice/backoffice.sqlite \
+sqlite3 apps/backoffice/.data/backoffice.sqlite \
   "SELECT c.name, c.domain, cc.score, cc.status FROM company_candidates cc JOIN companies c ON c.id = cc.company_id ORDER BY cc.created_at DESC LIMIT 20;"
+```
+
+See cached companies waiting to be revealed:
+
+```bash
+sqlite3 apps/backoffice/.data/backoffice.sqlite \
+  "SELECT COUNT(*) FROM company_candidates WHERE review_visible = 0;"
 ```
 
 See latest events:

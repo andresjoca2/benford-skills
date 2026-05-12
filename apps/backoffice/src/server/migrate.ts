@@ -47,7 +47,11 @@ export function migrateDatabase(database: Database) {
 
     const sql = readFileSync(path.join(migrationsDir, file), "utf8")
     database.transaction(() => {
-      database.exec(sql)
+      if (id === "0003_company_candidate_review_queue") {
+        migrateCompanyCandidateReviewQueue(database)
+      } else {
+        database.exec(sql)
+      }
       database.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(id)
     })()
   }
@@ -78,6 +82,31 @@ function tableExists(database: Database, name: string) {
 function columnExists(database: Database, table: string, column: string) {
   const rows = database.query<{ name: string }, []>(`PRAGMA table_info("${table}")`).all()
   return rows.some((row) => row.name === column)
+}
+
+function migrateCompanyCandidateReviewQueue(database: Database) {
+  if (!columnExists(database, "company_candidates", "review_visible")) {
+    database.exec(`
+      ALTER TABLE company_candidates
+        ADD COLUMN review_visible INTEGER NOT NULL DEFAULT 1 CHECK (review_visible IN (0, 1));
+    `)
+  }
+
+  if (!columnExists(database, "company_candidates", "review_revealed_at")) {
+    database.exec(`
+      ALTER TABLE company_candidates
+        ADD COLUMN review_revealed_at TEXT;
+    `)
+  }
+
+  database.exec(`
+    UPDATE company_candidates
+    SET review_revealed_at = COALESCE(review_revealed_at, created_at)
+    WHERE review_visible = 1;
+
+    CREATE INDEX IF NOT EXISTS company_candidates_review_queue_idx
+      ON company_candidates(campaign_id, review_visible, status, score, created_at);
+  `)
 }
 
 function importPreservedLegacyPrototypeData(database: Database) {
