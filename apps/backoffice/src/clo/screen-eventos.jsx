@@ -1,9 +1,11 @@
 // Eventos screen — timeline log with day groups + filters + live tail.
-const { useState: useStateE } = React;
+const { useEffect: useEffectE, useState: useStateE } = React;
 
 const EVENT_TYPE_LABEL = {
   "corrida.start": "Corrida",
   "corrida.done": "Corrida",
+  "run.completed": "Corrida",
+  "people.found": "Personas",
   "prospect.sent": "Envío",
   "prospect.replied": "Respuesta",
   "prospect.qualified": "Calificado",
@@ -16,9 +18,22 @@ const EVENT_TYPE_LABEL = {
 };
 
 const EventosScreen = () => {
-  const events = window.DATA.EVENTS;
+  const [events, setEvents] = useStateE(window.DATA.EVENTS);
   const [src, setSrc] = useStateE("todos");
   const [sev, setSev] = useStateE("todos");
+
+  useEffectE(() => {
+    let cancelled = false;
+    window.BackofficeAPI?.events()
+      .then((items) => {
+        if (!cancelled && items.length) {
+          window.DATA.EVENTS = items;
+          setEvents(items);
+        }
+      })
+      .catch((error) => console.warn("No se pudieron cargar eventos desde SQLite", error));
+    return () => { cancelled = true; };
+  }, []);
 
   const filtered = events.filter(e => {
     if (src !== "todos" && e.source !== src) return false;

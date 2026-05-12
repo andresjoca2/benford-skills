@@ -1,5 +1,5 @@
 // Router + app shell.
-const { useState: useStateApp } = React;
+const { useEffect: useEffectApp, useState: useStateApp } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "accent": "#5E6AD2"
@@ -7,16 +7,47 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 
 const ACCENT_OPTIONS = ["#5E6AD2", "#000000", "#16A34A", "#E11D48"];
 
+const parseRouteHash = () => {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (hash.startsWith("campaign/")) {
+    return { route: "batch", batchId: decodeURIComponent(hash.slice("campaign/".length)) };
+  }
+  return { route: hash || "tablas", batchId: null };
+};
+
 const Page = () => {
-  const [route, setRoute] = useStateApp("campanas");
-  const [batchId, setBatchId] = useStateApp(null);
+  const initialRoute = parseRouteHash();
+  const [route, setRouteState] = useStateApp(initialRoute.route);
+  const [batchId, setBatchId] = useStateApp(initialRoute.batchId);
   const [tweaks, setTweak] = (window.useTweaks ? window.useTweaks(TWEAK_DEFAULTS) : [TWEAK_DEFAULTS, ()=>{}]);
 
   React.useEffect(()=>{
     document.documentElement.style.setProperty("--accent", tweaks.accent);
   }, [tweaks.accent]);
 
-  const openBatch = (id) => { setBatchId(id); setRoute("batch"); };
+  useEffectApp(() => {
+    const syncFromHash = () => {
+      const next = parseRouteHash();
+      setBatchId(next.batchId);
+      setRouteState(next.route);
+    };
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, []);
+
+  const setRoute = (nextRoute) => {
+    window.location.hash = nextRoute === "tablas" ? "" : nextRoute;
+    if (nextRoute === "tablas") {
+      setBatchId(null);
+      setRouteState("tablas");
+    }
+  };
+  const openBatch = (id) => {
+    if (!id) return;
+    window.location.hash = `campaign/${encodeURIComponent(id)}`;
+    setBatchId(id);
+    setRouteState("batch");
+  };
   const backToCampanas = () => setRoute("campanas");
 
   let screen = null;
@@ -27,6 +58,7 @@ const Page = () => {
   else if (route === "eventos")    screen = <window.EventosScreen/>;
   else if (route === "prospectos") screen = <window.ProspectosScreen/>;
   else if (route === "empresas")   screen = <window.EmpresasScreen/>;
+  else if (route === "tablas")     screen = <window.TableBrowserScreen/>;
   else screen = <window.CampanasScreen onOpen={openBatch}/>;
 
   return (
@@ -46,6 +78,7 @@ const Page = () => {
               onChange={setRoute}
               options={[
                 {value:"campanas",   label:"Campañas"},
+                {value:"tablas",     label:"Tablas"},
                 {value:"eventos",    label:"Eventos"},
                 {value:"prospectos", label:"Prospectos"},
                 {value:"empresas",   label:"Empresas"},

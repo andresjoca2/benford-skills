@@ -1,415 +1,941 @@
-import { mkdirSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import path from "node:path"
-import { Database } from "bun:sqlite"
+import { appRoot, openDatabase, resolveDbPath } from "./migrate.ts"
 
-export type CampaignRow = {
+export const dbPath = resolveDbPath()
+export const db = openDatabase(dbPath)
+
+type CampaignCoreRow = {
   id: string
   name: string
-  criteria: string
-  created: string
-  runs: number
-  lastRun: string
-  total: number
-  contacted: number
-  replied: number
-  qualified: number
-  pending: number
-  status_kind: string
-  status_label: string
+  status: string
   owner_name: string
-  owner_initials: string
-  owner_color: string
-  progressKind: string
+  created_at: string
+  objective: string
+  industry: string
+  niche: string
+  country_region: string
+  company_size: string
+  max_companies: number
+  max_people: number
+  min_score_threshold: number
 }
 
-export type ProspectRow = {
+type PersonCompatRow = {
   id: string
   name: string
   title: string
-  company: string
+  company_name: string
   industry: string
   score: number
-  scoreBand: string
-  status_kind: string
-  status_label: string
-  channels_json: string
-  lastTouch: string
-  batch: string
+  status: string
+  campaign_id: string
   country: string
-  owner_initials: string
-  owner_color: string
-  tags_json: string
 }
 
-export type CompanyRow = {
+type CompanyCompatRow = {
   id: string
   name: string
   domain: string
   industry: string
-  size: string
+  employee_range: string
   country: string
-  prospects: number
-  contacted: number
-  replied: number
-  last: string
-  owner_initials: string
-  owner_color: string
-  tags_json: string
-  logo_color: string
+  created_at: string
 }
 
-type CampaignSeed = [
-  string,
-  string,
-  string,
-  string,
-  number,
-  string,
-  number,
-  number,
-  number,
-  number,
-  number,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-]
-
-type CompanySeed = [
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  number,
-  number,
-  number,
-  string,
-  string,
-  string,
-  string[],
-  string,
-]
-
-type ProspectSeed = [
-  string,
-  string,
-  string,
-  string,
-  string,
-  number,
-  string,
-  string,
-  string,
-  Record<string, string>,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string[],
-]
-
-const dbDir = path.resolve(import.meta.dir, "../../.data")
-mkdirSync(dbDir, { recursive: true })
-
-export const dbPath = path.join(dbDir, "backoffice.sqlite")
-export const db = new Database(dbPath, { create: true })
-
-db.exec("PRAGMA journal_mode = WAL;")
-db.exec("PRAGMA foreign_keys = ON;")
-
-const campaigns: CampaignSeed[] = [
-  ["btc_8821", "Fintech LATAM · Founders", "Fintech · LATAM · 11–50 emp · Founder/CEO", "hace 2 d", 4, "Corrida actual · 14:02", 248, 184, 41, 12, 64, "running", "En curso", "Manu", "M", "#A855F7", "info"],
-  ["btc_8814", "SaaS B2B · CFOs Mx", "SaaS B2B · México · 50–200 emp · CFO/Finance", "hace 5 d", 3, "Corrida #3 · ayer 09:14", 412, 412, 89, 31, 0, "done", "Completado", "Vale", "V", "#0EA5E9", "ok"],
-  ["btc_8807", "Contadores · Pymes", "Contabilidad · México · 1–10 emp · Owner", "hace 1 sem", 2, "Corrida #2 · mar 06 11:30", 96, 71, 18, 5, 25, "done", "Completado", "Iván", "I", "#16A34A", "ok"],
-  ["btc_8799", "E-commerce · Shopify Plus", "E-commerce · LATAM · 11–50 emp · Founder", "hace 9 d", 1, "Corrida #1 · feb 28 15:20", 158, 158, 22, 8, 0, "done", "Completado", "Manu", "M", "#A855F7", "ok"],
-  ["btc_draft", "Batch sin nombre", "—", "draft", 0, "—", 0, 0, 0, 0, 0, "empty", "Vacío", "Manu", "M", "#A855F7", "warn"],
-]
-
-const companies: CompanySeed[] = [
-  ["c01", "Mendel", "mendel.com", "Fintech", "50–200", "MX", 8, 6, 2, "hoy", "M", "#A855F7", ["ICP-A", "Fintech LATAM"], "#0EA5E9"],
-  ["c02", "Rappi", "rappi.com", "Logística", "5k+", "CO", 14, 11, 3, "hoy", "V", "#0EA5E9", ["Enterprise"], "#FF441F"],
-  ["c03", "Kavak", "kavak.com", "Mobility", "5k+", "BR", 11, 8, 4, "ayer", "I", "#16A34A", ["Enterprise"], "#7C3AED"],
-  ["c04", "Bitso", "bitso.com", "Fintech", "500–1k", "MX", 9, 7, 1, "hace 2 d", "M", "#A855F7", ["ICP-A"], "#2563EB"],
-  ["c05", "Clip", "clip.mx", "Fintech", "500–1k", "MX", 6, 5, 1, "hace 2 d", "V", "#0EA5E9", ["ICP-A"], "#16A34A"],
-  ["c06", "Konfío", "konfio.mx", "Fintech", "500–1k", "MX", 7, 4, 0, "hace 3 d", "I", "#16A34A", ["ICP-A"], "#1F2937"],
-  ["c07", "Albo", "albo.mx", "Fintech", "200–500", "MX", 4, 3, 1, "hoy", "M", "#A855F7", ["ICP-A"], "#0F766E"],
-  ["c08", "Stori", "stori.mx", "Fintech", "500–1k", "MX", 5, 2, 0, "hace 4 d", "V", "#0EA5E9", ["ICP-B"], "#DC2626"],
-  ["c09", "Belvo", "belvo.com", "Fintech API", "50–200", "CO", 3, 2, 0, "hace 4 d", "I", "#16A34A", ["ICP-A"], "#1E40AF"],
-  ["c10", "Truora", "truora.com", "Software", "50–200", "CO", 2, 1, 0, "hace 5 d", "M", "#A855F7", [], "#A21CAF"],
-  ["c11", "Tiendanube", "tiendanube.com", "E-commerce", "500–1k", "AR", 6, 3, 1, "hace 5 d", "V", "#0EA5E9", ["ICP-B"], "#0891B2"],
-  ["c12", "Fintual", "fintual.com", "Wealthtech", "50–200", "CL", 2, 2, 0, "hace 1 sem", "I", "#16A34A", [], "#0D9488"],
-  ["c13", "Cobre", "cobre.co", "Fintech", "50–200", "CO", 3, 0, 0, "—", "M", "#A855F7", ["Nuevo"], "#0F172A"],
-]
-
-const prospects: ProspectSeed[] = [
-  ["p001", "Andrés Martín", "CEO & Co-founder", "Mendel", "Fintech", 92, "hot", "running", "En conversación", { email: "on", linkedin: "on", call: "" }, "hoy 13:44", "btc_8821", "MX", "M", "#A855F7", ["Founder", "ICP-A"]],
-  ["p002", "Sofía Bermúdez", "Head of Growth", "Rappi", "Logística", 88, "hot", "done", "Calificado", { email: "on", linkedin: "on", call: "on" }, "hoy 11:30", "btc_8821", "CO", "V", "#0EA5E9", ["Decision-maker"]],
-  ["p003", "Lucas Pereira", "CFO", "Kavak", "Mobility", 81, "hot", "running", "Respondió", { email: "on", linkedin: "" }, "ayer 16:48", "btc_8814", "BR", "I", "#16A34A", ["ICP-A"]],
-  ["p004", "María Fernández", "VP Finance", "Bitso", "Fintech", 74, "warm", "draft", "Contactado", { email: "on", linkedin: "on" }, "hace 2 d", "btc_8821", "MX", "M", "#A855F7", ["Founder"]],
-  ["p005", "Diego Acosta", "Founder", "Clip", "Fintech", 71, "warm", "draft", "Contactado", { email: "on" }, "hace 2 d", "btc_8814", "MX", "V", "#0EA5E9", ["ICP-B"]],
-  ["p006", "Camila Rojas", "Director of Operations", "Konfío", "Fintech", 69, "warm", "warn", "Sin respuesta", { email: "on", linkedin: "on" }, "hace 3 d", "btc_8814", "MX", "I", "#16A34A", []],
-  ["p007", "Tomás Vázquez", "Co-founder", "Albo", "Fintech", 64, "warm", "running", "En conversación", { email: "on", linkedin: "on" }, "hoy 09:12", "btc_8821", "MX", "M", "#A855F7", ["Founder", "ICP-A"]],
-  ["p008", "Valentina López", "Head of Finance", "Stori", "Fintech", 58, "warm", "draft", "Encolado", { email: "" }, "—", "btc_8821", "MX", "V", "#0EA5E9", []],
-  ["p009", "Pablo Restrepo", "CEO", "Belvo", "Fintech", 55, "warm", "draft", "Contactado", { email: "on", linkedin: "" }, "hace 4 d", "btc_8807", "CO", "I", "#16A34A", ["Founder"]],
-  ["p010", "Renata Silva", "Head of People", "Truora", "Software", 48, "cold", "empty", "Rebotado", { email: "warn" }, "hace 5 d", "btc_8807", "CO", "M", "#A855F7", []],
-  ["p011", "Mateo Aguilar", "Finance Director", "Tiendanube", "E-commerce", 43, "cold", "warn", "Sin respuesta", { email: "on" }, "hace 5 d", "btc_8799", "AR", "V", "#0EA5E9", []],
-  ["p012", "Ana Castillo", "COO", "Fintual", "Fintech", 39, "cold", "danger", "Descartado", { email: "on", linkedin: "on" }, "hace 1 sem", "btc_8807", "CL", "I", "#16A34A", ["Decision-maker"]],
-  ["p013", "Sebastián Núñez", "CEO", "Cobre", "Fintech", 34, "cold", "draft", "Encolado", { email: "" }, "—", "btc_8821", "CO", "M", "#A855F7", ["Founder"]],
-]
-
-export function migrate() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS campaigns (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      criteria TEXT NOT NULL DEFAULT '',
-      created_label TEXT NOT NULL DEFAULT '',
-      runs INTEGER NOT NULL DEFAULT 0,
-      last_run_label TEXT NOT NULL DEFAULT '',
-      total INTEGER NOT NULL DEFAULT 0,
-      contacted INTEGER NOT NULL DEFAULT 0,
-      replied INTEGER NOT NULL DEFAULT 0,
-      qualified INTEGER NOT NULL DEFAULT 0,
-      pending INTEGER NOT NULL DEFAULT 0,
-      status_kind TEXT NOT NULL DEFAULT 'draft',
-      status_label TEXT NOT NULL DEFAULT 'Borrador',
-      owner_name TEXT NOT NULL DEFAULT '',
-      owner_initials TEXT NOT NULL DEFAULT '',
-      owner_color TEXT NOT NULL DEFAULT '#71717A',
-      progress_kind TEXT NOT NULL DEFAULT 'info',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS companies (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      domain TEXT NOT NULL DEFAULT '',
-      industry TEXT NOT NULL DEFAULT '',
-      size TEXT NOT NULL DEFAULT '',
-      country TEXT NOT NULL DEFAULT '',
-      prospects INTEGER NOT NULL DEFAULT 0,
-      contacted INTEGER NOT NULL DEFAULT 0,
-      replied INTEGER NOT NULL DEFAULT 0,
-      last_label TEXT NOT NULL DEFAULT '',
-      owner_initials TEXT NOT NULL DEFAULT '',
-      owner_color TEXT NOT NULL DEFAULT '#71717A',
-      tags_json TEXT NOT NULL DEFAULT '[]',
-      logo_color TEXT NOT NULL DEFAULT '#71717A',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS prospects (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      title TEXT NOT NULL DEFAULT '',
-      company_name TEXT NOT NULL DEFAULT '',
-      industry TEXT NOT NULL DEFAULT '',
-      score INTEGER NOT NULL DEFAULT 0,
-      score_band TEXT NOT NULL DEFAULT 'cold',
-      status_kind TEXT NOT NULL DEFAULT 'draft',
-      status_label TEXT NOT NULL DEFAULT '',
-      channels_json TEXT NOT NULL DEFAULT '{}',
-      last_touch_label TEXT NOT NULL DEFAULT '',
-      campaign_id TEXT NOT NULL DEFAULT '',
-      country TEXT NOT NULL DEFAULT '',
-      owner_initials TEXT NOT NULL DEFAULT '',
-      owner_color TEXT NOT NULL DEFAULT '#71717A',
-      tags_json TEXT NOT NULL DEFAULT '[]',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      day_label TEXT NOT NULL,
-      severity TEXT NOT NULL,
-      type TEXT NOT NULL,
-      text TEXT NOT NULL,
-      time_label TEXT NOT NULL,
-      actor TEXT NOT NULL,
-      source TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS document_tracker_items (
-      id TEXT PRIMARY KEY,
-      area TEXT NOT NULL,
-      document_type TEXT NOT NULL,
-      status TEXT NOT NULL,
-      title TEXT NOT NULL,
-      canonical_path TEXT NOT NULL DEFAULT '',
-      props_count INTEGER NOT NULL DEFAULT 0,
-      contributions_count INTEGER NOT NULL DEFAULT 0,
-      failure_reason TEXT NOT NULL DEFAULT '',
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `)
+type CampaignDetailRow = CampaignCoreRow & {
+  positive_signals: string
+  negative_signals: string
+  search_mode: string
+  run_budget_cents: number
+  max_runtime_seconds: number
 }
 
-function seed() {
-  const campaignCount = db.query("SELECT COUNT(*) AS count FROM campaigns").get() as { count: number }
-  if (campaignCount.count > 0) return
-
-  const insertCampaign = db.prepare(`
-    INSERT INTO campaigns (
-      id, name, criteria, created_label, runs, last_run_label, total, contacted,
-      replied, qualified, pending, status_kind, status_label, owner_name,
-      owner_initials, owner_color, progress_kind
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-
-  const insertCompany = db.prepare(`
-    INSERT INTO companies (
-      id, name, domain, industry, size, country, prospects, contacted, replied,
-      last_label, owner_initials, owner_color, tags_json, logo_color
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-
-  const insertProspect = db.prepare(`
-    INSERT INTO prospects (
-      id, name, title, company_name, industry, score, score_band, status_kind,
-      status_label, channels_json, last_touch_label, campaign_id, country,
-      owner_initials, owner_color, tags_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-
-  db.transaction(() => {
-    for (const row of campaigns) insertCampaign.run(...row)
-    for (const row of companies) {
-      insertCompany.run(
-        row[0],
-        row[1],
-        row[2],
-        row[3],
-        row[4],
-        row[5],
-        row[6],
-        row[7],
-        row[8],
-        row[9],
-        row[10],
-        row[11],
-        JSON.stringify(row[12]),
-        row[13],
-      )
-    }
-    for (const row of prospects) {
-      insertProspect.run(
-        row[0],
-        row[1],
-        row[2],
-        row[3],
-        row[4],
-        row[5],
-        row[6],
-        row[7],
-        row[8],
-        JSON.stringify(row[9]),
-        row[10],
-        row[11],
-        row[12],
-        row[13],
-        row[14],
-        JSON.stringify(row[15]),
-      )
-    }
-  })()
+type CompanyCandidateRow = {
+  id: string
+  campaign_id: string
+  run_id: string | null
+  company_id: string
+  status: string
+  score: number
+  rationale: string
+  evidence_json: string
+  name: string
+  domain: string
+  linkedin_url: string
+  industry: string
+  employee_range: string
+  country: string
+  city: string
+  description: string
 }
+
+type PersonCandidateRow = {
+  id: string
+  campaign_id: string
+  run_id: string | null
+  person_id: string
+  company_id: string | null
+  status: string
+  score: number
+  rationale: string
+  evidence_json: string
+  name: string
+  title: string
+  company_name: string
+  industry: string
+  country: string
+  seniority: string
+  function: string
+  description: string
+}
+
+type RunRow = {
+  id: string
+  campaign_id?: string
+  mission: string
+  status: string
+  objective: string
+  limits_json: string
+  raw_output_json?: string
+  error: string
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+type OpenClawJobRow = {
+  id: string
+  run_id: string
+  campaign_id: string
+  skill: string
+  status: string
+  input_json: string
+  output_json: string
+  error: string
+  attempt: number
+  max_attempts: number
+  timeout_seconds: number
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+type EventRow = {
+  id: number
+  campaign_id: string | null
+  run_id: string | null
+  job_id: string | null
+  level: string
+  event_type: string
+  message: string
+  created_at: string
+}
+
+type CampaignBriefPayload = {
+  objective: string
+  industry: string
+  niche: string
+  countryRegion: string
+  companySize: string
+  positiveSignals: string
+  negativeSignals: string
+  searchMode: string
+  runBudgetCents: number
+  maxCompanies: number
+  maxPeople: number
+  maxRuntimeSeconds: number
+  minScoreThreshold: number
+}
+
+type ReviewStatus = "approved" | "rejected" | "maybe" | "needs_more_research" | "do_not_contact" | "new"
+
+export type OpenClawQueuedJob = ReturnType<typeof formatOpenClawJob>
+
+const colors = ["#A855F7", "#0EA5E9", "#16A34A", "#2563EB", "#0F766E", "#DC2626", "#7C3AED"]
+let uniqueIdCounter = 0
+const inspectableTables = [
+  "campaigns",
+  "campaign_briefs",
+  "agent_runs",
+  "openclaw_jobs",
+  "agent_events",
+  "companies",
+  "company_candidates",
+  "people",
+  "person_candidates",
+  "feedback",
+  "suppression_list",
+  "outreach_drafts",
+  "schema_migrations",
+] as const
 
 export function setupDatabase() {
-  migrate()
-  seed()
+  seedDevelopmentData()
+}
+
+function seedDevelopmentData() {
+  const campaignCount = db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM campaigns").get()
+  if ((campaignCount?.count ?? 0) > 0) return
+
+  const seedPath = path.join(appRoot, "db", "seeds", "dev.sql")
+  db.exec(readFileSync(seedPath, "utf8"))
 }
 
 export function listCampaigns() {
-  const rows = db
-    .query<CampaignRow, []>(`
+  const campaigns = db
+    .query<CampaignCoreRow, []>(`
       SELECT
-        id, name, criteria, created_label AS created, runs, last_run_label AS lastRun,
-        total, contacted, replied, qualified, pending, status_kind, status_label,
-        owner_name, owner_initials, owner_color, progress_kind AS progressKind
-      FROM campaigns
-      ORDER BY
-        CASE id
-          WHEN 'btc_8821' THEN 1
-          WHEN 'btc_8814' THEN 2
-          WHEN 'btc_8807' THEN 3
-          WHEN 'btc_8799' THEN 4
-          WHEN 'btc_draft' THEN 5
-          ELSE 99
-        END,
-        created_at DESC
+        c.id,
+        c.name,
+        c.status,
+        c.owner_name,
+        c.created_at,
+        b.objective,
+        b.industry,
+        b.niche,
+        b.country_region,
+        b.company_size,
+        b.max_companies,
+        b.max_people,
+        b.min_score_threshold
+      FROM campaigns c
+      LEFT JOIN campaign_briefs b ON b.campaign_id = c.id
+      ORDER BY c.created_at DESC, c.name ASC
     `)
     .all()
 
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    criteria: row.criteria,
-    created: row.created,
-    runs: row.runs,
-    lastRun: row.lastRun,
-    total: row.total,
-    contacted: row.contacted,
-    replied: row.replied,
-    qualified: row.qualified,
-    pending: row.pending,
-    status: { kind: row.status_kind, label: row.status_label },
-    owner: {
-      name: row.owner_name,
-      initials: row.owner_initials,
-      color: row.owner_color,
-    },
-    progressKind: row.progressKind,
-  }))
+  const runCount = db.prepare("SELECT COUNT(*) AS count FROM agent_runs WHERE campaign_id = ?")
+  const lastRun = db.prepare(`
+    SELECT mission, status, created_at
+    FROM agent_runs
+    WHERE campaign_id = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `)
+  const companyTotals = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved,
+      SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) AS pending
+    FROM company_candidates
+    WHERE campaign_id = ?
+  `)
+  const personTotals = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved,
+      SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) AS pending
+    FROM person_candidates
+    WHERE campaign_id = ?
+  `)
+
+  return campaigns.map((campaign) => {
+    const companies = companyTotals.get(campaign.id) as CountStats
+    const people = personTotals.get(campaign.id) as CountStats
+    const latest = lastRun.get(campaign.id) as { mission: string; status: string; created_at: string } | null
+    const runs = (runCount.get(campaign.id) as { count: number }).count
+    const total = numberOrZero(companies.total) + numberOrZero(people.total)
+    const approved = numberOrZero(companies.approved) + numberOrZero(people.approved)
+    const pending = numberOrZero(companies.pending) + numberOrZero(people.pending)
+
+    return {
+      id: campaign.id,
+      name: campaign.name,
+      criteria: campaignCriteria(campaign),
+      created: formatDateLabel(campaign.created_at),
+      runs,
+      lastRun: latest ? `${latest.mission} · ${latest.status}` : "-",
+      total,
+      contacted: approved,
+      replied: 0,
+      qualified: approved,
+      pending,
+      status: campaignStatus(campaign.status),
+      owner: {
+        name: campaign.owner_name || "Equipo",
+        initials: initials(campaign.owner_name || "Equipo"),
+        color: colorFor(campaign.id),
+      },
+      progressKind: pending > 0 ? "info" : total > 0 ? "ok" : "warn",
+    }
+  })
 }
 
-function slugId(prefix: string, value: string) {
-  const slug = value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 24)
+export function createCampaign(input: {
+  name?: string
+  criteria?: string
+  objective?: string
+  industry?: string
+  niche?: string
+  countryRegion?: string
+  companySize?: string
+  positiveSignals?: string
+  negativeSignals?: string
+  searchMode?: string
+  runBudgetCents?: number
+  maxCompanies?: number
+  maxPeople?: number
+  maxRuntimeSeconds?: number
+  minScoreThreshold?: number
+}) {
+  const name = input.name?.trim() || "Nueva campaign"
+  const id = uniqueId("campaign", name)
+  const objective = input.objective?.trim() || input.criteria?.trim() || ""
+  const searchMode = ["companies", "people", "companies_then_people"].includes(input.searchMode ?? "")
+    ? input.searchMode ?? "companies"
+    : "companies"
 
-  return `${prefix}_${slug || "nuevo"}_${Date.now().toString(36).slice(-5)}`
-}
-
-export function createCampaign(input: { name?: string; criteria?: string }) {
-  const name = input.name?.trim() || "Nueva campaña"
-  const id = slugId("btc", name)
-
-  db.prepare(`
-    INSERT INTO campaigns (
-      id, name, criteria, created_label, runs, last_run_label, total, contacted,
-      replied, qualified, pending, status_kind, status_label, owner_name,
-      owner_initials, owner_color, progress_kind
-    ) VALUES (?, ?, ?, ?, 0, ?, 0, 0, 0, 0, 0, 'empty', 'Vacío', 'Manu', 'M', '#A855F7', 'warn')
-  `).run(id, name, input.criteria?.trim() || "—", "hoy", "—")
+  db.transaction(() => {
+    db.prepare("INSERT INTO campaigns (id, name, status, owner_name) VALUES (?, ?, 'draft', 'Manu')").run(id, name)
+    db.prepare(`
+      INSERT INTO campaign_briefs (
+        campaign_id,
+        objective,
+        industry,
+        niche,
+        country_region,
+        company_size,
+        positive_signals,
+        negative_signals,
+        search_mode,
+        run_budget_cents,
+        max_companies,
+        max_people,
+        max_runtime_seconds,
+        min_score_threshold
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      objective,
+      input.industry?.trim() || "",
+      input.niche?.trim() || "",
+      input.countryRegion?.trim() || "",
+      input.companySize?.trim() || "",
+      input.positiveSignals?.trim() || "",
+      input.negativeSignals?.trim() || "",
+      searchMode,
+      nonNegativeInteger(input.runBudgetCents, 0),
+      nonNegativeInteger(input.maxCompanies, 10),
+      nonNegativeInteger(input.maxPeople, 0),
+      nonNegativeInteger(input.maxRuntimeSeconds, 900),
+      scoreThreshold(input.minScoreThreshold, 75),
+    )
+  })()
 
   return listCampaigns().find((campaign) => campaign.id === id)
 }
 
+export function getCampaignDetail(campaignId: string) {
+  const row = db
+    .query<CampaignDetailRow, [string]>(`
+      SELECT
+        c.id,
+        c.name,
+        c.status,
+        c.owner_name,
+        c.created_at,
+        b.objective,
+        b.industry,
+        b.niche,
+        b.country_region,
+        b.company_size,
+        b.positive_signals,
+        b.negative_signals,
+        b.search_mode,
+        b.run_budget_cents,
+        b.max_companies,
+        b.max_people,
+        b.max_runtime_seconds,
+        b.min_score_threshold
+      FROM campaigns c
+      LEFT JOIN campaign_briefs b ON b.campaign_id = c.id
+      WHERE c.id = ?
+    `)
+    .get(campaignId)
+
+  if (!row) return null
+
+  const summary = listCampaigns().find((campaign) => campaign.id === campaignId)
+  return {
+    ...(summary ?? {
+      id: row.id,
+      name: row.name,
+      criteria: campaignCriteria(row),
+      created: formatDateLabel(row.created_at),
+      runs: 0,
+      lastRun: "-",
+      total: 0,
+      contacted: 0,
+      replied: 0,
+      qualified: 0,
+      pending: 0,
+      status: campaignStatus(row.status),
+      owner: { name: row.owner_name || "Equipo", initials: initials(row.owner_name || "Equipo"), color: colorFor(row.id) },
+      progressKind: "warn",
+    }),
+    brief: {
+      objective: row.objective || "",
+      industry: row.industry || "",
+      niche: row.niche || "",
+      countryRegion: row.country_region || "",
+      companySize: row.company_size || "",
+      positiveSignals: row.positive_signals || "",
+      negativeSignals: row.negative_signals || "",
+      searchMode: row.search_mode || "companies",
+      runBudgetCents: row.run_budget_cents ?? 0,
+      maxCompanies: row.max_companies ?? 0,
+      maxPeople: row.max_people ?? 0,
+      maxRuntimeSeconds: row.max_runtime_seconds ?? 0,
+      minScoreThreshold: row.min_score_threshold ?? 75,
+    },
+    runs: listCampaignRuns(campaignId),
+  }
+}
+
+export function updateCampaignBrief(
+  campaignId: string,
+  input: {
+    objective?: string
+    industry?: string
+    niche?: string
+    countryRegion?: string
+    companySize?: string
+    positiveSignals?: string
+    negativeSignals?: string
+    searchMode?: string
+    runBudgetCents?: number
+    maxCompanies?: number
+    maxPeople?: number
+    maxRuntimeSeconds?: number
+    minScoreThreshold?: number
+  },
+) {
+  if (!existingCampaignId(campaignId)) return null
+
+  const current: CampaignBriefPayload = getCampaignDetail(campaignId)?.brief ?? {
+    objective: "",
+    industry: "",
+    niche: "",
+    countryRegion: "",
+    companySize: "",
+    positiveSignals: "",
+    negativeSignals: "",
+    searchMode: "companies",
+    runBudgetCents: 0,
+    maxCompanies: 10,
+    maxPeople: 0,
+    maxRuntimeSeconds: 900,
+    minScoreThreshold: 75,
+  }
+  const searchMode = ["companies", "people", "companies_then_people"].includes(input.searchMode ?? "")
+    ? input.searchMode ?? current.searchMode
+    : current.searchMode ?? "companies"
+
+  db.prepare(`
+    INSERT INTO campaign_briefs (
+      campaign_id,
+      objective,
+      industry,
+      niche,
+      country_region,
+      company_size,
+      positive_signals,
+      negative_signals,
+      search_mode,
+      run_budget_cents,
+      max_companies,
+      max_people,
+      max_runtime_seconds,
+      min_score_threshold,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(campaign_id) DO UPDATE SET
+      objective = excluded.objective,
+      industry = excluded.industry,
+      niche = excluded.niche,
+      country_region = excluded.country_region,
+      company_size = excluded.company_size,
+      positive_signals = excluded.positive_signals,
+      negative_signals = excluded.negative_signals,
+      search_mode = excluded.search_mode,
+      run_budget_cents = excluded.run_budget_cents,
+      max_companies = excluded.max_companies,
+      max_people = excluded.max_people,
+      max_runtime_seconds = excluded.max_runtime_seconds,
+      min_score_threshold = excluded.min_score_threshold,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(
+    campaignId,
+    cleanText(input.objective, current.objective),
+    cleanText(input.industry, current.industry),
+    cleanText(input.niche, current.niche),
+    cleanText(input.countryRegion, current.countryRegion),
+    cleanText(input.companySize, current.companySize),
+    cleanText(input.positiveSignals, current.positiveSignals),
+    cleanText(input.negativeSignals, current.negativeSignals),
+    searchMode,
+    nonNegativeInteger(input.runBudgetCents, current.runBudgetCents),
+    nonNegativeInteger(input.maxCompanies, current.maxCompanies),
+    nonNegativeInteger(input.maxPeople, current.maxPeople),
+    nonNegativeInteger(input.maxRuntimeSeconds, current.maxRuntimeSeconds),
+    scoreThreshold(input.minScoreThreshold, current.minScoreThreshold),
+  )
+
+  db.prepare("UPDATE campaigns SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(campaignId)
+  return getCampaignDetail(campaignId)
+}
+
+export function createCampaignRun(campaignId: string, options: { replaceQueuedRun?: boolean } = {}) {
+  const campaign = getCampaignDetail(campaignId)
+  if (!campaign) return null
+
+  const active = db
+    .query<RunRow, [string]>(`
+      SELECT id, mission, status, objective, limits_json, error, created_at, started_at, finished_at
+      FROM agent_runs
+      WHERE campaign_id = ? AND status IN ('queued', 'running')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `)
+    .get(campaignId)
+  if (active && (!options.replaceQueuedRun || active.status !== "queued")) {
+    return { error: "active_run_exists", run: formatRun(active) }
+  }
+
+  const brief = campaign.brief
+  const mission = brief.searchMode || "companies"
+  const runMaxCompanies = mission === "people" ? brief.maxCompanies : Math.max(10, brief.maxCompanies || 0)
+  const runId = uniqueId("run", `${campaignId}_${mission}`)
+  const jobSkill = mission === "people" ? "find_people" : "find_companies"
+  const jobId = uniqueId("job", `${runId}_${jobSkill}`)
+  const limits = {
+    budget_cents: brief.runBudgetCents,
+    max_companies: runMaxCompanies,
+    max_people: brief.maxPeople,
+    max_runtime_seconds: brief.maxRuntimeSeconds,
+    min_score_threshold: brief.minScoreThreshold,
+  }
+  const context = {
+    campaign_id: campaign.id,
+    campaign_name: campaign.name,
+    industry: brief.industry,
+    niche: brief.niche,
+    country_region: brief.countryRegion,
+    company_size: brief.companySize,
+    positive_signals: brief.positiveSignals,
+    negative_signals: brief.negativeSignals,
+  }
+  const jobInput = {
+    mission: jobSkill,
+    campaign: {
+      id: campaign.id,
+      name: campaign.name,
+    },
+    brief: {
+      objective: brief.objective,
+      industry: brief.industry,
+      niche: brief.niche,
+      countryRegion: brief.countryRegion,
+      companySize: brief.companySize,
+      positiveSignals: brief.positiveSignals,
+      negativeSignals: brief.negativeSignals,
+      searchMode: brief.searchMode,
+      maxCompanies: runMaxCompanies,
+      maxPeople: brief.maxPeople,
+      maxRuntimeSeconds: brief.maxRuntimeSeconds,
+      runBudgetCents: brief.runBudgetCents,
+      minScoreThreshold: brief.minScoreThreshold,
+    },
+    memory: campaignMemory(campaign.id),
+    outputContract: "Return only JSON matching the requested schema.",
+  }
+
+  db.transaction(() => {
+    if (active?.status === "queued" && options.replaceQueuedRun) {
+      db.prepare(`
+        UPDATE agent_runs
+        SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'queued'
+      `).run(active.id)
+      db.prepare(`
+        UPDATE openclaw_jobs
+        SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE run_id = ? AND status = 'queued'
+      `).run(active.id)
+      insertEvent({
+        campaignId,
+        runId: active.id,
+        subjectType: "run",
+        subjectId: active.id,
+        level: "warning",
+        eventType: "run.cancelled",
+        message: "Corrida pendiente reemplazada por re-ejecución de búsqueda.",
+        payload: { replacedBy: runId },
+      })
+    }
+
+    db.prepare(`
+      INSERT INTO agent_runs (id, campaign_id, mission, status, objective, context_json, limits_json)
+      VALUES (?, ?, ?, 'queued', ?, ?, ?)
+    `).run(runId, campaignId, mission, brief.objective || campaign.criteria || "", JSON.stringify(context), JSON.stringify(limits))
+
+    db.prepare(`
+      INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json, timeout_seconds)
+      VALUES (?, ?, ?, ?, 'queued', ?, ?)
+    `).run(jobId, runId, campaignId, jobSkill, JSON.stringify(jobInput), brief.maxRuntimeSeconds)
+
+    insertEvent({
+      campaignId,
+      runId,
+      jobId,
+      subjectType: "run",
+      subjectId: runId,
+      level: "info",
+      eventType: "run.queued",
+      message: "Corrida encolada para OpenClaw.",
+      payload: { mission, jobSkill },
+    })
+
+    db.prepare("UPDATE campaigns SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(campaignId)
+  })()
+
+  return { run: getRun(runId) }
+}
+
+export function cancelCampaignRun(runId: string) {
+  const run = getRunRow(runId)
+  if (!run) return null
+  if (!["queued", "running"].includes(run.status)) return { error: "run_not_cancellable", run: formatRun(run) }
+
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE agent_runs
+      SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(runId)
+    db.prepare(`
+      UPDATE openclaw_jobs
+      SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE run_id = ? AND status IN ('queued', 'running')
+    `).run(runId)
+    insertEvent({
+      campaignId: run.campaign_id,
+      runId,
+      subjectType: "run",
+      subjectId: runId,
+      level: "warning",
+      eventType: "run.cancelled",
+      message: "Corrida cancelada por el operador.",
+      payload: {},
+    })
+  })()
+
+  return { run: getRun(runId) }
+}
+
+export function reviewCompanyCandidate(
+  candidateId: string,
+  input: { status?: string; feedback?: string; createdBy?: string } = {},
+) {
+  return reviewCandidate("company_candidate", candidateId, input)
+}
+
+export function reviewPersonCandidate(
+  candidateId: string,
+  input: { status?: string; feedback?: string; createdBy?: string } = {},
+) {
+  return reviewCandidate("person_candidate", candidateId, input)
+}
+
+export function listCampaignCompanyCandidates(campaignId: string) {
+  const rows = db
+    .query<CompanyCandidateRow, [string]>(`
+      SELECT
+        cc.id,
+        cc.campaign_id,
+        cc.run_id,
+        cc.company_id,
+        cc.status,
+        cc.score,
+        cc.rationale,
+        cc.evidence_json,
+        c.name,
+        c.domain,
+        c.linkedin_url,
+        c.industry,
+        c.employee_range,
+        c.country,
+        c.city,
+        c.description
+      FROM company_candidates cc
+      JOIN companies c ON c.id = cc.company_id
+      WHERE cc.campaign_id = ?
+      ORDER BY cc.score DESC, c.name ASC
+    `)
+    .all(campaignId)
+
+  const peopleByCompany = listCampaignPeople(campaignId).reduce<Record<string, ReturnType<typeof listCampaignPeople>>>(
+    (acc, person) => {
+      if (!person.companyId) return acc
+      ;(acc[person.companyId] ??= []).push(person)
+      return acc
+    },
+    {},
+  )
+
+  return rows.map((row) => ({
+    id: row.company_id,
+    candidateId: row.id,
+    campaignId: row.campaign_id,
+    runId: row.run_id,
+    name: row.name,
+    domain: row.domain,
+    linkedinUrl: row.linkedin_url,
+    industry: row.industry,
+    size: row.employee_range,
+    country: row.country,
+    city: row.city,
+    description: row.description,
+    match: row.score,
+    score: row.score,
+    review: reviewState(row.status),
+    rationale: row.rationale,
+    evidence: parseJson(row.evidence_json, []),
+    prospects: peopleByCompany[row.company_id]?.length ?? 0,
+    contacted: row.status === "approved" ? 1 : 0,
+    replied: 0,
+    owner: { i: "M", c: colorFor(row.company_id) },
+    tags: [row.industry].filter(Boolean),
+    people: peopleByCompany[row.company_id] ?? [],
+  }))
+}
+
+export function updateCompanyCandidateStatus(candidateId: string, status: string) {
+  return reviewCompanyCandidate(candidateId, { status })
+}
+
+export function claimNextOpenClawJob() {
+  return db.transaction(() => {
+    const row = db
+      .query<OpenClawJobRow, []>(`
+        SELECT id, run_id, campaign_id, skill, status, input_json, output_json, error, attempt, max_attempts,
+          timeout_seconds, started_at, finished_at, created_at, updated_at
+        FROM openclaw_jobs
+        WHERE status = 'queued'
+        ORDER BY created_at ASC
+        LIMIT 1
+      `)
+      .get()
+    if (!row) return null
+
+    db.prepare(`
+      UPDATE openclaw_jobs
+      SET status = 'running', attempt = attempt + 1, started_at = COALESCE(started_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status = 'queued'
+    `).run(row.id)
+    db.prepare(`
+      UPDATE agent_runs
+      SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status = 'queued'
+    `).run(row.run_id)
+    insertEvent({
+      campaignId: row.campaign_id,
+      runId: row.run_id,
+      jobId: row.id,
+      subjectType: "job",
+      subjectId: row.id,
+      level: "info",
+      eventType: "job.started",
+      message: `OpenClaw job ${row.skill} iniciado.`,
+      payload: { skill: row.skill, attempt: row.attempt + 1 },
+    })
+
+    return getOpenClawJob(row.id)
+  })()
+}
+
+export function completeOpenClawJob(jobId: string, output: unknown) {
+  const job = getOpenClawJobRow(jobId)
+  if (!job) return null
+
+  const parsed = validateOpenClawOutput(job.skill, output)
+  if (!parsed.ok) return failOpenClawJob(jobId, parsed.error)
+
+  db.transaction(() => {
+    if (job.skill === "find_companies") persistFoundCompanies(job, parsed.output)
+
+    db.prepare(`
+      UPDATE openclaw_jobs
+      SET status = 'succeeded', output_json = ?, error = '', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(JSON.stringify(parsed.output), job.id)
+    db.prepare(`
+      UPDATE agent_runs
+      SET status = ?, raw_output_json = ?, error = '', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(job.skill === "find_companies" ? "needs_review" : "completed", JSON.stringify(parsed.output), job.run_id)
+    insertEvent({
+      campaignId: job.campaign_id,
+      runId: job.run_id,
+      jobId: job.id,
+      subjectType: "job",
+      subjectId: job.id,
+      level: "success",
+      eventType: "job.completed",
+      message: `OpenClaw job ${job.skill} completado.`,
+      payload: outputSummary(job.skill, parsed.output),
+    })
+  })()
+
+  return getOpenClawJob(job.id)
+}
+
+export function failOpenClawJob(jobId: string, error: unknown) {
+  const job = getOpenClawJobRow(jobId)
+  if (!job) return null
+  const message = error instanceof Error ? error.message : String(error || "OpenClaw job failed")
+
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE openclaw_jobs
+      SET status = 'failed', error = ?, finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(message, job.id)
+    db.prepare(`
+      UPDATE agent_runs
+      SET status = 'failed', error = ?, finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(message, job.run_id)
+    insertEvent({
+      campaignId: job.campaign_id,
+      runId: job.run_id,
+      jobId: job.id,
+      subjectType: "job",
+      subjectId: job.id,
+      level: "error",
+      eventType: "job.failed",
+      message,
+      payload: { skill: job.skill },
+    })
+  })()
+
+  return getOpenClawJob(job.id)
+}
+
+export function listCampaignPeople(campaignId: string) {
+  const rows = db
+    .query<PersonCandidateRow, [string]>(`
+      SELECT
+        pc.id,
+        pc.campaign_id,
+        pc.run_id,
+        pc.person_id,
+        COALESCE(pc.company_id, p.company_id) AS company_id,
+        pc.status,
+        pc.score,
+        pc.rationale,
+        pc.evidence_json,
+        p.name,
+        p.title,
+        COALESCE(c.name, p.company_name, '') AS company_name,
+        COALESCE(c.industry, '') AS industry,
+        p.country,
+        p.seniority,
+        p.function,
+        p.description
+      FROM person_candidates pc
+      JOIN people p ON p.id = pc.person_id
+      LEFT JOIN companies c ON c.id = COALESCE(pc.company_id, p.company_id)
+      WHERE pc.campaign_id = ?
+      ORDER BY pc.score DESC, p.name ASC
+    `)
+    .all(campaignId)
+
+  return rows.map((row) => ({
+    id: row.person_id,
+    candidateId: row.id,
+    campaignId: row.campaign_id,
+    runId: row.run_id,
+    companyId: row.company_id,
+    name: row.name,
+    title: row.title,
+    company: row.company_name || "Sin empresa",
+    industry: row.industry,
+    country: row.country,
+    seniority: row.seniority || seniorityFromTitle(row.title),
+    function: row.function,
+    tenure: "-",
+    score: row.score,
+    band: scoreBand(row.score),
+    scoreBand: scoreBand(row.score),
+    status: candidateStatus(row.status),
+    review: reviewState(row.status),
+    rationale: row.rationale,
+    evidence: parseJson(row.evidence_json, []),
+    lastTouch: "-",
+    batch: row.campaign_id,
+    owner: { i: "M", c: colorFor(row.campaign_id) },
+    tags: [row.title].filter(Boolean),
+  }))
+}
+
+export function listEvents(filters: { campaignId?: string; runId?: string } = {}) {
+  const where: string[] = []
+  const params: string[] = []
+
+  if (filters.campaignId) {
+    where.push("campaign_id = ?")
+    params.push(filters.campaignId)
+  }
+  if (filters.runId) {
+    where.push("run_id = ?")
+    params.push(filters.runId)
+  }
+
+  const rows = db
+    .query<EventRow, string[]>(`
+      SELECT id, campaign_id, run_id, job_id, level, event_type, message, created_at
+      FROM agent_events
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ORDER BY created_at DESC, id DESC
+      LIMIT 200
+    `)
+    .all(...params)
+
+  return rows.map((row) => ({
+    id: row.id,
+    day: eventDay(row.created_at),
+    t: eventSeverity(row.level),
+    type: row.event_type,
+    text: row.message,
+    time: eventTime(row.created_at),
+    actor: row.level === "error" ? "sistema" : "OpenClaw",
+    source: row.level === "error" || row.level === "warning" ? "sistema" : "agente",
+    campaignId: row.campaign_id,
+    runId: row.run_id,
+    jobId: row.job_id,
+  }))
+}
+
 export function listProspects() {
   const rows = db
-    .query<ProspectRow, []>(`
+    .query<PersonCompatRow, []>(`
       SELECT
-        id, name, title, company_name AS company, industry, score,
-        score_band AS scoreBand, status_kind, status_label, channels_json,
-        last_touch_label AS lastTouch, campaign_id AS batch, country,
-        owner_initials, owner_color, tags_json
-      FROM prospects
-      ORDER BY score DESC, name ASC
+        p.id,
+        p.name,
+        p.title,
+        COALESCE(c.name, p.company_name, '') AS company_name,
+        COALESCE(c.industry, '') AS industry,
+        pc.score,
+        pc.status,
+        pc.campaign_id,
+        p.country
+      FROM person_candidates pc
+      JOIN people p ON p.id = pc.person_id
+      LEFT JOIN companies c ON c.id = COALESCE(pc.company_id, p.company_id)
+      ORDER BY pc.score DESC, p.name ASC
     `)
     .all()
 
@@ -417,17 +943,17 @@ export function listProspects() {
     id: row.id,
     name: row.name,
     title: row.title,
-    company: row.company,
+    company: row.company_name || "Sin empresa",
     industry: row.industry,
     score: row.score,
-    scoreBand: row.scoreBand,
-    status: { kind: row.status_kind, label: row.status_label },
-    channels: JSON.parse(row.channels_json),
-    lastTouch: row.lastTouch,
-    batch: row.batch,
+    scoreBand: scoreBand(row.score),
+    status: candidateStatus(row.status),
+    channels: { email: "", linkedin: "on", call: "" },
+    lastTouch: "-",
+    batch: row.campaign_id,
     country: row.country,
-    owner: { i: row.owner_initials, c: row.owner_color },
-    tags: JSON.parse(row.tags_json),
+    owner: { i: "M", c: colorFor(row.campaign_id) },
+    tags: [row.title].filter(Boolean),
   }))
 }
 
@@ -438,67 +964,790 @@ export function createProspect(input: {
   campaignId?: string
 }) {
   const name = input.name?.trim() || "Nuevo prospecto"
-  const company = input.company?.trim() || "Sin empresa"
-  const id = slugId("p", name)
+  const companyName = input.company?.trim() || ""
+  const campaignId = existingCampaignId(input.campaignId) ?? firstCampaignId()
+  const id = uniqueId("person", name)
+  const candidateId = uniqueId("person_candidate", `${campaignId}_${name}`)
 
-  db.prepare(`
-    INSERT INTO prospects (
-      id, name, title, company_name, industry, score, score_band, status_kind,
-      status_label, channels_json, last_touch_label, campaign_id, country,
-      owner_initials, owner_color, tags_json
-    ) VALUES (?, ?, ?, ?, '', 0, 'cold', 'draft', 'Encolado', '{}', '—', ?, '', 'M', '#A855F7', '[]')
-  `).run(id, name, input.title?.trim() || "", company, input.campaignId?.trim() || "btc_draft")
+  db.transaction(() => {
+    db.prepare(`
+      INSERT INTO people (
+        id,
+        name,
+        normalized_name,
+        title,
+        company_name,
+        country,
+        source_json
+      ) VALUES (?, ?, ?, ?, ?, '', '{"source":"manual"}')
+    `).run(id, name, normalizeName(name), input.title?.trim() || "", companyName)
+
+    db.prepare(`
+      INSERT INTO person_candidates (
+        id,
+        campaign_id,
+        person_id,
+        status,
+        score,
+        rationale,
+        evidence_json
+      ) VALUES (?, ?, ?, 'new', 0, 'Creado manualmente.', '[]')
+    `).run(candidateId, campaignId, id)
+  })()
 
   return listProspects().find((prospect) => prospect.id === id)
 }
 
 export function listCompanies() {
   const rows = db
-    .query<CompanyRow, []>(`
-      SELECT
-        id, name, domain, industry, size, country, prospects, contacted,
-        replied, last_label AS last, owner_initials, owner_color, tags_json,
-        logo_color
+    .query<CompanyCompatRow, []>(`
+      SELECT id, name, domain, industry, employee_range, country, created_at
       FROM companies
       ORDER BY name ASC
     `)
     .all()
 
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    domain: row.domain,
-    industry: row.industry,
-    size: row.size,
-    country: row.country,
-    prospects: row.prospects,
-    contacted: row.contacted,
-    replied: row.replied,
-    last: row.last,
-    owner: { i: row.owner_initials, c: row.owner_color },
-    tags: JSON.parse(row.tags_json),
-  }))
+  const peopleCount = db.prepare("SELECT COUNT(*) AS count FROM people WHERE company_id = ?")
+  const approvedCount = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM company_candidates
+    WHERE company_id = ? AND status = 'approved'
+  `)
+
+  return rows.map((row) => {
+    const prospects = (peopleCount.get(row.id) as { count: number }).count
+    const approved = (approvedCount.get(row.id) as { count: number }).count
+
+    return {
+      id: row.id,
+      name: row.name,
+      domain: row.domain,
+      industry: row.industry,
+      size: row.employee_range,
+      country: row.country,
+      prospects,
+      contacted: approved,
+      replied: 0,
+      last: formatDateLabel(row.created_at),
+      owner: { i: "M", c: colorFor(row.id) },
+      tags: [row.industry].filter(Boolean),
+    }
+  })
 }
 
 export function createCompany(input: { name?: string; domain?: string; industry?: string }) {
   const name = input.name?.trim() || "Nueva empresa"
-  const id = slugId("c", name)
-  const logoColor = "#71717A"
+  const id = uniqueId("company", name)
 
   db.prepare(`
     INSERT INTO companies (
-      id, name, domain, industry, size, country, prospects, contacted, replied,
-      last_label, owner_initials, owner_color, tags_json, logo_color
-    ) VALUES (?, ?, ?, ?, '', '', 0, 0, 0, '—', 'M', '#A855F7', '[]', ?)
-  `).run(id, name, input.domain?.trim() || "", input.industry?.trim() || "", logoColor)
+      id,
+      name,
+      normalized_name,
+      domain,
+      industry,
+      source_json
+    ) VALUES (?, ?, ?, ?, ?, '{"source":"manual"}')
+  `).run(id, name, normalizeName(name), input.domain?.trim() || "", input.industry?.trim() || "")
 
   return listCompanies().find((company) => company.id === id)
 }
 
 export function companyLogoMap() {
-  const rows = db
-    .query<{ name: string; logo_color: string }, []>("SELECT name, logo_color FROM companies")
-    .all()
+  const rows = db.query<{ name: string; id: string }, []>("SELECT id, name FROM companies").all()
+  return Object.fromEntries(rows.map((row) => [row.name, { c: colorFor(row.id) }]))
+}
 
-  return Object.fromEntries(rows.map((row) => [row.name, { c: row.logo_color }]))
+export function listDatabaseTables() {
+  return inspectableTables
+    .filter((name) => tableExists(name))
+    .map((name) => {
+      const row = db.query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM "${name}"`).get()
+      return { name, rows: row?.count ?? 0 }
+    })
+}
+
+export function getDatabaseTable(tableName: string, limit = 50) {
+  if (!isInspectableTable(tableName) || !tableExists(tableName)) return null
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 200)
+  const columns = db
+    .query<{ name: string; type: string; notnull: number; pk: number }, []>(`PRAGMA table_info("${tableName}")`)
+    .all()
+    .map((column) => ({
+      name: column.name,
+      type: column.type,
+      required: column.notnull === 1,
+      primaryKey: column.pk === 1,
+    }))
+  const orderBy = columns.some((column) => column.name === "created_at") ? ` ORDER BY "created_at" DESC` : ""
+  const rows = db.query<Record<string, unknown>, []>(`SELECT * FROM "${tableName}"${orderBy} LIMIT ${safeLimit}`).all()
+  const total = db.query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM "${tableName}"`).get()?.count ?? rows.length
+
+  return {
+    name: tableName,
+    total,
+    limit: safeLimit,
+    columns,
+    rows: rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, formatCellValue(value)]))),
+  }
+}
+
+function isInspectableTable(value: string): value is (typeof inspectableTables)[number] {
+  return (inspectableTables as readonly string[]).includes(value)
+}
+
+function tableExists(name: string) {
+  const row = db
+    .query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(name)
+  return Boolean(row && row.count > 0)
+}
+
+function formatCellValue(value: unknown) {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "string") return value.length > 220 ? `${value.slice(0, 220)}...` : value
+  return String(value)
+}
+
+function listCampaignRuns(campaignId: string) {
+  return db
+    .query<RunRow, [string]>(`
+      SELECT id, mission, status, objective, limits_json, error, created_at, started_at, finished_at
+      FROM agent_runs
+      WHERE campaign_id = ?
+      ORDER BY created_at DESC
+    `)
+    .all(campaignId)
+    .map(formatRun)
+}
+
+type CountStats = {
+  total: number | null
+  approved: number | null
+  pending: number | null
+}
+
+function campaignCriteria(campaign: CampaignCoreRow) {
+  const parts = [campaign.industry, campaign.niche, campaign.country_region, campaign.company_size].filter(Boolean)
+  if (parts.length > 0) return parts.join(" · ")
+  return campaign.objective || "-"
+}
+
+function campaignStatus(status: string) {
+  if (status === "active") return { kind: "running", label: "Activa" }
+  if (status === "paused") return { kind: "warn", label: "Pausada" }
+  if (status === "archived") return { kind: "done", label: "Archivada" }
+  return { kind: "empty", label: "Borrador" }
+}
+
+function candidateStatus(status: string) {
+  if (status === "approved") return { kind: "done", label: "Aprobado" }
+  if (status === "rejected") return { kind: "danger", label: "Rechazado" }
+  if (status === "do_not_contact") return { kind: "danger", label: "No contactar" }
+  if (status === "maybe") return { kind: "warn", label: "Maybe" }
+  if (status === "needs_more_research") return { kind: "warn", label: "Investigar mas" }
+  return { kind: "draft", label: "Nuevo" }
+}
+
+function reviewState(status: string) {
+  if (status === "approved") return "aceptada"
+  if (status === "rejected" || status === "do_not_contact") return "rechazada"
+  return "pendiente"
+}
+
+function scoreBand(score: number) {
+  if (score >= 80) return "hot"
+  if (score >= 50) return "warm"
+  return "cold"
+}
+
+function seniorityFromTitle(title: string) {
+  return /CEO|CFO|CTO|COO|VP|Head|Director|Founder/i.test(title) ? "Senior" : "Mid"
+}
+
+function parseJson<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
+}
+
+function getRun(runId: string) {
+  const row = getRunRow(runId)
+  return row ? formatRun(row) : null
+}
+
+function getRunRow(runId: string) {
+  return db
+    .query<RunRow & { campaign_id: string }, [string]>(`
+      SELECT id, campaign_id, mission, status, objective, limits_json, error, created_at, started_at, finished_at
+      FROM agent_runs
+      WHERE id = ?
+    `)
+    .get(runId)
+}
+
+function formatRun(row: RunRow) {
+  const companyCandidates =
+    db.query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM company_candidates WHERE run_id = ?").get(row.id)
+      ?.count ?? 0
+
+  return {
+    id: row.id,
+    mission: row.mission,
+    status: row.status,
+    objective: row.objective,
+    companyCandidates,
+    limits: parseJson(row.limits_json, {}),
+    error: row.error,
+    created: formatDateLabel(row.created_at),
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+  }
+}
+
+function reviewCandidate(
+  subjectType: "company_candidate" | "person_candidate",
+  candidateId: string,
+  input: { status?: string; feedback?: string; createdBy?: string } = {},
+) {
+  const status = normalizeReviewStatus(input.status)
+  if (!status) return { error: "invalid_review_status" }
+
+  const table = subjectType === "company_candidate" ? "company_candidates" : "person_candidates"
+  const row = db
+    .query<
+      {
+        id: string
+        campaign_id: string
+        run_id: string | null
+        company_id: string | null
+        person_id?: string
+        name: string
+        domain?: string
+        linkedin_url?: string
+        email?: string
+      },
+      [string]
+    >(
+      subjectType === "company_candidate"
+        ? `
+          SELECT cc.id, cc.campaign_id, cc.run_id, cc.company_id, c.name, c.domain, c.linkedin_url
+          FROM company_candidates cc
+          JOIN companies c ON c.id = cc.company_id
+          WHERE cc.id = ?
+        `
+        : `
+          SELECT pc.id, pc.campaign_id, pc.run_id, pc.company_id, pc.person_id, p.name, p.linkedin_url, p.email
+          FROM person_candidates pc
+          JOIN people p ON p.id = pc.person_id
+          WHERE pc.id = ?
+        `,
+    )
+    .get(candidateId)
+  if (!row) return null
+
+  const feedback = typeof input.feedback === "string" ? input.feedback.trim() : ""
+  const createdBy = typeof input.createdBy === "string" ? input.createdBy.trim() : "Manu"
+  const feedbackId = uniqueId("feedback", `${candidateId}_${status}`)
+
+  db.transaction(() => {
+    db.prepare(`UPDATE ${table} SET status = ?, user_feedback = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
+      status,
+      feedback,
+      candidateId,
+    )
+    db.prepare(`
+      INSERT INTO feedback (
+        id,
+        campaign_id,
+        run_id,
+        subject_type,
+        subject_id,
+        feedback_type,
+        sentiment,
+        text,
+        created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      feedbackId,
+      row.campaign_id,
+      row.run_id,
+      subjectType,
+      candidateId,
+      status,
+      feedbackSentiment(status),
+      feedback,
+      createdBy,
+    )
+
+    if (status === "do_not_contact") insertSuppressionForCandidate(subjectType, row, feedback, createdBy)
+    if (status === "needs_more_research") enqueueResearchJob(subjectType, row)
+
+    insertEvent({
+      campaignId: row.campaign_id,
+      runId: row.run_id ?? undefined,
+      subjectType,
+      subjectId: candidateId,
+      level: status === "approved" ? "success" : status === "do_not_contact" ? "warning" : "info",
+      eventType: `${subjectType}.reviewed`,
+      message: `${row.name} marcado como ${status}.`,
+      payload: { status, feedback },
+    })
+  })()
+
+  return subjectType === "company_candidate"
+    ? listCampaignCompanyCandidates(row.campaign_id).find((candidate) => candidate.candidateId === candidateId)
+    : listCampaignPeople(row.campaign_id).find((candidate) => candidate.candidateId === candidateId)
+}
+
+function normalizeReviewStatus(value?: string): ReviewStatus | null {
+  const normalized = (value || "").trim().toLowerCase()
+  if (["approved", "accept", "accepted", "aceptada", "elegida"].includes(normalized)) return "approved"
+  if (["rejected", "reject", "rechazada", "descartada"].includes(normalized)) return "rejected"
+  if (["maybe", "tal_vez"].includes(normalized)) return "maybe"
+  if (["needs_more_research", "research", "investigar"].includes(normalized)) return "needs_more_research"
+  if (["do_not_contact", "no_contactar", "dnc"].includes(normalized)) return "do_not_contact"
+  if (["new", "pending", "pendiente"].includes(normalized)) return "new"
+  return null
+}
+
+function feedbackSentiment(status: ReviewStatus) {
+  if (status === "approved") return "positive"
+  if (status === "rejected" || status === "do_not_contact") return "negative"
+  return "neutral"
+}
+
+function insertSuppressionForCandidate(
+  subjectType: "company_candidate" | "person_candidate",
+  row: {
+    company_id: string | null
+    person_id?: string
+    name: string
+    domain?: string
+    linkedin_url?: string
+    email?: string
+  },
+  feedback: string,
+  createdBy: string,
+) {
+  const reason = feedback || "Marcado como do_not_contact desde backoffice."
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO suppression_list (id, scope, value, normalized_value, reason, source, created_by)
+    VALUES (?, ?, ?, ?, ?, 'backoffice_review', ?)
+  `)
+
+  if (subjectType === "company_candidate") {
+    if (row.domain) insert.run(uniqueId("suppression", row.domain), "domain", row.domain, normalizeName(row.domain), reason, createdBy)
+    else if (row.company_id) insert.run(uniqueId("suppression", row.company_id), "company", row.company_id, row.company_id, reason, createdBy)
+    if (row.linkedin_url) {
+      insert.run(uniqueId("suppression", row.linkedin_url), "linkedin_url", row.linkedin_url, row.linkedin_url.toLowerCase(), reason, createdBy)
+    }
+    return
+  }
+
+  if (row.email) insert.run(uniqueId("suppression", row.email), "email", row.email, row.email.toLowerCase(), reason, createdBy)
+  else if (row.person_id) insert.run(uniqueId("suppression", row.person_id), "person", row.person_id, row.person_id, reason, createdBy)
+  if (row.linkedin_url) {
+    insert.run(uniqueId("suppression", row.linkedin_url), "linkedin_url", row.linkedin_url, row.linkedin_url.toLowerCase(), reason, createdBy)
+  }
+}
+
+function enqueueResearchJob(
+  subjectType: "company_candidate" | "person_candidate",
+  row: { campaign_id: string; run_id: string | null; company_id: string | null; person_id?: string },
+) {
+  if (!row.run_id) return
+  const skill = subjectType === "company_candidate" ? "research_company" : "research_person"
+  const subjectId = subjectType === "company_candidate" ? row.company_id : row.person_id
+  const jobId = uniqueId("job", `${row.run_id}_${skill}_${subjectId ?? "subject"}`)
+
+  db.prepare(`
+    INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json)
+    VALUES (?, ?, ?, ?, 'queued', ?)
+  `).run(jobId, row.run_id, row.campaign_id, skill, JSON.stringify({ subjectType, subjectId }))
+}
+
+function insertEvent(input: {
+  campaignId?: string
+  runId?: string
+  jobId?: string
+  subjectType: string
+  subjectId: string
+  level: string
+  eventType: string
+  message: string
+  payload: Record<string, unknown>
+}) {
+  db.prepare(`
+    INSERT INTO agent_events (
+      campaign_id,
+      run_id,
+      job_id,
+      subject_type,
+      subject_id,
+      level,
+      event_type,
+      message,
+      payload_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.campaignId ?? null,
+    input.runId ?? null,
+    input.jobId ?? null,
+    input.subjectType,
+    input.subjectId,
+    input.level,
+    input.eventType,
+    input.message,
+    JSON.stringify(input.payload),
+  )
+}
+
+function numberOrZero(value: number | null | undefined) {
+  return typeof value === "number" ? value : 0
+}
+
+function campaignMemory(campaignId: string) {
+  const companies = db
+    .query<{ name: string; status: string }, [string]>(`
+      SELECT c.name, cc.status
+      FROM company_candidates cc
+      JOIN companies c ON c.id = cc.company_id
+      WHERE cc.campaign_id = ?
+    `)
+    .all(campaignId)
+  const suppression = db.query<{ value: string }, []>("SELECT value FROM suppression_list ORDER BY created_at DESC LIMIT 100").all()
+
+  return {
+    alreadySeenCompanies: companies.map((row) => row.name),
+    approvedCompanies: companies.filter((row) => row.status === "approved").map((row) => row.name),
+    rejectedCompanies: companies.filter((row) => row.status === "rejected" || row.status === "do_not_contact").map((row) => row.name),
+    suppression: suppression.map((row) => row.value),
+    feedback: [],
+  }
+}
+
+function getOpenClawJob(jobId: string) {
+  const row = getOpenClawJobRow(jobId)
+  return row ? formatOpenClawJob(row) : null
+}
+
+function getOpenClawJobRow(jobId: string) {
+  return db
+    .query<OpenClawJobRow, [string]>(`
+      SELECT id, run_id, campaign_id, skill, status, input_json, output_json, error, attempt, max_attempts,
+        timeout_seconds, started_at, finished_at, created_at, updated_at
+      FROM openclaw_jobs
+      WHERE id = ?
+    `)
+    .get(jobId)
+}
+
+function formatOpenClawJob(row: OpenClawJobRow) {
+  return {
+    id: row.id,
+    runId: row.run_id,
+    campaignId: row.campaign_id,
+    skill: row.skill,
+    status: row.status,
+    input: parseJson(row.input_json, {}),
+    output: parseJson(row.output_json, {}),
+    error: row.error,
+    attempt: row.attempt,
+    maxAttempts: row.max_attempts,
+    timeoutSeconds: row.timeout_seconds,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function validateOpenClawOutput(skill: string, output: unknown): { ok: true; output: Record<string, unknown> } | { ok: false; error: string } {
+  if (!output || typeof output !== "object" || Array.isArray(output)) return { ok: false, error: "OpenClaw output must be a JSON object." }
+  const record = output as Record<string, unknown>
+
+  if (skill === "find_companies") {
+    if (!Array.isArray(record.companies)) return { ok: false, error: "find_companies output must include companies array." }
+    return {
+      ok: true,
+      output: {
+        companies: record.companies.map(normalizeCompanyOutput).filter((company) => company.name),
+      },
+    }
+  }
+
+  return { ok: true, output: record }
+}
+
+function normalizeCompanyOutput(value: unknown) {
+  const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+  const score = nonNegativeInteger(record.score, 0)
+  return {
+    name: cleanText(record.name, ""),
+    domain: normalizeDomain(cleanText(record.domain, "")),
+    linkedin_url: cleanText(record.linkedin_url, ""),
+    country: cleanText(record.country, ""),
+    city: cleanText(record.city, ""),
+    industry: cleanText(record.industry, ""),
+    employee_range: cleanText(record.employee_range, ""),
+    description: cleanText(record.description, ""),
+    score: Math.min(score, 100),
+    rationale: cleanText(record.rationale, ""),
+    evidence: Array.isArray(record.evidence) ? record.evidence.map(normalizeEvidenceOutput).filter(Boolean) : [],
+  }
+}
+
+function normalizeEvidenceOutput(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  return {
+    type: cleanText(record.type, "source"),
+    url: cleanText(record.url, ""),
+    note: cleanText(record.note, ""),
+  }
+}
+
+function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unknown>) {
+  const companies = Array.isArray(output.companies) ? output.companies : []
+  for (const company of companies) {
+    if (!company || typeof company !== "object" || Array.isArray(company)) continue
+    const candidate = company as ReturnType<typeof normalizeCompanyOutput>
+    if (!candidate.name) continue
+
+    const companyId = upsertCompanyFromCandidate(candidate, job.run_id)
+    const candidateId = stableId("company_candidate", job.campaign_id, companyId)
+    db.prepare(`
+      INSERT OR IGNORE INTO company_candidates (
+        id,
+        campaign_id,
+        run_id,
+        company_id,
+        status,
+        score,
+        rationale,
+        evidence_json
+      ) VALUES (?, ?, ?, ?, 'new', ?, ?, ?)
+    `).run(candidateId, job.campaign_id, job.run_id, companyId, candidate.score, candidate.rationale, JSON.stringify(candidate.evidence))
+    db.prepare(`
+      UPDATE company_candidates
+      SET
+        run_id = ?,
+        score = ?,
+        rationale = ?,
+        evidence_json = ?,
+        status = CASE WHEN status IN ('approved', 'rejected', 'do_not_contact') THEN status ELSE 'new' END,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE campaign_id = ? AND company_id = ?
+    `).run(job.run_id, candidate.score, candidate.rationale, JSON.stringify(candidate.evidence), job.campaign_id, companyId)
+    insertEvent({
+      campaignId: job.campaign_id,
+      runId: job.run_id,
+      jobId: job.id,
+      subjectType: "company_candidate",
+      subjectId: candidateId,
+      level: "info",
+      eventType: "company.saved",
+      message: `${candidate.name} guardada como empresa candidata.`,
+      payload: { companyId, score: candidate.score },
+    })
+  }
+}
+
+function upsertCompanyFromCandidate(company: ReturnType<typeof normalizeCompanyOutput>, runId: string) {
+  const normalized = normalizeName(company.name)
+  const existing = findExistingCompany(company.domain, company.linkedin_url, normalized, company.country)
+  const companyId = existing?.id ?? uniqueId("company", company.name)
+
+  if (!existing) {
+    db.prepare(`
+      INSERT INTO companies (
+        id,
+        name,
+        normalized_name,
+        domain,
+        linkedin_url,
+        country,
+        city,
+        industry,
+        employee_range,
+        description,
+        source_json,
+        first_seen_run_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      companyId,
+      company.name,
+      normalized,
+      company.domain,
+      company.linkedin_url,
+      company.country,
+      company.city,
+      company.industry,
+      company.employee_range,
+      company.description,
+      JSON.stringify({ source: "openclaw" }),
+      runId,
+    )
+    return companyId
+  }
+
+  db.prepare(`
+    UPDATE companies
+    SET
+      domain = CASE WHEN ? <> '' THEN ? ELSE domain END,
+      linkedin_url = CASE WHEN ? <> '' THEN ? ELSE linkedin_url END,
+      country = CASE WHEN ? <> '' THEN ? ELSE country END,
+      city = CASE WHEN ? <> '' THEN ? ELSE city END,
+      industry = CASE WHEN ? <> '' THEN ? ELSE industry END,
+      employee_range = CASE WHEN ? <> '' THEN ? ELSE employee_range END,
+      description = CASE WHEN ? <> '' THEN ? ELSE description END,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    company.domain,
+    company.domain,
+    company.linkedin_url,
+    company.linkedin_url,
+    company.country,
+    company.country,
+    company.city,
+    company.city,
+    company.industry,
+    company.industry,
+    company.employee_range,
+    company.employee_range,
+    company.description,
+    company.description,
+    companyId,
+  )
+  return companyId
+}
+
+function findExistingCompany(domain: string, linkedinUrl: string, normalizedName: string, country: string) {
+  if (domain) {
+    const row = db.query<{ id: string }, [string]>("SELECT id FROM companies WHERE domain = ? LIMIT 1").get(domain)
+    if (row) return row
+  }
+  if (linkedinUrl) {
+    const row = db.query<{ id: string }, [string]>("SELECT id FROM companies WHERE linkedin_url = ? LIMIT 1").get(linkedinUrl)
+    if (row) return row
+  }
+  if (normalizedName) {
+    const row = db
+      .query<{ id: string }, [string, string]>("SELECT id FROM companies WHERE normalized_name = ? AND country = ? LIMIT 1")
+      .get(normalizedName, country)
+    if (row) return row
+  }
+  return null
+}
+
+function outputSummary(skill: string, output: Record<string, unknown>) {
+  if (skill === "find_companies") {
+    return { companies: Array.isArray(output.companies) ? output.companies.length : 0 }
+  }
+  return {}
+}
+
+function normalizeDomain(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "")
+}
+
+function cleanText(value: unknown, fallback: unknown) {
+  if (typeof value === "string") return value.trim()
+  if (typeof fallback === "string") return fallback
+  return ""
+}
+
+function nonNegativeInteger(value: unknown, fallback: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value)
+  if (Number.isFinite(parsed) && parsed >= 0) return Math.floor(parsed)
+  return typeof fallback === "number" && fallback >= 0 ? Math.floor(fallback) : 0
+}
+
+function scoreThreshold(value: unknown, fallback: unknown) {
+  return Math.min(nonNegativeInteger(value, fallback), 100)
+}
+
+function normalizeName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+}
+
+function uniqueId(prefix: string, value: string) {
+  const slug = normalizeName(value).replace(/\s+/g, "_").slice(0, 32) || "nuevo"
+  uniqueIdCounter = (uniqueIdCounter + 1) % 46656
+  return `${prefix}_${slug}_${Date.now().toString(36).slice(-6)}_${uniqueIdCounter.toString(36)}`
+}
+
+function stableId(prefix: string, ...parts: string[]) {
+  const slug = parts
+    .map((part) => normalizeName(part).replace(/\s+/g, "_"))
+    .filter(Boolean)
+    .join("_")
+  return `${prefix}_${slug || "item"}`
+}
+
+function initials(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+function colorFor(value: string) {
+  let hash = 0
+  for (const char of value) hash = (hash + char.charCodeAt(0)) % colors.length
+  return colors[hash]
+}
+
+function formatDateLabel(value: string) {
+  return value?.slice(0, 10) || "-"
+}
+
+function eventDay(value: string) {
+  const date = value?.slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
+  if (date === today) return "HOY"
+  return date || "SIN FECHA"
+}
+
+function eventTime(value: string) {
+  const match = value?.match(/\d{2}:\d{2}/)
+  return match?.[0] ?? value?.slice(0, 16) ?? "-"
+}
+
+function eventSeverity(level: string) {
+  if (level === "success") return "ok"
+  if (level === "warning") return "warn"
+  if (level === "error") return "danger"
+  return "info"
+}
+
+function firstCampaignId() {
+  const row = db.query<{ id: string }, []>("SELECT id FROM campaigns ORDER BY created_at ASC LIMIT 1").get()
+  if (row) return row.id
+
+  const campaign = createCampaign({ name: "Campaign sin nombre" })
+  return campaign?.id ?? "campaign_draft"
+}
+
+function existingCampaignId(id?: string) {
+  if (!id?.trim()) return null
+  const row = db.query<{ id: string }, [string]>("SELECT id FROM campaigns WHERE id = ?").get(id)
+  return row?.id ?? null
 }

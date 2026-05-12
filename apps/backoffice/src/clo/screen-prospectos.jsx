@@ -171,11 +171,11 @@ const ProspectosScreen = () => {
           </table>
 
           <div className="pagination">
-            <span>1–{filtered.length} de 1,247</span>
+            <span>{filtered.length ? `1–${filtered.length}` : "0"} de {rows.length}</span>
             <div style={{flex:1}}/>
-            <span style={{marginRight:8}}>Página 1 / 96</span>
+            <span style={{marginRight:8}}>Página 1 / 1</span>
             <button className="pg-btn disabled"><Icons.ChevronLeft size={12}/></button>
-            <button className="pg-btn"><Icons.Chevron size={12}/></button>
+            <button className="pg-btn disabled"><Icons.Chevron size={12}/></button>
           </div>
         </div>
       </div>

@@ -4,8 +4,6 @@ const { useEffect: useEffectC, useState: useStateC } = React;
 const EmpresasScreen = () => {
   const [rows, setRows] = useStateC(window.DATA.COMPANIES);
   const [tab, setTab] = useStateC("todas");
-  const industries = Array.from(new Set(rows.map(r=>r.industry)));
-
   useEffectC(() => {
     let cancelled = false;
     window.BackofficeAPI?.companies()
@@ -80,7 +78,7 @@ const EmpresasScreen = () => {
             <div style={{flex:1}}/>
             <button className="chip solid"><Icons.Database size={12}/> <strong>SQLite local</strong></button>
             <button className="chip solid"><Icons.Sort size={12}/> <strong>Prospectos ↓</strong></button>
-            <span style={{fontSize:11.5, color:"var(--fg-4)", fontFamily:"var(--mono)"}}>{filtered.length} de 284</span>
+            <span style={{fontSize:11.5, color:"var(--fg-4)", fontFamily:"var(--mono)"}}>{filtered.length} de {rows.length}</span>
           </div>
 
           <table className="dt">
@@ -144,11 +142,11 @@ const EmpresasScreen = () => {
           </table>
 
           <div className="pagination">
-            <span>1–{filtered.length} de 284</span>
+            <span>{filtered.length ? `1–${filtered.length}` : "0"} de {rows.length}</span>
             <div style={{flex:1}}/>
-            <span style={{marginRight:8}}>Página 1 / 16</span>
+            <span style={{marginRight:8}}>Página 1 / 1</span>
             <button className="pg-btn disabled"><Icons.ChevronLeft size={12}/></button>
-            <button className="pg-btn"><Icons.Chevron size={12}/></button>
+            <button className="pg-btn disabled"><Icons.Chevron size={12}/></button>
           </div>
         </div>
       </div>

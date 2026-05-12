@@ -1,0 +1,23 @@
+{
+  "companies": [
+    {
+      "name": "string",
+      "domain": "string",
+      "linkedin_url": "string",
+      "country": "string",
+      "city": "string",
+      "industry": "string",
+      "employee_range": "string",
+      "description": "string",
+      "score": 0,
+      "rationale": "string",
+      "evidence": [
+        {
+          "type": "website|maps|linkedin|directory|association|database|other",
+          "url": "string",
+          "note": "string"
+        }
+      ]
+    }
+  ]
+}

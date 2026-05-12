@@ -1,8 +1,16 @@
 const BackofficeAPI = {
+  notifyChanged(detail) {
+    window.dispatchEvent(new CustomEvent("backoffice:data-changed", { detail }));
+  },
+
   async getJson(path) {
     const response = await fetch(path, { headers: { Accept: "application/json" } });
     if (!response.ok) throw new Error(`Request failed: ${response.status}`);
     return response.json();
+  },
+
+  async health() {
+    return this.getJson("/api/health");
   },
 
   async postJson(path, body) {
@@ -12,7 +20,21 @@ const BackofficeAPI = {
       body: JSON.stringify(body || {}),
     });
     if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-    return response.json();
+    const data = await response.json();
+    this.notifyChanged({ method: "POST", path });
+    return data;
+  },
+
+  async putJson(path, body) {
+    const response = await fetch(path, {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+    const data = await response.json();
+    this.notifyChanged({ method: "PUT", path });
+    return data;
   },
 
   async campaigns() {
@@ -23,6 +45,66 @@ const BackofficeAPI = {
   async createCampaign(input) {
     const data = await this.postJson("/api/campaigns", input);
     return data.campaign;
+  },
+
+  async campaign(id) {
+    const data = await this.getJson(`/api/campaigns/${encodeURIComponent(id)}`);
+    return data.campaign;
+  },
+
+  async campaignCandidates(id) {
+    const data = await this.getJson(`/api/campaigns/${encodeURIComponent(id)}/candidates`);
+    return data.candidates || [];
+  },
+
+  async campaignPeople(id) {
+    const data = await this.getJson(`/api/campaigns/${encodeURIComponent(id)}/people`);
+    return data.people || [];
+  },
+
+  async createCampaignRun(id, options = {}) {
+    const data = await this.postJson(`/api/campaigns/${encodeURIComponent(id)}/runs`, options);
+    return data.run;
+  },
+
+  async cancelRun(id) {
+    const data = await this.postJson(`/api/runs/${encodeURIComponent(id)}/cancel`, {});
+    return data.run;
+  },
+
+  async updateCampaignBrief(id, brief) {
+    const data = await this.putJson(`/api/campaigns/${encodeURIComponent(id)}/brief`, brief);
+    return data.campaign;
+  },
+
+  async reviewCompanyCandidate(candidateId, status, feedback) {
+    const data = await this.postJson(`/api/candidates/company/${encodeURIComponent(candidateId)}/review`, { status, feedback });
+    return data.candidate;
+  },
+
+  async reviewPersonCandidate(candidateId, status, feedback) {
+    const data = await this.postJson(`/api/candidates/person/${encodeURIComponent(candidateId)}/review`, { status, feedback });
+    return data.candidate;
+  },
+
+  async updateCompanyCandidateStatus(candidateId, status) {
+    return this.reviewCompanyCandidate(candidateId, status);
+  },
+
+  async events(params) {
+    const query = params?.campaignId ? `?campaignId=${encodeURIComponent(params.campaignId)}` : "";
+    const data = await this.getJson(`/api/events${query}`);
+    return data.events || [];
+  },
+
+  async tables() {
+    const data = await this.getJson("/api/tables");
+    return data.tables || [];
+  },
+
+  async table(name) {
+    const data = await this.getJson(`/api/tables/${encodeURIComponent(name)}`);
+    return data.table;
   },
 
   async prospects() {
