@@ -615,6 +615,107 @@ describe("clo backoffice local database", () => {
     }
   })
 
+  test("turns rejected Spanish feedback into hard exclusion rules", () => {
+    setupDatabase()
+    let campaignId = ""
+    const spanishDomain = "spanish-feedback-company.es"
+    const mexicanDomain = "mexican-feedback-company.mx"
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Spanish Feedback Rule",
+        objective: "Encontrar plataformas para negocios mexicanos.",
+        industry: "SaaS",
+        countryRegion: "Mexico",
+        searchMode: "companies",
+        maxCompanies: 10,
+      })
+      campaignId = campaign?.id ?? ""
+      const first = campaignId ? createCampaignRun(campaignId) : null
+      const firstRunId = first && "run" in first ? first.run?.id ?? "" : ""
+      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ?").get(firstRunId)
+
+      if (firstJob) {
+        completeOpenClawJob(firstJob.id, {
+          companies: [
+            {
+              name: "Spanish Feedback Company",
+              domain: spanishDomain,
+              linkedin_url: "",
+              country: "España",
+              city: "Madrid",
+              industry: "SaaS",
+              employee_range: "",
+              description: "Empresa española usada para probar feedback.",
+              score: 80,
+              rationale: "Podría operar en México.",
+              evidence: [{ type: "website", url: `https://${spanishDomain}`, note: "Sitio oficial español." }],
+            },
+          ],
+        })
+      }
+
+      const candidate = listCampaignCompanyCandidates(campaignId).find((item) => item.domain === spanishDomain)
+      if (candidate?.candidateId) {
+        reviewCompanyCandidate(candidate.candidateId, {
+          status: "rejected",
+          feedback: "No la quiero porque es española.",
+          createdBy: "Test",
+        })
+      }
+
+      const second = campaignId ? createCampaignRun(campaignId) : null
+      const secondRunId = second && "run" in second ? second.run?.id ?? "" : ""
+      const secondJob = db.query<{ id: string; input_json: string }, [string]>("SELECT id, input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'").get(secondRunId)
+      const input = secondJob ? JSON.parse(secondJob.input_json) : {}
+
+      if (secondJob) {
+        completeOpenClawJob(secondJob.id, {
+          companies: [
+            {
+              name: "Otra Empresa Española",
+              domain: "otra-empresa-espanola.es",
+              linkedin_url: "",
+              country: "Spain",
+              city: "Madrid",
+              industry: "SaaS",
+              employee_range: "",
+              description: "Empresa de España.",
+              score: 90,
+              rationale: "Empresa española.",
+              evidence: [{ type: "website", url: "https://otra-empresa-espanola.es", note: "Sitio .es." }],
+            },
+            {
+              name: "Mexican Feedback Company",
+              domain: mexicanDomain,
+              linkedin_url: "",
+              country: "Mexico",
+              city: "CDMX",
+              industry: "SaaS",
+              employee_range: "",
+              description: "Empresa mexicana.",
+              score: 88,
+              rationale: "Opera en México.",
+              evidence: [{ type: "website", url: `https://${mexicanDomain}`, note: "Sitio mexicano." }],
+            },
+          ],
+        })
+      }
+
+      const candidates = listCampaignCompanyCandidates(campaignId)
+
+      expect(input.memory?.negativeRules?.map((rule: { type: string }) => rule.type)).toContain("exclude_spanish_entities")
+      expect(candidates.map((item) => item.domain)).not.toContain("otra-empresa-espanola.es")
+      expect(candidates.map((item) => item.domain)).toContain(mexicanDomain)
+    } finally {
+      if (campaignId) {
+        db.prepare("DELETE FROM feedback WHERE campaign_id = ? OR created_by = 'Test'").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      db.prepare("DELETE FROM companies WHERE domain IN (?, ?, ?)").run(spanishDomain, "otra-empresa-espanola.es", mexicanDomain)
+    }
+  })
+
   test("does not inject empty review text into next run feedback memory", () => {
     setupDatabase()
     let campaignId = ""
@@ -957,6 +1058,96 @@ describe("clo backoffice local database", () => {
       db.prepare("DELETE FROM openclaw_jobs WHERE run_id = 'run_fintech_001' AND skill IN ('research_person', 'research_company')").run()
       db.prepare("DELETE FROM openclaw_jobs WHERE run_id LIKE 'run_campaign_fintech_latam_%'").run()
       db.prepare("DELETE FROM agent_runs WHERE id LIKE 'run_campaign_fintech_latam_%'").run()
+    }
+  })
+
+  test("adds enrich candidates to the next run and persists research_company output", () => {
+    setupDatabase()
+    let campaignId = ""
+    const domain = "enrich-next-run-company.mx"
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Enrich Next Run",
+        objective: "Encontrar empresas para probar enrich.",
+        industry: "Servicios",
+        countryRegion: "Mexico",
+        searchMode: "companies",
+        maxCompanies: 10,
+      })
+      campaignId = campaign?.id ?? ""
+      const first = campaignId ? createCampaignRun(campaignId) : null
+      const firstRunId = first && "run" in first ? first.run?.id ?? "" : ""
+      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'").get(firstRunId)
+
+      if (firstJob) {
+        completeOpenClawJob(firstJob.id, {
+          companies: [
+            {
+              name: "Enrich Next Run Company",
+              domain,
+              linkedin_url: "",
+              country: "Mexico",
+              city: "CDMX",
+              industry: "Servicios",
+              employee_range: "",
+              description: "Empresa para probar enrich.",
+              score: 79,
+              rationale: "Falta evidencia.",
+              evidence: [{ type: "website", url: `https://${domain}`, note: "Sitio inicial." }],
+            },
+          ],
+        })
+      }
+
+      const candidate = listCampaignCompanyCandidates(campaignId).find((item) => item.domain === domain)
+      if (candidate?.candidateId) {
+        reviewCompanyCandidate(candidate.candidateId, {
+          status: "needs_more_research",
+          feedback: "Verificar si tiene clientes persona física.",
+          createdBy: "Test",
+        })
+      }
+
+      const second = campaignId ? createCampaignRun(campaignId) : null
+      const secondRunId = second && "run" in second ? second.run?.id ?? "" : ""
+      const researchJob = db
+        .query<{ id: string; input_json: string }, [string]>("SELECT id, input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'research_company'")
+        .get(secondRunId)
+      const input = researchJob ? JSON.parse(researchJob.input_json) : {}
+
+      if (researchJob) {
+        completeOpenClawJob(researchJob.id, {
+          company: {
+            name: "Enrich Next Run Company",
+            domain,
+            linkedin_url: "",
+            country: "Mexico",
+            city: "CDMX",
+            industry: "Servicios",
+            employee_range: "",
+            description: "Empresa enriquecida con mejor evidencia.",
+            score: 92,
+            rationale: "Evidencia enriquecida de clientes persona física.",
+            evidence: [{ type: "website", url: `https://${domain}/clientes`, note: "Muestra clientes independientes." }],
+          },
+          notes: "Lista para revisión.",
+        })
+      }
+
+      const updated = listCampaignCompanyCandidates(campaignId).find((item) => item.domain === domain)
+
+      expect(input.reviewFeedback).toContain("clientes persona física")
+      expect(input.subject?.name).toBe("Enrich Next Run Company")
+      expect(updated?.review).toBe("pendiente")
+      expect(updated?.match).toBe(92)
+      expect(updated?.rationale).toContain("Evidencia enriquecida")
+    } finally {
+      if (campaignId) {
+        db.prepare("DELETE FROM feedback WHERE campaign_id = ? OR created_by = 'Test'").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      db.prepare("DELETE FROM companies WHERE domain = ?").run(domain)
     }
   })
 

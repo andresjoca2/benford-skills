@@ -575,6 +575,7 @@ export function createCampaignRun(
     memory: campaignMemory(campaign.id),
     outputContract: "Return only JSON matching the requested schema.",
   }
+  const memory = jobInput.memory
 
   db.transaction(() => {
     if (active?.status === "queued" && options.replaceQueuedRun) {
@@ -605,6 +606,8 @@ export function createCampaignRun(
       VALUES (?, ?, ?, 'queued', ?, ?, ?)
     `).run(runId, campaignId, mission, brief.objective || campaign.criteria || "", JSON.stringify(context), JSON.stringify(limits))
 
+    const enrichJobs = enqueueCampaignResearchJobs(campaignId, runId, memory)
+
     db.prepare(`
       INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json, timeout_seconds)
       VALUES (?, ?, ?, ?, 'queued', ?, ?)
@@ -619,7 +622,7 @@ export function createCampaignRun(
       level: "info",
       eventType: "run.queued",
       message: "Corrida encolada para OpenClaw.",
-      payload: { mission, jobSkill },
+      payload: { mission, jobSkill, enrichJobs },
     })
 
     db.prepare("UPDATE campaigns SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(campaignId)
@@ -868,17 +871,24 @@ export function completeOpenClawJob(jobId: string, output: unknown) {
 
   db.transaction(() => {
     if (job.skill === "find_companies") persistFoundCompanies(job, parsed.output)
+    if (job.skill === "research_company") persistResearchedCompany(job, parsed.output)
 
     db.prepare(`
       UPDATE openclaw_jobs
       SET status = 'succeeded', output_json = ?, error = '', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(JSON.stringify(parsed.output), job.id)
+    const pendingJobs = db
+      .query<{ count: number }, [string, string]>(
+        "SELECT COUNT(*) AS count FROM openclaw_jobs WHERE run_id = ? AND id <> ? AND status IN ('queued', 'running')",
+      )
+      .get(job.run_id, job.id)?.count ?? 0
+    const nextRunStatus = pendingJobs > 0 ? "running" : job.skill === "find_companies" ? "needs_review" : "needs_review"
     db.prepare(`
       UPDATE agent_runs
-      SET status = ?, raw_output_json = ?, error = '', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      SET status = ?, raw_output_json = ?, error = '', finished_at = CASE WHEN ? = 0 THEN CURRENT_TIMESTAMP ELSE finished_at END, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(job.skill === "find_companies" ? "needs_review" : "completed", JSON.stringify(parsed.output), job.run_id)
+    `).run(nextRunStatus, JSON.stringify(parsed.output), pendingJobs, job.run_id)
     insertEvent({
       campaignId: job.campaign_id,
       runId: job.run_id,
@@ -1377,12 +1387,35 @@ function reviewCandidate(
         domain?: string
         linkedin_url?: string
         email?: string
+        country?: string
+        city?: string
+        industry?: string
+        employee_range?: string
+        description?: string
+        score?: number
+        rationale?: string
+        evidence_json?: string
       },
       [string]
     >(
       subjectType === "company_candidate"
         ? `
-          SELECT cc.id, cc.campaign_id, cc.run_id, cc.company_id, c.name, c.domain, c.linkedin_url
+          SELECT
+            cc.id,
+            cc.campaign_id,
+            cc.run_id,
+            cc.company_id,
+            c.name,
+            c.domain,
+            c.linkedin_url,
+            c.country,
+            c.city,
+            c.industry,
+            c.employee_range,
+            c.description,
+            cc.score,
+            cc.rationale,
+            cc.evidence_json
           FROM company_candidates cc
           JOIN companies c ON c.id = cc.company_id
           WHERE cc.id = ?
@@ -1435,7 +1468,7 @@ function reviewCandidate(
     }
 
     if (status === "do_not_contact") insertSuppressionForCandidate(subjectType, row, feedback, createdBy)
-    if (status === "needs_more_research") enqueueResearchJob(subjectType, row)
+    if (status === "needs_more_research") enqueueResearchJob(subjectType, row, row.run_id, feedback)
 
     insertEvent({
       campaignId: row.campaign_id,
@@ -1508,17 +1541,148 @@ function insertSuppressionForCandidate(
 
 function enqueueResearchJob(
   subjectType: "company_candidate" | "person_candidate",
-  row: { campaign_id: string; run_id: string | null; company_id: string | null; person_id?: string },
+  row: {
+    id?: string
+    campaign_id: string
+    run_id: string | null
+    company_id: string | null
+    person_id?: string
+    name?: string
+    domain?: string
+    linkedin_url?: string
+    country?: string
+    city?: string
+    industry?: string
+    employee_range?: string
+    description?: string
+    score?: number
+    rationale?: string
+    evidence_json?: string
+    user_feedback?: string
+  },
+  runId = row.run_id,
+  reviewFeedback = row.user_feedback || "",
 ) {
-  if (!row.run_id) return
+  if (!runId) return
   const skill = subjectType === "company_candidate" ? "research_company" : "research_person"
   const subjectId = subjectType === "company_candidate" ? row.company_id : row.person_id
-  const jobId = uniqueId("job", `${row.run_id}_${skill}_${subjectId ?? "subject"}`)
+  const jobId = uniqueId("job", `${runId}_${skill}_${subjectId ?? "subject"}`)
+  const input = buildResearchJobInput(subjectType, row, reviewFeedback)
 
   db.prepare(`
     INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json)
     VALUES (?, ?, ?, ?, 'queued', ?)
-  `).run(jobId, row.run_id, row.campaign_id, skill, JSON.stringify({ subjectType, subjectId }))
+  `).run(jobId, runId, row.campaign_id, skill, JSON.stringify(input))
+}
+
+function enqueueCampaignResearchJobs(campaignId: string, runId: string, memory: Record<string, unknown>) {
+  const rows = db
+    .query<
+      {
+        id: string
+        campaign_id: string
+        run_id: string | null
+        company_id: string
+        name: string
+        domain: string
+        linkedin_url: string
+        country: string
+        city: string
+        industry: string
+        employee_range: string
+        description: string
+        score: number
+        rationale: string
+        evidence_json: string
+        user_feedback: string
+      },
+      [string]
+    >(`
+      SELECT
+        cc.id,
+        cc.campaign_id,
+        cc.run_id,
+        cc.company_id,
+        c.name,
+        c.domain,
+        c.linkedin_url,
+        c.country,
+        c.city,
+        c.industry,
+        c.employee_range,
+        c.description,
+        cc.score,
+        cc.rationale,
+        cc.evidence_json,
+        cc.user_feedback
+      FROM company_candidates cc
+      JOIN companies c ON c.id = cc.company_id
+      WHERE cc.campaign_id = ?
+        AND cc.status = 'needs_more_research'
+      ORDER BY cc.updated_at DESC, cc.created_at DESC
+      LIMIT 20
+    `)
+    .all(campaignId)
+
+  for (const row of rows) {
+    const jobId = uniqueId("job", `${runId}_research_company_${row.company_id}`)
+    db.prepare(`
+      INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json)
+      VALUES (?, ?, ?, 'research_company', 'queued', ?)
+    `).run(jobId, runId, campaignId, JSON.stringify(buildResearchJobInput("company_candidate", row, row.user_feedback, memory)))
+  }
+
+  return rows.length
+}
+
+function buildResearchJobInput(
+  subjectType: "company_candidate" | "person_candidate",
+  row: {
+    id?: string
+    campaign_id: string
+    company_id: string | null
+    person_id?: string
+    name?: string
+    domain?: string
+    linkedin_url?: string
+    country?: string
+    city?: string
+    industry?: string
+    employee_range?: string
+    description?: string
+    score?: number
+    rationale?: string
+    evidence_json?: string
+  },
+  reviewFeedback = "",
+  memory: Record<string, unknown> | null = null,
+) {
+  const campaign = getCampaignDetail(row.campaign_id)
+  const subjectId = subjectType === "company_candidate" ? row.company_id : row.person_id
+  return {
+    mission: subjectType === "company_candidate" ? "research_company" : "research_person",
+    subjectType,
+    subjectId,
+    candidateId: row.id,
+    campaign: campaign ? { id: campaign.id, name: campaign.name } : { id: row.campaign_id },
+    brief: campaign?.brief || {},
+    reviewFeedback,
+    subject: {
+      name: row.name || "",
+      domain: row.domain || "",
+      linkedinUrl: row.linkedin_url || "",
+      country: row.country || "",
+      city: row.city || "",
+      industry: row.industry || "",
+      employeeRange: row.employee_range || "",
+      description: row.description || "",
+      score: row.score ?? 0,
+      rationale: row.rationale || "",
+      evidence: parseJson(row.evidence_json || "[]", []),
+    },
+    memory: memory || campaignMemory(row.campaign_id),
+    outputContract: "Return only JSON matching the requested schema.",
+  }
 }
 
 function insertEvent(input: {
@@ -1625,6 +1789,7 @@ function campaignMemory(campaignId: string) {
         note: row.user_feedback,
       })),
     suppression: suppression.map((row) => row.value),
+    negativeRules: feedbackRules(feedback),
     feedback: feedback.map((row) => ({
       company: row.company_name || row.subject_id,
       type: row.feedback_type,
@@ -1632,6 +1797,26 @@ function campaignMemory(campaignId: string) {
       createdAt: row.created_at,
     })),
   }
+}
+
+function feedbackRules(
+  feedback: Array<{ feedback_type: string; text: string; company_name: string | null; created_at: string }>,
+) {
+  const rules: Array<Record<string, unknown>> = []
+  for (const row of feedback) {
+    if (row.feedback_type !== "rejected" && row.feedback_type !== "do_not_contact") continue
+    const text = row.text.toLowerCase()
+    if (/\bespaña\b|\bespan[a-z]*\b|\bespañ[a-z]*\b|\bspain\b|\bspanish\b/.test(text)) {
+      rules.push({
+        type: "exclude_spanish_entities",
+        label: "No empresas españolas",
+        reason: row.text,
+        sourceCompany: row.company_name,
+        createdAt: row.created_at,
+      })
+    }
+  }
+  return rules
 }
 
 function effectiveRunTimeoutSeconds(mission: string, value: unknown) {
@@ -1691,6 +1876,14 @@ function validateOpenClawOutput(skill: string, output: unknown): { ok: true; out
     }
   }
 
+  if (skill === "research_company") {
+    if (typeof record.error === "string" && record.error.trim()) return { ok: false, error: record.error }
+    const company = record.company && typeof record.company === "object" && !Array.isArray(record.company)
+      ? normalizeCompanyOutput(record.company)
+      : normalizeCompanyOutput(record)
+    return { ok: true, output: { ...record, company } }
+  }
+
   return { ok: true, output: record }
 }
 
@@ -1724,7 +1917,7 @@ function normalizeEvidenceOutput(value: unknown) {
 
 function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unknown>) {
   const companies = Array.isArray(output.companies) ? output.companies : []
-  const input = parseJson<{ brief?: { reviewBatchSize?: number } }>(job.input_json, {})
+  const input = parseJson<{ brief?: { reviewBatchSize?: number }; memory?: { negativeRules?: Array<Record<string, unknown>> } }>(job.input_json, {})
   const reviewBatchSize = positiveInteger(input.brief?.reviewBatchSize, companies.length || 10)
   let visibleInserted = 0
   for (const company of companies) {
@@ -1743,6 +1936,20 @@ function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unkno
       message: `${candidate.name} propuesta por OpenClaw.`,
       payload: { domain: candidate.domain, linkedinUrl: candidate.linkedin_url, score: candidate.score },
     })
+    if (violatesNegativeRules(candidate, input.memory?.negativeRules || [])) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "company_candidate",
+        subjectId: "",
+        level: "warning",
+        eventType: "company.feedback_rule_skipped",
+        message: `${candidate.name} omitida por reglas de feedback.`,
+        payload: { domain: candidate.domain, country: candidate.country },
+      })
+      continue
+    }
     if (isSuppressedCompanyCandidate(candidate)) {
       insertEvent({
         campaignId: job.campaign_id,
@@ -1814,6 +2021,76 @@ function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unkno
       payload: { companyId, score: candidate.score, reviewVisible: visibleInserted <= reviewBatchSize },
     })
   }
+}
+
+function persistResearchedCompany(job: OpenClawJobRow, output: Record<string, unknown>) {
+  const input = parseJson<{ candidateId?: string; subjectId?: string }>(job.input_json, {})
+  const company = output.company && typeof output.company === "object" && !Array.isArray(output.company)
+    ? (output.company as ReturnType<typeof normalizeCompanyOutput>)
+    : null
+  if (!company || !company.name) return
+
+  const companyId = upsertCompanyFromCandidate(company, job.run_id)
+  const candidate = input.candidateId
+    ? db.query<{ id: string }, [string]>("SELECT id FROM company_candidates WHERE id = ? LIMIT 1").get(input.candidateId)
+    : input.subjectId
+      ? db
+          .query<{ id: string }, [string, string]>(
+            "SELECT id FROM company_candidates WHERE campaign_id = ? AND company_id = ? LIMIT 1",
+          )
+          .get(job.campaign_id, input.subjectId)
+      : null
+  if (!candidate) return
+
+  db.prepare(`
+    UPDATE company_candidates
+    SET
+      company_id = ?,
+      status = 'new',
+      score = CASE WHEN ? > 0 THEN ? ELSE score END,
+      rationale = CASE WHEN ? <> '' THEN ? ELSE rationale END,
+      evidence_json = CASE WHEN ? <> '[]' THEN ? ELSE evidence_json END,
+      review_visible = 1,
+      review_revealed_at = COALESCE(review_revealed_at, CURRENT_TIMESTAMP),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    companyId,
+    company.score,
+    company.score,
+    company.rationale,
+    company.rationale,
+    JSON.stringify(company.evidence),
+    JSON.stringify(company.evidence),
+    candidate.id,
+  )
+  insertEvent({
+    campaignId: job.campaign_id,
+    runId: job.run_id,
+    jobId: job.id,
+    subjectType: "company_candidate",
+    subjectId: candidate.id,
+    level: "success",
+    eventType: "company.enriched",
+    message: `${company.name} enriquecida y lista para revisión.`,
+    payload: { companyId, score: company.score },
+  })
+}
+
+function violatesNegativeRules(company: ReturnType<typeof normalizeCompanyOutput>, rules: Array<Record<string, unknown>>) {
+  if (!rules.some((rule) => rule.type === "exclude_spanish_entities")) return false
+  const text = [
+    company.name,
+    company.domain,
+    company.country,
+    company.city,
+    company.description,
+    company.rationale,
+    ...company.evidence.flatMap((item) => [item?.url || "", item?.note || ""]),
+  ]
+    .join(" ")
+    .toLowerCase()
+  return /\bespaña\b|\bespan[a-z]*\b|\bspain\b|\bspanish\b|\.es(\/|$)/i.test(text)
 }
 
 function isSuppressedCompanyCandidate(company: ReturnType<typeof normalizeCompanyOutput>) {

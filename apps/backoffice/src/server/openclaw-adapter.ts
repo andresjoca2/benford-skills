@@ -93,7 +93,7 @@ function spawnOpenClaw(command: string, agent: string, thinking: string, session
 }
 
 function buildPrompt(job: OpenClawQueuedJob, options: { emptyRetry?: boolean } = {}) {
-  const input = job.input as { brief?: { discoveryMode?: string; maxCompanies?: number; minScoreThreshold?: number; reviewBatchSize?: number }; memory?: Record<string, unknown> }
+  const input = job.input as { brief?: { discoveryMode?: string; maxCompanies?: number; minScoreThreshold?: number; reviewBatchSize?: number }; memory?: { negativeRules?: unknown[] } & Record<string, unknown> }
   const maxCompanies = Math.max(Math.min(Number(input.brief?.maxCompanies || 10), 50), 1)
   const minScore = Math.max(Math.min(Number(input.brief?.minScoreThreshold || 75), 100), 0)
   const reviewBatchSize = Math.max(Math.min(Number(input.brief?.reviewBatchSize || 10), maxCompanies), 1)
@@ -101,6 +101,7 @@ function buildPrompt(job: OpenClawQueuedJob, options: { emptyRetry?: boolean } =
   const alreadySeenCompanies = input.memory?.alreadySeenCompanies
   const seenCompanies = Array.isArray(alreadySeenCompanies) ? alreadySeenCompanies.length : 0
   const usefulFollowUpBatch = fastPrefetch && seenCompanies > 0
+  const negativeRules = Array.isArray(input.memory?.negativeRules) ? input.memory.negativeRules : []
   const schema =
     job.skill === "find_companies"
       ? {
@@ -120,7 +121,42 @@ function buildPrompt(job: OpenClawQueuedJob, options: { emptyRetry?: boolean } =
             },
           ],
         }
+      : job.skill === "research_company"
+        ? {
+            company: {
+              name: "string",
+              domain: "string",
+              linkedin_url: "string",
+              country: "string",
+              city: "string",
+              industry: "string",
+              employee_range: "string",
+              description: "string",
+              score: 0,
+              rationale: "string",
+              evidence: [{ type: "website", url: "https://example.com", note: "string" }],
+            },
+            notes: "string",
+          }
       : {}
+  if (job.skill === "research_company") {
+    return [
+      "You are running a Benford Backoffice company enrichment job.",
+      "Research exactly the existing company candidate in Input.subject. Do not discover unrelated new companies.",
+      "Use the campaign brief and reviewFeedback to resolve the operator's uncertainty.",
+      "If reviewFeedback says the operator is unsure about website, geography, fit, or evidence, verify that point directly.",
+      "Return updated company evidence, description, score, and rationale for the same company.",
+      "Return only valid JSON. Do not include markdown, prose, or code fences.",
+      "",
+      `Skill: ${job.skill}`,
+      "",
+      "Input:",
+      JSON.stringify(job.input, null, 2),
+      "",
+      "Required output schema:",
+      JSON.stringify(schema, null, 2),
+    ].join("\n")
+  }
 
   return [
     "You are running a Benford Backoffice prospecting job.",
@@ -156,6 +192,12 @@ function buildPrompt(job: OpenClawQueuedJob, options: { emptyRetry?: boolean } =
     "For broad first-pass markets such as LATAM fintech, assume enough qualified candidates exist and return maxCompanies unless every remaining result is duplicated or conflicts with the brief.",
     "Do not return companies, domains, LinkedIn URLs, or suppressed values already present in memory.",
     "Treat approved, rejected, do_not_contact, and free-text feedback in memory as product signal for the next batch.",
+    ...(negativeRules.length > 0
+      ? [
+          "The input memory includes negativeRules derived from operator feedback. These are hard exclusion rules, not suggestions.",
+          "Never return candidates that match negativeRules. For exclude_spanish_entities, exclude Spain/Spanish companies, companies headquartered in Spain, candidates with Spain as the main market, and candidates whose official/evidence domain is .es.",
+        ]
+      : []),
     "If memory.needsMoreResearchCompanies is present, use it as an enrichment queue: verify those companies, look for stronger evidence, and use what you learn to bias the next candidates. Do not return the same company as a duplicate unless the job is explicitly a research_company job.",
     "Lean into patterns from approved companies and avoid patterns explicitly rejected by the operator.",
     "Respect maxCompanies, maxPeople, country/region, positive signals, and negative signals from the input.",
