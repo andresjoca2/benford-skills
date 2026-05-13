@@ -509,6 +509,62 @@ describe("clo backoffice local database", () => {
     }
   })
 
+  test("keeps follow-up company runs to the visible review batch", () => {
+    setupDatabase()
+    let campaignId = ""
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Follow Up Review Batch",
+        objective: "Encontrar partnerships sin agotar la corrida.",
+        searchMode: "companies",
+        maxCompanies: 50,
+        maxRuntimeSeconds: 900,
+      })
+      campaignId = campaign?.id ?? ""
+
+      const first = campaignId ? createCampaignRun(campaignId, { prefetchCompanies: 20, reviewBatchSize: 10 }) : null
+      const firstRunId = first && "run" in first ? first.run?.id ?? "" : ""
+      const firstJob = db
+        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ?")
+        .get(firstRunId)
+
+      if (firstJob) {
+        completeOpenClawJob(firstJob.id, {
+          companies: [
+            {
+              name: "Follow Up Seed Company",
+              domain: "follow-up-seed.example",
+              linkedin_url: "",
+              country: "MX",
+              city: "",
+              industry: "SaaS",
+              employee_range: "11-50",
+              description: "Empresa de prueba para memoria de seguimiento.",
+              score: 90,
+              rationale: "Calza con la campaña.",
+              evidence: [{ type: "website", url: "https://follow-up-seed.example", note: "Sitio de prueba." }],
+            },
+          ],
+        })
+      }
+
+      const second = campaignId ? createCampaignRun(campaignId, { prefetchCompanies: 30, reviewBatchSize: 10 }) : null
+      const secondRunId = second && "run" in second ? second.run?.id ?? "" : ""
+      const secondJob = db
+        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
+        .get(secondRunId)
+      const input = secondJob ? JSON.parse(secondJob.input_json) : {}
+
+      expect(input.brief?.maxCompanies).toBe(10)
+      expect(input.brief?.reviewBatchSize).toBe(10)
+      expect(input.memory?.alreadySeenCompanies).toContain("Follow Up Seed Company")
+    } finally {
+      if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      db.prepare("DELETE FROM companies WHERE domain = 'follow-up-seed.example'").run()
+    }
+  })
+
   test("creates another search after a company run reaches review", () => {
     setupDatabase()
     let campaignId = ""

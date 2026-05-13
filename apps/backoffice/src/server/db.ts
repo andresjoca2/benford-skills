@@ -521,12 +521,16 @@ export function createCampaignRun(
 
   const brief = campaign.brief
   const mission = brief.searchMode || "companies"
+  const memory = campaignMemory(campaign.id)
   const briefCompanyLimit = Math.max(10, positiveInteger(brief.maxCompanies, 10))
   const requestedCompanies = mission === "people"
     ? brief.maxCompanies
     : positiveInteger(options.prefetchCompanies, briefCompanyLimit)
+  const seenCompanyCount = Array.isArray(memory.alreadySeenCompanies) ? memory.alreadySeenCompanies.length : 0
   const runMaxCompanies = mission === "people"
     ? brief.maxCompanies
+    : seenCompanyCount > 0
+      ? Math.min(FIND_COMPANIES_INTERACTIVE_PREFETCH_CAP, Math.max(1, reviewBatchSize))
     : Math.min(FIND_COMPANIES_INTERACTIVE_PREFETCH_CAP, Math.max(10, requestedCompanies))
   const runMaxRuntimeSeconds = effectiveRunTimeoutSeconds(mission, brief.maxRuntimeSeconds)
   const runId = uniqueId("run", `${campaignId}_${mission}`)
@@ -572,10 +576,9 @@ export function createCampaignRun(
       reviewBatchSize,
       discoveryMode: jobSkill === "find_companies" ? "fast_prefetch" : "standard",
     },
-    memory: campaignMemory(campaign.id),
+    memory,
     outputContract: "Return only JSON matching the requested schema.",
   }
-  const memory = jobInput.memory
 
   db.transaction(() => {
     if (active?.status === "queued" && options.replaceQueuedRun) {
