@@ -28,7 +28,7 @@ import {
   setupDatabase,
   updateCampaignBrief,
 } from "../../apps/backoffice/src/server/db.ts"
-import { runOpenClawJob } from "../../apps/backoffice/src/server/openclaw-adapter.ts"
+import { enrichJobInputWithHunter, runOpenClawJob } from "../../apps/backoffice/src/server/openclaw-adapter.ts"
 
 const appRoot = path.resolve(import.meta.dir, "../../apps/backoffice")
 
@@ -749,6 +749,72 @@ describe("clo backoffice local database", () => {
     } finally {
       if (previous === undefined) delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
       else Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = previous
+    }
+  })
+
+  test("enriches people jobs with Hunter domain-search contacts when configured", async () => {
+    const previousKey = Bun.env.HUNTER_API_KEY
+    const previousLimit = Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT
+    const previousFetch = globalThis.fetch
+    Bun.env.HUNTER_API_KEY = "test-key"
+    Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT = "3"
+    ;(globalThis as unknown as { fetch: unknown }).fetch = async (input: RequestInfo | URL) => {
+      const url = String(input)
+      expect(url).toContain("domain=booksy.com")
+      expect(url).not.toContain("api_key=48")
+      return new Response(
+        JSON.stringify({
+          data: {
+            emails: [
+              {
+                first_name: "Ana",
+                last_name: "Alianzas",
+                value: "ana@booksy.com",
+                position: "Partnerships Manager Mexico",
+                department: "partnerships",
+                seniority: "manager",
+                confidence: 92,
+                linkedin: "https://linkedin.com/in/ana-alianzas",
+                sources: [{ uri: "https://booksy.com" }],
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      )
+    }
+
+    try {
+      const enriched = await enrichJobInputWithHunter({
+        id: "job_hunter_people",
+        runId: "run_hunter_people",
+        campaignId: "campaign_hunter_people",
+        skill: "find_people",
+        status: "queued",
+        input: {
+          targetCompany: { name: "Booksy", domain: "booksy.com", country: "MX" },
+          brief: { maxPeople: 5 },
+        },
+        output: {},
+        error: "",
+        attempt: 0,
+        maxAttempts: 1,
+        timeoutSeconds: 120,
+        startedAt: null,
+        finishedAt: null,
+        createdAt: "",
+        updatedAt: "",
+      })
+      const hunter = (enriched.input as { sourceData?: { hunter?: { people?: Array<{ email?: string; title?: string }> } } }).sourceData?.hunter
+
+      expect(hunter?.people?.[0]?.email).toBe("ana@booksy.com")
+      expect(hunter?.people?.[0]?.title).toBe("Partnerships Manager Mexico")
+    } finally {
+      ;(globalThis as unknown as { fetch: unknown }).fetch = previousFetch
+      if (previousKey === undefined) delete Bun.env.HUNTER_API_KEY
+      else Bun.env.HUNTER_API_KEY = previousKey
+      if (previousLimit === undefined) delete Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT
+      else Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT = previousLimit
     }
   })
 
