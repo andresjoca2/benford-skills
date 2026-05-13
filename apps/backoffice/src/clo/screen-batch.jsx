@@ -891,7 +891,7 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
   const filteredPeople = tab === "todas" ? rows : rows.filter(p => p.review === tab);
   const selectedCompany = approvedCompanies.find(c => c.id === selectedCompanyId) || approvedCompanies[0];
   const selectedPeople = selectedCompany ? rows.filter(p => p.companyId === selectedCompany.id) : [];
-  const selectedPerson = selectedPeople.find(p => p.id === selectedPersonId) || selectedPeople[0];
+  const selectedPerson = selectedPeople.find(p => p.id === selectedPersonId);
   const activePeopleCompanyCandidateId = activeRun?.mission === "find_people" && ["queued", "running"].includes(activeRun.status)
     ? activeRun.limits?.target_company_candidate_id
     : "";
@@ -934,7 +934,7 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
   };
 
   const setPersonReview = (person, status) => {
-    const nextReview = status === "approved" ? "aceptada" : status === "rejected" || status === "do_not_contact" ? "rechazada" : "pendiente";
+    const nextReview = status === "approved" ? "aceptada" : status === "rejected" || status === "do_not_contact" ? "rechazada" : status === "needs_more_research" ? "enrich" : "pendiente";
     const text = feedback.trim();
     setRows((items) => items.map((item) => item.id === person.id ? {...item, review: nextReview, userFeedback: text} : item));
     if (!person.candidateId) return;
@@ -1053,113 +1053,113 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
             )}
 
             {selectedPeople.length > 0 && (
-              <div style={{display:"grid", gridTemplateColumns:"minmax(260px, 360px) 1fr", gap:14, alignItems:"start"}}>
-                <div style={{border:"1px solid var(--border)", borderRadius:8, overflow:"hidden"}}>
-                  {selectedPeople.map(person => (
-                    <button
-                      key={person.id}
-                      className={`emp-item ${selectedPerson?.id===person.id?"selected":""}`}
-                      onClick={()=>setSelectedPersonId(person.id)}
-                      style={{borderBottom:"1px solid var(--border)"}}
-                    >
-                      <window.Avatar initials={person.name.split(" ").map(x=>x[0]).slice(0,2).join("")} color="#27272A"/>
-                      <div style={{flex:1, minWidth:0}}>
-                        <div style={{display:"flex", alignItems:"center", gap:6}}>
-                          <span className="row-title" style={{fontSize:13}}>{person.name}</span>
-                          {person.review==="aceptada" && <span className="emp-dot" style={{background:"var(--ok)"}}/>}
-                          {person.review==="rechazada" && <span className="emp-dot" style={{background:"var(--danger)"}}/>}
-                        </div>
-                        <div className="row-sub">{person.title || "Sin cargo"}</div>
-                        <div style={{display:"flex", gap:5, marginTop:6}}>
-                          <span className={`entity ${person.email ? "" : "muted"}`}><Icons.Mail size={10}/></span>
-                          <span className={`entity ${person.linkedinUrl ? "" : "muted"}`}><Icons.Linkedin size={10}/></span>
-                          <span className={`entity ${person.phone ? "" : "muted"}`}><Icons.Phone size={10}/></span>
-                          <span className="mono" style={{marginLeft:"auto", fontSize:11, color:"var(--fg-3)"}}>{person.score}%</span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                {selectedPerson && (
-                  <div style={{display:"grid", gap:14}}>
-                    <div style={{display:"flex", alignItems:"flex-start", gap:12}}>
-                      <window.Avatar initials={selectedPerson.name.split(" ").map(x=>x[0]).slice(0,2).join("")} color="#27272A"/>
-                      <div style={{flex:1, minWidth:0}}>
-                        <div style={{fontSize:16, fontWeight:600}}>{selectedPerson.name}</div>
-                        <div style={{fontSize:12.5, color:"var(--fg-3)", marginTop:3}}>{selectedPerson.title || "Sin cargo"}</div>
-                      </div>
-                      <window.StatusPill kind={selectedPerson.status.kind} label={selectedPerson.status.label}/>
-                    </div>
-
-                    <div style={{display:"grid", gridTemplateColumns:"repeat(3, minmax(0, 1fr))", gap:10}}>
-                      <div className="kpi" style={{minHeight:70}}>
-                        <div className="kpi-lbl">Email</div>
-                        <div style={{fontSize:12.5, marginTop:8, overflowWrap:"anywhere"}}>{selectedPerson.email || "-"}</div>
-                      </div>
-                      <div className="kpi" style={{minHeight:70}}>
-                        <div className="kpi-lbl">LinkedIn</div>
-                        <div style={{fontSize:12.5, marginTop:8, overflowWrap:"anywhere"}}>{selectedPerson.linkedinUrl ? <a href={selectedPerson.linkedinUrl} target="_blank" rel="noreferrer">Perfil</a> : "-"}</div>
-                      </div>
-                      <div className="kpi" style={{minHeight:70}}>
-                        <div className="kpi-lbl">Teléfono</div>
-                        <div style={{fontSize:12.5, marginTop:8}}>{selectedPerson.phone || "-"}</div>
-                      </div>
-                    </div>
-
-                    <div className="kv kv-wide">
-                      <div className="k">Por qué aplica</div><div className="v">{selectedPerson.rationale || "-"}</div>
-                      <div className="k">Ángulo sugerido</div><div className="v">{selectedPerson.angleHint || "-"}</div>
-                      <div className="k">Proveedor</div><div className="v">{selectedPerson.sourceProvider || "-"}</div>
-                    </div>
-
-                    <label className="form-row" style={{margin:0}}>
-                      <span className="form-label">Motivo</span>
-                      <textarea
-                        className="ang-textarea"
-                        rows={2}
-                        value={feedback}
-                        onChange={(event)=>setFeedback(event.target.value)}
-                        placeholder="Por qué esta persona sí o no sirve. Esto aprende para toda la campaña."
-                      />
-                    </label>
-
-                    <div className="card-actions" style={{justifyContent:"flex-end"}}>
-                      {selectedPerson.review !== "rechazada" && (
-                        <button className="review-btn reject" onClick={()=>setPersonReview(selectedPerson, "rejected")}>
-                          <Icons.X size={12} sw={2.4}/> Rechazar persona
-                        </button>
-                      )}
-                      {selectedPerson.review !== "aceptada" && (
-                        <button className="review-btn accept" onClick={()=>setPersonReview(selectedPerson, "approved")}>
-                          <Icons.Check size={12} sw={2.4}/> Aceptar persona
-                        </button>
-                      )}
-                    </div>
-
-                    <div>
-                      <div style={{fontSize:12, color:"var(--fg-3)", fontFamily:"var(--mono)", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:10}}>
-                        Evidencia
-                      </div>
-                      <div style={{display:"grid", gap:8}}>
-                        {(selectedPerson.evidence || []).length === 0 && (
-                          <div style={{padding:"14px", border:"1px solid var(--border)", borderRadius:8, color:"var(--fg-3)", fontSize:13}}>
-                            Sin evidencia guardada.
+              <div style={{border:"1px solid var(--border)", borderRadius:8, overflow:"hidden", display:"grid"}}>
+                {selectedPeople.map(person => {
+                  const expanded = selectedPerson?.id === person.id;
+                  return (
+                    <div key={person.id} style={{borderBottom:"1px solid var(--border)", background:expanded ? "var(--bg)" : "var(--bg-1)"}}>
+                      <button
+                        className={`emp-item ${expanded?"selected":""}`}
+                        onClick={()=>setSelectedPersonId(expanded ? "" : person.id)}
+                        style={{width:"100%", borderBottom:expanded ? "1px solid var(--border)" : "none", minHeight:72}}
+                      >
+                        <window.Avatar initials={person.name.split(" ").map(x=>x[0]).slice(0,2).join("")} color="#27272A"/>
+                        <div style={{flex:1, minWidth:0}}>
+                          <div style={{display:"flex", alignItems:"center", gap:8, minWidth:0}}>
+                            <span className="row-title" style={{fontSize:13.5, fontWeight:600}}>{person.name}</span>
+                            {person.review==="aceptada" && <span className="emp-dot" style={{background:"var(--ok)"}}/>}
+                            {person.review==="enrich" && <span className="emp-dot" style={{background:"var(--warn)"}}/>}
+                            {person.review==="rechazada" && <span className="emp-dot" style={{background:"var(--danger)"}}/>}
+                            <span className="mono" style={{marginLeft:"auto", fontSize:12, color:"var(--fg)"}}>{person.score}%</span>
                           </div>
-                        )}
-                        {(selectedPerson.evidence || []).map((item, index) => (
-                          <div key={index} style={{padding:"12px 14px", border:"1px solid var(--border)", borderRadius:8, background:"var(--bg-1)"}}>
-                            <div style={{display:"flex", gap:8, marginBottom:6}}>
-                              <span className="entity"><Icons.Globe size={11}/>{item.type || "fuente"}</span>
-                              {item.url ? <a href={item.url} target="_blank" rel="noreferrer" style={{fontSize:12, overflowWrap:"anywhere"}}>{item.url}</a> : null}
+                          <div className="row-sub" style={{marginTop:3}}>{person.title || "Sin cargo"}</div>
+                          <div style={{display:"flex", gap:5, marginTop:7}}>
+                            <span className={`entity ${person.email ? "" : "muted"}`} title={person.email || "Sin email"}><Icons.Mail size={10}/></span>
+                            <span className={`entity ${person.linkedinUrl ? "" : "muted"}`} title={person.linkedinUrl || "Sin LinkedIn"}><Icons.Linkedin size={10}/></span>
+                            <span className={`entity ${person.phone ? "" : "muted"}`} title={person.phone || "Sin teléfono"}><Icons.Phone size={10}/></span>
+                            <span className="entity" style={{fontSize:11}}><Icons.Chevron size={10}/>{expanded ? "Cerrar" : "Detalle"}</span>
+                          </div>
+                        </div>
+                      </button>
+
+                      {expanded && (
+                        <div style={{padding:"14px 16px 16px", display:"grid", gap:14}}>
+                          <label className="form-row" style={{margin:0}}>
+                            <span className="form-label">Motivo</span>
+                            <textarea
+                              className="ang-textarea"
+                              rows={2}
+                              value={feedback}
+                              onChange={(event)=>setFeedback(event.target.value)}
+                              placeholder="Por qué esta persona sí o no sirve. Esto aprende para toda la campaña."
+                            />
+                          </label>
+
+                          <div style={{display:"flex", gap:8, justifyContent:"flex-end", flexWrap:"wrap"}}>
+                            {person.review !== "aceptada" && (
+                              <button className="review-btn accept" onClick={(event)=>{ event.stopPropagation(); setPersonReview(person, "approved"); }}>
+                                <Icons.Check size={12} sw={2.4}/> Aceptar
+                              </button>
+                            )}
+                            {person.review !== "enrich" && (
+                              <button className="review-btn enrich" onClick={(event)=>{ event.stopPropagation(); setPersonReview(person, "needs_more_research"); }}>
+                                <Icons.Search size={12} sw={2.4}/> Enrich
+                              </button>
+                            )}
+                            {person.review !== "rechazada" && (
+                              <button className="review-btn reject" onClick={(event)=>{ event.stopPropagation(); setPersonReview(person, "rejected"); }}>
+                                <Icons.X size={12} sw={2.4}/> Rechazar
+                              </button>
+                            )}
+                          </div>
+
+                          <div style={{display:"grid", gridTemplateColumns:"repeat(3, minmax(0, 1fr))", gap:10}}>
+                            <div className="kpi" style={{minHeight:66}}>
+                              <div className="kpi-lbl">Email</div>
+                              <div style={{fontSize:12.5, marginTop:8, overflowWrap:"anywhere"}}>{person.email || "-"}</div>
                             </div>
-                            <div style={{fontSize:13, lineHeight:1.5}}>{item.note || "Sin nota."}</div>
+                            <div className="kpi" style={{minHeight:66}}>
+                              <div className="kpi-lbl">LinkedIn</div>
+                              <div style={{fontSize:12.5, marginTop:8, overflowWrap:"anywhere"}}>{person.linkedinUrl ? <a href={person.linkedinUrl} target="_blank" rel="noreferrer">Perfil</a> : "-"}</div>
+                            </div>
+                            <div className="kpi" style={{minHeight:66}}>
+                              <div className="kpi-lbl">Teléfono</div>
+                              <div style={{fontSize:12.5, marginTop:8}}>{person.phone || "-"}</div>
+                            </div>
                           </div>
-                        ))}
-                      </div>
+
+                          <div className="kv kv-wide">
+                            <div className="k">Por qué aplica</div><div className="v">{person.rationale || "-"}</div>
+                            <div className="k">Ángulo sugerido</div><div className="v">{person.angleHint || "-"}</div>
+                            <div className="k">Proveedor</div><div className="v">{person.sourceProvider || "-"}</div>
+                          </div>
+
+                          <div>
+                            <div style={{fontSize:12, color:"var(--fg-3)", fontFamily:"var(--mono)", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:10}}>
+                              Evidencia
+                            </div>
+                            <div style={{display:"grid", gap:8}}>
+                              {(person.evidence || []).length === 0 && (
+                                <div style={{padding:"14px", border:"1px solid var(--border)", borderRadius:8, color:"var(--fg-3)", fontSize:13}}>
+                                  Sin evidencia guardada.
+                                </div>
+                              )}
+                              {(person.evidence || []).map((item, index) => (
+                                <div key={index} style={{padding:"12px 14px", border:"1px solid var(--border)", borderRadius:8, background:"var(--bg-1)"}}>
+                                  <div style={{display:"flex", gap:8, marginBottom:6, alignItems:"center"}}>
+                                    <span className="entity"><Icons.Globe size={11}/>{item.type || "fuente"}</span>
+                                    {item.url ? <a href={item.url} target="_blank" rel="noreferrer" style={{fontSize:12, overflowWrap:"anywhere"}}>{item.url}</a> : null}
+                                  </div>
+                                  <div style={{fontSize:13, lineHeight:1.5}}>{item.note || "Sin nota."}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })}
               </div>
             )}
           </div>
