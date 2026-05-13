@@ -892,7 +892,12 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
   const selectedCompany = approvedCompanies.find(c => c.id === selectedCompanyId) || approvedCompanies[0];
   const selectedPeople = selectedCompany ? rows.filter(p => p.companyId === selectedCompany.id) : [];
   const selectedPerson = selectedPeople.find(p => p.id === selectedPersonId) || selectedPeople[0];
-  const companyRunActive = activeRun && activeRun.mission === "find_people" && ["queued", "running"].includes(activeRun.status);
+  const activePeopleCompanyCandidateId = activeRun?.mission === "find_people" && ["queued", "running"].includes(activeRun.status)
+    ? activeRun.limits?.target_company_candidate_id
+    : "";
+  const companyRunActive = Boolean(
+    selectedCompany?.candidateId && activePeopleCompanyCandidateId === selectedCompany.candidateId,
+  );
   const maxPeople = Math.min(Math.max(Number(brief?.maxPeople || 5), 1), 8);
   const counts = {
     todas: rows.length,
