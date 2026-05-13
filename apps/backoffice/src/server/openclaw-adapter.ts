@@ -29,7 +29,7 @@ export async function runOpenClawJob(job: OpenClawQueuedJob): Promise<RunOpenCla
     timer = setTimeout(() => {
       proc.kill()
       reject(new Error(`OpenClaw timed out after ${timeoutSeconds}s`))
-    }, timeoutSeconds * 1000)
+    }, (timeoutSeconds + 15) * 1000)
   })
 
   const completed = Promise.all([
@@ -232,7 +232,8 @@ function spawnOpenClaw(command: string, agent: string, thinking: string, session
   if (sshTarget) {
     const remoteCommand = Bun.env.OPENCLAW_REMOTE_COMMAND || "openclaw"
     const promptBase64 = Buffer.from(prompt, "utf8").toString("base64")
-    const script = `exec ${remoteCommand} agent --agent ${quoteShell(agent)} --thinking ${quoteShell(thinking)} --session-id ${quoteShell(sessionId)} --json --timeout ${timeoutSeconds} --message "$(printf %s "$OPENCLAW_MSG_B64" | base64 -d)"`
+    const agentCommand = `${remoteCommand} agent --agent ${quoteShell(agent)} --thinking ${quoteShell(thinking)} --session-id ${quoteShell(sessionId)} --json --timeout ${timeoutSeconds} --message "$(printf %s "$OPENCLAW_MSG_B64" | base64 -d)"`
+    const script = `if command -v timeout >/dev/null 2>&1; then exec timeout --kill-after=10s ${timeoutSeconds}s ${agentCommand}; else exec ${agentCommand}; fi`
     const remote = `OPENCLAW_MSG_B64=${quoteShell(promptBase64)} bash -lc ${quoteShell(script)}`
     return Bun.spawn(["ssh", "-o", "ClearAllForwardings=yes", sshTarget, remote], {
       stdout: "pipe",
@@ -240,7 +241,8 @@ function spawnOpenClaw(command: string, agent: string, thinking: string, session
     })
   }
 
-  const shellCommand = `${command} agent --agent ${quoteShell(agent)} --thinking ${quoteShell(thinking)} --session-id ${quoteShell(sessionId)} --json --timeout ${timeoutSeconds} --message "$OPENCLAW_MSG"`
+  const agentCommand = `${command} agent --agent ${quoteShell(agent)} --thinking ${quoteShell(thinking)} --session-id ${quoteShell(sessionId)} --json --timeout ${timeoutSeconds} --message "$OPENCLAW_MSG"`
+  const shellCommand = `if command -v timeout >/dev/null 2>&1; then exec timeout --kill-after=10s ${timeoutSeconds}s ${agentCommand}; else exec ${agentCommand}; fi`
   return Bun.spawn(["bash", "-lc", shellCommand], {
     env: { ...Bun.env, OPENCLAW_MSG: prompt },
     stdout: "pipe",

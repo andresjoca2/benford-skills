@@ -68,7 +68,9 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
   }, [batchId]);
 
   const runStateKey = campaignRuns.map((run) => `${run.id}:${run.status}:${run.companyCandidates ?? 0}`).join("|");
-  const activeRun = campaignRuns.find((run) => ["queued", "running"].includes(run.status));
+  const activeRuns = campaignRuns.filter((run) => ["queued", "running"].includes(run.status));
+  const activeRun = activeRuns[0];
+  const activeCompanyRun = activeRuns.find((run) => run.mission === "find_companies") || null;
 
   useEffectBd(() => {
     if (!batchId) return () => {};
@@ -182,7 +184,7 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
             <BatchEmpresas
               companies={companies}
               brief={b.brief}
-              activeRun={activeRun}
+              activeRun={activeCompanyRun}
               hiddenCount={companies?.hiddenCount || 0}
               onRerun={()=>launchRun({ replaceQueuedRun: true, revealCachedCompanies: true, reviewBatchSize: 10, prefetchCompanies: companyPrefetchSize(b.brief) })}
               rerunBusy={runBusy}
@@ -195,6 +197,7 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
               people={people}
               brief={b.brief}
               activeRun={activeRun}
+              activeRuns={activeRuns}
               onRefresh={fetchDetail}
             />
           )}
@@ -863,7 +866,33 @@ const AutoSearchModal = ({ brief, onClose, onSave }) => {
   );
 };
 
-const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
+const parseRunTime = (value) => {
+  if (!value) return 0;
+  const parsed = Date.parse(String(value).replace(" ", "T") + "Z");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const elapsedRunSeconds = (run, now) => {
+  const started = parseRunTime(run?.startedAt) || parseRunTime(run?.createdAt);
+  return started ? Math.max(0, Math.floor((now - started) / 1000)) : 0;
+};
+
+const formatRunSeconds = (seconds) => {
+  const safe = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutes = Math.floor(safe / 60);
+  const remainder = String(safe % 60).padStart(2, "0");
+  return `${minutes}:${remainder}`;
+};
+
+const peopleRunProgress = (run, now) => {
+  const timeout = Math.max(Number(run?.limits?.max_runtime_seconds || 300), 30);
+  const elapsed = elapsedRunSeconds(run, now);
+  const base = run?.status === "queued" ? 8 : 16;
+  const max = run?.status === "queued" ? 18 : 94;
+  return Math.min(max, Math.max(base, Math.round((elapsed / timeout) * 100)));
+};
+
+const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], onRefresh }) => {
   const companiesKey = (companies || []).map(c => `${c.id}:${c.candidateId}:${c.review}:${c.prospects || 0}`).join("|");
   const peopleKey = (people || []).map(p => `${p.id}:${p.candidateId}:${p.review}:${p.score}:${p.email}:${p.phone}`).join("|");
   const approvedCompanies = React.useMemo(
@@ -879,8 +908,15 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
   const [companyFeedback, setCompanyFeedback] = React.useState("");
   const [busyCompanyId, setBusyCompanyId] = React.useState("");
   const [notice, setNotice] = React.useState("");
+  const [now, setNow] = React.useState(Date.now());
 
   React.useEffect(() => setRows(seedPeople), [peopleKey]);
+  React.useEffect(() => {
+    const hasPeopleRun = (activeRuns || []).some(run => run.mission === "find_people");
+    if (!hasPeopleRun) return () => {};
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [(activeRuns || []).map(run => `${run.id}:${run.status}`).join("|")]);
   React.useEffect(() => {
     if (approvedCompanies.length && !approvedCompanies.find(c => c.id === selectedCompanyId)) {
       setSelectedCompanyId(approvedCompanies[0].id);
@@ -892,11 +928,12 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
   const selectedCompany = approvedCompanies.find(c => c.id === selectedCompanyId) || approvedCompanies[0];
   const selectedPeople = selectedCompany ? rows.filter(p => p.companyId === selectedCompany.id) : [];
   const selectedPerson = selectedPeople.find(p => p.id === selectedPersonId);
-  const activePeopleCompanyCandidateId = activeRun?.mission === "find_people" && ["queued", "running"].includes(activeRun.status)
-    ? activeRun.limits?.target_company_candidate_id
-    : "";
+  const activePeopleRuns = (activeRuns || []).filter(run => run.mission === "find_people" && ["queued", "running"].includes(run.status));
+  const selectedCompanyRun = selectedCompany?.candidateId
+    ? activePeopleRuns.find(run => run.limits?.target_company_candidate_id === selectedCompany.candidateId)
+    : null;
   const companyRunActive = Boolean(
-    selectedCompany?.candidateId && activePeopleCompanyCandidateId === selectedCompany.candidateId,
+    selectedCompany?.candidateId && selectedCompanyRun,
   );
   const maxPeople = Math.min(Math.max(Number(brief?.maxPeople || 5), 1), 8);
   const counts = {
@@ -981,6 +1018,8 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
               const companyPeople = rows.filter(p => p.companyId === company.id);
               const approved = companyPeople.filter(p => p.review === "aceptada").length;
               const pending = companyPeople.filter(p => p.review === "pendiente").length;
+              const activeCompanyRun = activePeopleRuns.find(run => run.limits?.target_company_candidate_id === company.candidateId);
+              const activeProgress = peopleRunProgress(activeCompanyRun, now);
               return (
                 <button
                   key={company.id}
@@ -991,10 +1030,15 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
                   <div style={{flex:1, minWidth:0}}>
                     <div className="row-title" style={{fontSize:13, fontWeight:500}}>{company.name}</div>
                     <div style={{display:"flex", gap:8, marginTop:5, fontSize:11.5, color:"var(--fg-3)"}}>
-                      <span>{companyPeople.length} personas</span>
+                      <span>{activeCompanyRun ? "buscando" : `${companyPeople.length} personas`}</span>
                       <span>{pending} pendientes</span>
                       <span>{approved} aceptadas</span>
                     </div>
+                    {activeCompanyRun && (
+                      <div className="mini-bar info" style={{height:4, marginTop:7}}>
+                        <span style={{width:`${activeProgress}%`}}/>
+                      </div>
+                    )}
                     <div style={{display:"flex", gap:5, marginTop:7}}>
                       {companyPeople.some(p => p.email) && <span className="entity"><Icons.Mail size={10}/></span>}
                       {companyPeople.some(p => p.linkedinUrl) && <span className="entity"><Icons.Linkedin size={10}/></span>}
@@ -1027,7 +1071,23 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
 
           <div style={{padding:"12px 20px 16px", display:"grid", gap:10}}>
             {companyRunActive && (
-              <div className="inline-alert">Hay una búsqueda de personas corriendo o en cola. El worker la procesará en segundo plano.</div>
+              <div className="card" style={{padding:"12px 14px", borderRadius:8}}>
+                <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8}}>
+                  <div style={{display:"flex", alignItems:"center", gap:8, minWidth:0}}>
+                    <Icons.Activity size={13}/>
+                    <span style={{fontSize:12.5, fontWeight:600}}>
+                      {selectedCompanyRun.status === "running" ? "Buscando personas" : "Búsqueda en cola"}
+                    </span>
+                    <span className="mono" style={{fontSize:11, color:"var(--fg-3)"}}>{formatRunSeconds(elapsedRunSeconds(selectedCompanyRun, now))}</span>
+                  </div>
+                  <span style={{fontSize:11.5, color:"var(--fg-3)"}}>
+                    {selectedCompanyRun.status === "running" ? "Hunter/OpenClaw trabajando" : "Esperando worker"}
+                  </span>
+                </div>
+                <div className="mini-bar info" style={{height:5}}>
+                  <span style={{width:`${peopleRunProgress(selectedCompanyRun, now)}%`}}/>
+                </div>
+              </div>
             )}
 
             {selectedPeople.length === 0 && (

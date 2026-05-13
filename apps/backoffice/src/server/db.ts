@@ -1524,6 +1524,7 @@ function formatRun(row: RunRow) {
     limits: parseJson(row.limits_json, {}),
     error: row.error,
     created: formatDateLabel(row.created_at),
+    createdAt: row.created_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   }
