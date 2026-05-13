@@ -109,6 +109,8 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("scoreFilterOn")
     expect(screen).toContain("minScoreThreshold")
     expect(screen).toContain("<span className=\"form-label\">Motivo</span>")
+    expect(screen).toContain("data-review-feedback=\"company\"")
+    expect(screen).toContain("document.activeElement?.closest?.(\"[data-review-feedback]\")")
     expect(screen).toContain("Enrich")
     expect(screen).toContain("needs_more_research")
     expect(screen).toContain("reviewCompanyCandidate(company.candidateId, status, feedback || undefined)")

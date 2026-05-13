@@ -76,6 +76,7 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
     if (!shouldPoll) return () => {};
 
     const timer = setInterval(() => {
+      if (document.activeElement?.closest?.("[data-review-feedback]")) return;
       fetchDetail();
     }, 1500);
     return () => clearInterval(timer);
@@ -675,11 +676,16 @@ const BatchEmpresas = ({ companies, brief, activeRun, hiddenCount = 0, onRerun, 
                 <label className="form-row" style={{margin:0, gap:4}}>
                   <span className="form-label">Motivo</span>
                   <textarea
+                    data-review-feedback="company"
                     className="ang-textarea"
                     rows={1}
                     style={{minHeight:38, height:38, padding:"7px 10px", fontSize:12.5, lineHeight:1.35}}
                     value={reviewFeedback}
-                    onChange={(event)=>setReviewFeedback(event.target.value)}
+                    onChange={(event)=>{
+                      const value = event.target.value;
+                      setReviewFeedback(value);
+                      setState(s => s.map(r => r.id===selected.id ? {...r, userFeedback: value} : r));
+                    }}
                     placeholder="Por qué sí o por qué no aplica."
                   />
                 </label>
