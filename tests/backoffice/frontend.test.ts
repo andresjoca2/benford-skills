@@ -895,6 +895,36 @@ describe("clo backoffice local database", () => {
             feedback: "Buscar tambien marketing, no solo partnerships.",
           })
         : null
+      const refreshedRunId = refreshed && "run" in refreshed ? refreshed.run?.id ?? "" : ""
+      const refreshedJob = refreshedRunId
+        ? db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_people'").get(refreshedRunId)
+        : null
+      if (refreshedJob) {
+        completeOpenClawJob(refreshedJob.id, {
+          people: [
+            {
+              name: "Ana Partnerships Personas Test",
+              title: "Head of Partnerships",
+              company_name: "Nuvemshop Personas Test",
+              company_domain: "nuvemshop-personas-test.com",
+              linkedin_url: "https://linkedin.com/in/ana-partnerships-personas-test",
+              email: "ana@nuvemshop-personas-test.com",
+              phone: "+52 55 0000 0000",
+              country: "MX",
+              city: "CDMX",
+              seniority: "Head",
+              function: "Partnerships",
+              description: "Lidera alianzas para ecommerce.",
+              score: 76,
+              rationale: "Actualizada por rerun con mejor evidencia.",
+              angle_hint: "Actualizar ángulo de alianzas.",
+              source_provider: "apollo",
+              evidence: [{ type: "apollo", url: "https://apollo.io", note: "Perfil demo actualizado." }],
+            },
+          ],
+        })
+      }
+      const updatedPerson = listCampaignPeople(campaignId).find((candidate) => candidate.name === "Ana Partnerships Personas Test")
 
       expect(peopleInput.brief?.peopleContext).toContain("partnerships")
       expect(peopleInput.targetCompany?.name).toBe("Nuvemshop Personas Test")
@@ -902,6 +932,7 @@ describe("clo backoffice local database", () => {
       expect(person?.phone).toBe("+52 55 0000 0000")
       expect(person?.sourceProvider).toBe("apollo")
       expect(person?.angleHint).toContain("alianzas")
+      expect(updatedPerson?.rationale).toContain("Actualizada por rerun")
       expect(reviewed && "review" in reviewed ? reviewed.review : "").toBe("aceptada")
       expect(refreshed && "run" in refreshed ? refreshed.run?.mission : "").toBe("find_people")
     } finally {

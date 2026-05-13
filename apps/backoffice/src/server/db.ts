@@ -2322,6 +2322,29 @@ function persistFoundPeople(job: OpenClawJobRow, output: Record<string, unknown>
       .query<{ id: string }, [string, string]>("SELECT id FROM person_candidates WHERE campaign_id = ? AND person_id = ? LIMIT 1")
       .get(job.campaign_id, personId)
     if (existingCandidate) {
+      db.prepare(`
+        UPDATE person_candidates
+        SET
+          run_id = ?,
+          company_id = COALESCE(company_id, ?),
+          score = ?,
+          rationale = CASE WHEN ? <> '' THEN ? ELSE rationale END,
+          evidence_json = CASE WHEN ? <> '[]' THEN ? ELSE evidence_json END,
+          angle_hint = CASE WHEN ? <> '' THEN ? ELSE angle_hint END,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        job.run_id,
+        companyId,
+        candidate.score,
+        candidate.rationale,
+        candidate.rationale,
+        JSON.stringify(candidate.evidence),
+        JSON.stringify(candidate.evidence),
+        candidate.angle_hint,
+        candidate.angle_hint,
+        existingCandidate.id,
+      )
       insertEvent({
         campaignId: job.campaign_id,
         runId: job.run_id,
@@ -2329,8 +2352,8 @@ function persistFoundPeople(job: OpenClawJobRow, output: Record<string, unknown>
         subjectType: "person_candidate",
         subjectId: existingCandidate.id,
         level: "info",
-        eventType: "person.dedupe_skipped",
-        message: `${candidate.name} ya existía en esta campaña.`,
+        eventType: "person.updated",
+        message: `${candidate.name} actualizada desde una nueva corrida de personas.`,
         payload: { personId, score: candidate.score },
       })
       continue
