@@ -2140,6 +2140,7 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
 
   let score = clampScore(person.score + delta)
   if (!contactable) score = Math.min(score, 88)
+  if (executive && !contactable && !explicitExecutiveAsk) score = Math.min(score, 78)
   if (largeCompany && executive && !explicitExecutiveAsk && !relevantOperator) score = Math.min(score, 70)
   if (largeCompany && globalExecutive && !explicitExecutiveAsk) score = Math.min(score, 68)
   return {
