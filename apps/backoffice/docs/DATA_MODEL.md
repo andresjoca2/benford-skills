@@ -4,8 +4,9 @@ The current schema is defined in:
 
 ```text
 apps/backoffice/db/migrations/0001_core.sql
-apps/backoffice/db/migrations/0002_brain_snapshot.sql
+apps/backoffice/db/migrations/0002_campaign_min_score_threshold.sql
 apps/backoffice/db/migrations/0003_company_candidate_review_queue.sql
+apps/backoffice/db/migrations/0004_people_discovery.sql
 ```
 
 Development seed data is defined in:
@@ -40,6 +41,9 @@ Fields include:
 - `niche`
 - `country_region`
 - `company_size`
+- `people_context` - free-text guidance for the people search stage, e.g. target
+  roles, seniority, areas, and roles to exclude. This should guide the agent
+  without hard-biasing it away from inferring the right buying committee.
 - `positive_signals`
 - `negative_signals`
 - `search_mode`
@@ -206,6 +210,8 @@ Operational meaning:
 - `maybe`: human deferred decision; does not automatically schedule more research.
 - `needs_more_research`: should create or queue a future `research_company` job.
 - `do_not_contact`: should insert a matching row into `suppression_list`.
+- `approved`: for companies, approving a company can queue a scoped
+  `find_people` run for that company so Personas can start filling immediately.
 
 Review queue fields:
 
@@ -228,9 +234,29 @@ Dedupe priority:
 3. `normalized_name + company_id`
 4. `normalized_name + company_name + country`
 
+Contact enrichment fields:
+
+- `email`
+- `phone`
+- `linkedin_url`
+- `source_provider` - where the best person data came from, such as
+  `public_web`, `linkedin`, `hunter`, or `apollo`.
+
 ### `person_candidates`
 
 Campaign-specific candidate state for a person. Uses the same status set as company candidates.
+
+Additional fields:
+
+- `angle_hint` - short agent-suggested outreach angle for this person. The
+  formal angle/outreach workflow can build from accepted people later.
+
+The Personas screen is company-scoped: the left side lists approved companies;
+the right side lists people proposed for the selected company. Reviewing a
+person writes feedback just like company review. Non-empty feedback becomes
+campaign memory and should guide later person searches across the campaign,
+while company-specific refresh feedback is also included in the next scoped
+`find_people` run for that company.
 
 ### `feedback`
 

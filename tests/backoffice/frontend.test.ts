@@ -10,6 +10,7 @@ import {
   completeOpenClawJob,
   createCampaign,
   createCampaignRun,
+  createPeopleRunForCompanyCandidate,
   db,
   getCampaignDetail,
   getDatabaseTable,
@@ -128,6 +129,20 @@ describe("clo backoffice frontend", () => {
     expect(app).toContain("parseRouteHash")
     expect(campaigns).toContain("openCampaign(b.id)")
     expect(detail).toContain("Array.isArray(b.runs)")
+  })
+
+  test("personas tab works by approved company with per-person review", async () => {
+    const screen = await readFile(path.join(appRoot, "src/clo/screen-batch.jsx"), "utf8")
+    const apiClient = await readFile(path.join(appRoot, "src/clo/api-client.jsx"), "utf8")
+
+    expect(screen).toContain("Empresas aprobadas")
+    expect(screen).toContain("Ejecutar búsqueda")
+    expect(screen).toContain("createPeopleRunForCompanyCandidate")
+    expect(screen).toContain("Aceptar persona")
+    expect(screen).toContain("Rechazar persona")
+    expect(screen).toContain("Ángulo sugerido")
+    expect(screen).toContain("Contexto para personas")
+    expect(apiClient).toContain("/people-runs")
   })
 })
 
@@ -783,6 +798,118 @@ describe("clo backoffice local database", () => {
     }
   })
 
+  test("approving a company queues and persists find_people candidates", () => {
+    setupDatabase()
+    let campaignId = ""
+    let companyId = ""
+    let personId = ""
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Personas",
+        objective: "Encontrar buyers para ecommerce SaaS.",
+        industry: "SaaS",
+        countryRegion: "Mexico",
+        searchMode: "companies_then_people",
+        maxCompanies: 1,
+        maxPeople: 5,
+        peopleContext: "Roles objetivo, seniority, areas, excluir roles: partnerships, marketing, CEO; evitar perfiles junior.",
+      })
+      campaignId = campaign?.id ?? ""
+      const created = campaignId ? createCampaignRun(campaignId) : null
+      const runId = created && "run" in created ? created.run?.id ?? "" : ""
+      const companyJob = db
+        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
+        .get(runId)
+
+      if (companyJob) {
+        completeOpenClawJob(companyJob.id, {
+          companies: [
+            {
+              name: "Nuvemshop Personas Test",
+              domain: "nuvemshop-personas-test.com",
+              linkedin_url: "",
+              country: "MX",
+              city: "CDMX",
+              industry: "SaaS",
+              employee_range: "51-200",
+              description: "SaaS ecommerce para tiendas.",
+              score: 91,
+              rationale: "Buen fit para probar personas por empresa.",
+              evidence: [{ type: "website", url: "https://nuvemshop-personas-test.com", note: "Sitio demo." }],
+            },
+          ],
+        })
+      }
+
+      const company = listCampaignCompanyCandidates(campaignId).find((candidate) => candidate.name === "Nuvemshop Personas Test")
+      companyId = company?.id ?? ""
+      if (company?.candidateId) reviewCompanyCandidate(company.candidateId, { status: "approved", feedback: "Buen fit para partnerships.", createdBy: "Test" })
+
+      const peopleJob = db
+        .query<{ id: string; input_json: string }, [string]>(
+          "SELECT id, input_json FROM openclaw_jobs WHERE campaign_id = ? AND skill = 'find_people' ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(campaignId)
+      const peopleInput = peopleJob ? JSON.parse(peopleJob.input_json) : {}
+
+      if (peopleJob) {
+        completeOpenClawJob(peopleJob.id, {
+          people: [
+            {
+              name: "Ana Partnerships Personas Test",
+              title: "Head of Partnerships",
+              company_name: "Nuvemshop Personas Test",
+              company_domain: "nuvemshop-personas-test.com",
+              linkedin_url: "https://linkedin.com/in/ana-partnerships-personas-test",
+              email: "ana@nuvemshop-personas-test.com",
+              phone: "+52 55 0000 0000",
+              country: "MX",
+              city: "CDMX",
+              seniority: "Head",
+              function: "Partnerships",
+              description: "Lidera alianzas para ecommerce.",
+              score: 94,
+              rationale: "Partnerships es un buen camino comercial para esta empresa.",
+              angle_hint: "Hablar de alianzas y canal indirecto.",
+              source_provider: "apollo",
+              evidence: [{ type: "apollo", url: "https://apollo.io", note: "Perfil demo." }],
+            },
+          ],
+        })
+      }
+
+      const person = listCampaignPeople(campaignId).find((candidate) => candidate.name === "Ana Partnerships Personas Test")
+      personId = person?.id ?? ""
+      const reviewed = person?.candidateId
+        ? reviewPersonCandidate(person.candidateId, { status: "approved", feedback: "Esta es la persona correcta para partnerships.", createdBy: "Test" })
+        : null
+      const refreshed = company?.candidateId
+        ? createPeopleRunForCompanyCandidate(company.candidateId, {
+            replaceQueuedRun: true,
+            enrich: true,
+            feedback: "Buscar tambien marketing, no solo partnerships.",
+          })
+        : null
+
+      expect(peopleInput.brief?.peopleContext).toContain("partnerships")
+      expect(peopleInput.targetCompany?.name).toBe("Nuvemshop Personas Test")
+      expect(person?.email).toBe("ana@nuvemshop-personas-test.com")
+      expect(person?.phone).toBe("+52 55 0000 0000")
+      expect(person?.sourceProvider).toBe("apollo")
+      expect(person?.angleHint).toContain("alianzas")
+      expect(reviewed && "review" in reviewed ? reviewed.review : "").toBe("aceptada")
+      expect(refreshed && "run" in refreshed ? refreshed.run?.mission : "").toBe("find_people")
+    } finally {
+      if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      if (companyId) db.prepare("DELETE FROM companies WHERE id = ?").run(companyId)
+      if (personId) db.prepare("DELETE FROM people WHERE id = ?").run(personId)
+      db.prepare("DELETE FROM companies WHERE domain = 'nuvemshop-personas-test.com'").run()
+      db.prepare("DELETE FROM people WHERE email = 'ana@nuvemshop-personas-test.com'").run()
+      db.prepare("DELETE FROM feedback WHERE created_by = 'Test'").run()
+    }
+  })
+
   test("reviews candidates with feedback, suppression, and research jobs", () => {
     setupDatabase()
 
@@ -818,6 +945,18 @@ describe("clo backoffice local database", () => {
           "SELECT COUNT(*) AS count FROM openclaw_jobs WHERE run_id = 'run_fintech_001' AND skill IN ('research_person', 'research_company')",
         )
         .get()
+      db.prepare(`
+        DELETE FROM openclaw_jobs
+        WHERE campaign_id = 'campaign_fintech_latam'
+          AND run_id <> 'run_fintech_001'
+          AND status IN ('queued', 'running')
+      `).run()
+      db.prepare(`
+        DELETE FROM agent_runs
+        WHERE campaign_id = 'campaign_fintech_latam'
+          AND id <> 'run_fintech_001'
+          AND status IN ('queued', 'running')
+      `).run()
       const nextRun = createCampaignRun("campaign_fintech_latam", { prefetchCompanies: 10, reviewBatchSize: 10 })
       const nextRunId = nextRun && "run" in nextRun ? nextRun.run?.id ?? "" : ""
       const nextJob = db

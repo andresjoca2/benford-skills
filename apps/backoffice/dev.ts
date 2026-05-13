@@ -7,6 +7,7 @@ import {
   cancelCampaignRun,
   createCampaign,
   createCampaignRun,
+  createPeopleRunForCompanyCandidate,
   createCompany,
   createProspect,
   dbPath,
@@ -266,11 +267,13 @@ async function serveApi(request: Request, url: URL) {
       companySize: typeof body.companySize === "string" ? body.companySize : undefined,
       positiveSignals: typeof body.positiveSignals === "string" ? body.positiveSignals : undefined,
       negativeSignals: typeof body.negativeSignals === "string" ? body.negativeSignals : undefined,
+      peopleContext: typeof body.peopleContext === "string" ? body.peopleContext : undefined,
       searchMode: typeof body.searchMode === "string" ? body.searchMode : undefined,
       runBudgetCents: typeof body.runBudgetCents === "number" ? body.runBudgetCents : undefined,
       maxCompanies: typeof body.maxCompanies === "number" ? body.maxCompanies : undefined,
       maxPeople: typeof body.maxPeople === "number" ? body.maxPeople : undefined,
       maxRuntimeSeconds: typeof body.maxRuntimeSeconds === "number" ? body.maxRuntimeSeconds : undefined,
+      minScoreThreshold: typeof body.minScoreThreshold === "number" ? body.minScoreThreshold : undefined,
     })
     if (!campaign) return json({ error: "Campaign not found" }, { status: 404 })
     return json({ campaign })
@@ -335,6 +338,22 @@ async function serveApi(request: Request, url: URL) {
     return json({ candidate })
   }
 
+  const companyPeopleRunMatch = url.pathname.match(/^\/api\/company-candidates\/([^/]+)\/people-runs$/)
+  if (companyPeopleRunMatch) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const body = await readJson(request)
+    const result = createPeopleRunForCompanyCandidate(companyPeopleRunMatch[1] ?? "", {
+      replaceQueuedRun: body.replaceQueuedRun === true,
+      enrich: body.enrich === true,
+      feedback: typeof body.feedback === "string" ? body.feedback : undefined,
+      maxPeople: numberBodyValue(body, "maxPeople"),
+    })
+    if (!result) return json({ error: "Company candidate not found" }, { status: 404 })
+    if ("error" in result) return json(result, { status: 409 })
+    startDevOpenClawWorkerOnce()
+    return json(result, { status: 201 })
+  }
+
   if (url.pathname === "/api/campaigns") {
     if (request.method === "POST") {
       const body = await readJson(request)
@@ -350,11 +369,13 @@ async function serveApi(request: Request, url: URL) {
             companySize: typeof body.companySize === "string" ? body.companySize : undefined,
             positiveSignals: typeof body.positiveSignals === "string" ? body.positiveSignals : undefined,
             negativeSignals: typeof body.negativeSignals === "string" ? body.negativeSignals : undefined,
+            peopleContext: typeof body.peopleContext === "string" ? body.peopleContext : undefined,
             searchMode: typeof body.searchMode === "string" ? body.searchMode : undefined,
             runBudgetCents: numberBodyValue(body, "runBudgetCents"),
             maxCompanies: numberBodyValue(body, "maxCompanies"),
             maxPeople: numberBodyValue(body, "maxPeople"),
             maxRuntimeSeconds: numberBodyValue(body, "maxRuntimeSeconds"),
+            minScoreThreshold: numberBodyValue(body, "minScoreThreshold"),
           }),
         },
         { status: 201 },

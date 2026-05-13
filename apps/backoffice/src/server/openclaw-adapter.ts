@@ -71,8 +71,20 @@ function spawnOpenClaw(command: string, agent: string, thinking: string, session
 }
 
 function buildPrompt(job: OpenClawQueuedJob) {
-  const input = job.input as { brief?: { discoveryMode?: string; maxCompanies?: number; minScoreThreshold?: number; reviewBatchSize?: number }; memory?: Record<string, unknown> }
+  const input = job.input as {
+    brief?: {
+      discoveryMode?: string
+      maxCompanies?: number
+      maxPeople?: number
+      minScoreThreshold?: number
+      reviewBatchSize?: number
+      peopleContext?: string
+    }
+    targetCompany?: Record<string, unknown>
+    memory?: Record<string, unknown>
+  }
   const maxCompanies = Math.max(Math.min(Number(input.brief?.maxCompanies || 10), 50), 1)
+  const maxPeople = Math.max(Math.min(Number(input.brief?.maxPeople || 5), 8), 1)
   const minScore = Math.max(Math.min(Number(input.brief?.minScoreThreshold || 75), 100), 0)
   const reviewBatchSize = Math.max(Math.min(Number(input.brief?.reviewBatchSize || 10), maxCompanies), 1)
   const fastPrefetch = job.skill === "find_companies" && input.brief?.discoveryMode === "fast_prefetch"
@@ -98,7 +110,57 @@ function buildPrompt(job: OpenClawQueuedJob) {
             },
           ],
         }
-      : {}
+      : job.skill === "find_people"
+        ? {
+            people: [
+              {
+                name: "string",
+                title: "string",
+                company_name: "string",
+                company_domain: "string",
+                linkedin_url: "https://linkedin.com/in/example",
+                email: "string",
+                phone: "string",
+                country: "string",
+                city: "string",
+                seniority: "Founder",
+                function: "Partnerships",
+                description: "string",
+                score: 0,
+                rationale: "string",
+                angle_hint: "string",
+                source_provider: "public_web|linkedin|hunter|apollo",
+                evidence: [{ type: "linkedin", url: "https://example.com", note: "string" }],
+              },
+            ],
+          }
+        : {}
+
+  if (job.skill === "find_people") {
+    return [
+      "You are running a Benford Backoffice people-discovery job.",
+      "Treat this as an independent fresh run. Ignore previous conversations and previous empty outputs.",
+      `Find ${maxPeople} real people at the target company who are plausible outreach targets for the campaign.`,
+      "Use the campaign objective, company context, peopleContext, and operator feedback to infer the right buying committee.",
+      "Do not overfit to one title. Consider founders, CEO, partnerships, marketing, sales, technology, operations, finance, or owner roles depending on the company and campaign.",
+      "Prefer 3-5 people when the company has a real team. Return 1 person if it appears to be a solo-owner or very small practice.",
+      "Each person may need a different future sales angle. Include a concise angle_hint for how to approach that person.",
+      "Source policy: first use public web and LinkedIn; then use Hunter and Apollo if available in the environment or tools; never invent contact data.",
+      "Return email and phone only when a credible source/tool provides them. Leave unknown email/phone as an empty string.",
+      "Do not return duplicate people, suppressed people, generic company pages, or role guesses without a real person name.",
+      "Every returned person must include evidence with a URL and a note explaining why that person is relevant.",
+      "Use memory.feedback and memory.companyPeople feedback as learning signal for the whole campaign and for this company.",
+      "Return only valid JSON. Do not include markdown, prose, or code fences.",
+      "",
+      `Skill: ${job.skill}`,
+      "",
+      "Input:",
+      JSON.stringify(job.input, null, 2),
+      "",
+      "Required output schema:",
+      JSON.stringify(schema, null, 2),
+    ].join("\n")
+  }
 
   return [
     "You are running a Benford Backoffice prospecting job.",
@@ -197,6 +259,46 @@ function openClawSessionId(job: OpenClawQueuedJob) {
 }
 
 function mockOutput(job: OpenClawQueuedJob) {
+  if (job.skill === "find_people") {
+    const input = job.input as {
+      brief?: { maxPeople?: number }
+      targetCompany?: { name?: string; domain?: string; country?: string; city?: string }
+    }
+    const max = Math.max(Math.min(Number(input.brief?.maxPeople || 5), 8), 1)
+    const companyName = input.targetCompany?.name || "Empresa Demo"
+    const companyDomain = input.targetCompany?.domain || "example.com"
+    const roles = ["Head of Partnerships", "CEO", "Director de Marketing", "CTO", "Head of Sales"]
+    return {
+      people: Array.from({ length: max }).map((_, index) => {
+        const role = roles[index % roles.length] || "CEO"
+        return {
+        name: `Persona Demo ${index + 1}`,
+        title: role,
+        company_name: companyName,
+        company_domain: companyDomain,
+        linkedin_url: `https://linkedin.com/in/persona-demo-${index + 1}`,
+        email: index < 2 ? `persona${index + 1}@${companyDomain}` : "",
+        phone: "",
+        country: input.targetCompany?.country || "MX",
+        city: input.targetCompany?.city || "",
+        seniority: index === 0 ? "Head" : "Executive",
+        function: role.replace(/^Head of /, ""),
+        description: `Contacto demo de ${companyName}.`,
+        score: 88 - index,
+        rationale: "Mock local para validar búsqueda de personas por empresa.",
+        angle_hint: index === 0 ? "Explorar partnership y canal indirecto." : "Validar dolor operativo segun su rol.",
+        source_provider: index < 2 ? "hunter" : "linkedin",
+        evidence: [
+          {
+            type: "mock",
+            url: `https://${companyDomain}`,
+            note: "Evidencia simulada.",
+          },
+        ],
+        }
+      }),
+    }
+  }
   if (job.skill !== "find_companies") return {}
   const input = job.input as { brief?: { industry?: string; countryRegion?: string; maxCompanies?: number } }
   const industry = input.brief?.industry || "Software"

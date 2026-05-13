@@ -16,6 +16,7 @@ type CampaignCoreRow = {
   niche: string
   country_region: string
   company_size: string
+  people_context: string
   max_companies: number
   max_people: number
   min_score_threshold: number
@@ -31,6 +32,9 @@ type PersonCompatRow = {
   status: string
   campaign_id: string
   country: string
+  email: string
+  linkedin_url: string
+  phone: string
 }
 
 type CompanyCompatRow = {
@@ -85,11 +89,17 @@ type PersonCandidateRow = {
   name: string
   title: string
   company_name: string
+  linkedin_url: string
+  email: string
+  phone: string
+  source_provider: string
   industry: string
   country: string
   seniority: string
   function: string
   description: string
+  user_feedback: string
+  angle_hint: string
 }
 
 type RunRow = {
@@ -149,6 +159,7 @@ type CampaignBriefPayload = {
   maxPeople: number
   maxRuntimeSeconds: number
   minScoreThreshold: number
+  peopleContext: string
 }
 
 type ReviewStatus = "approved" | "rejected" | "maybe" | "needs_more_research" | "do_not_contact" | "new"
@@ -201,6 +212,7 @@ export function listCampaigns() {
         b.niche,
         b.country_region,
         b.company_size,
+        b.people_context,
         b.max_companies,
         b.max_people,
         b.min_score_threshold
@@ -283,6 +295,7 @@ export function createCampaign(input: {
   maxPeople?: number
   maxRuntimeSeconds?: number
   minScoreThreshold?: number
+  peopleContext?: string
 }) {
   const name = input.name?.trim() || "Nueva campaign"
   const id = uniqueId("campaign", name)
@@ -301,6 +314,7 @@ export function createCampaign(input: {
         niche,
         country_region,
         company_size,
+        people_context,
         positive_signals,
         negative_signals,
         search_mode,
@@ -309,7 +323,7 @@ export function createCampaign(input: {
         max_people,
         max_runtime_seconds,
         min_score_threshold
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       objective,
@@ -317,6 +331,7 @@ export function createCampaign(input: {
       input.niche?.trim() || "",
       input.countryRegion?.trim() || "",
       input.companySize?.trim() || "",
+      input.peopleContext?.trim() || "",
       input.positiveSignals?.trim() || "",
       input.negativeSignals?.trim() || "",
       searchMode,
@@ -345,6 +360,7 @@ export function getCampaignDetail(campaignId: string) {
         b.niche,
         b.country_region,
         b.company_size,
+        b.people_context,
         b.positive_signals,
         b.negative_signals,
         b.search_mode,
@@ -385,6 +401,7 @@ export function getCampaignDetail(campaignId: string) {
       niche: row.niche || "",
       countryRegion: row.country_region || "",
       companySize: row.company_size || "",
+      peopleContext: row.people_context || "",
       positiveSignals: row.positive_signals || "",
       negativeSignals: row.negative_signals || "",
       searchMode: row.search_mode || "companies",
@@ -414,6 +431,7 @@ export function updateCampaignBrief(
     maxPeople?: number
     maxRuntimeSeconds?: number
     minScoreThreshold?: number
+    peopleContext?: string
   },
 ) {
   if (!existingCampaignId(campaignId)) return null
@@ -424,6 +442,7 @@ export function updateCampaignBrief(
     niche: "",
     countryRegion: "",
     companySize: "",
+    peopleContext: "",
     positiveSignals: "",
     negativeSignals: "",
     searchMode: "companies",
@@ -445,6 +464,7 @@ export function updateCampaignBrief(
       niche,
       country_region,
       company_size,
+      people_context,
       positive_signals,
       negative_signals,
       search_mode,
@@ -454,13 +474,14 @@ export function updateCampaignBrief(
       max_runtime_seconds,
       min_score_threshold,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(campaign_id) DO UPDATE SET
       objective = excluded.objective,
       industry = excluded.industry,
       niche = excluded.niche,
       country_region = excluded.country_region,
       company_size = excluded.company_size,
+      people_context = excluded.people_context,
       positive_signals = excluded.positive_signals,
       negative_signals = excluded.negative_signals,
       search_mode = excluded.search_mode,
@@ -477,6 +498,7 @@ export function updateCampaignBrief(
     cleanText(input.niche, current.niche),
     cleanText(input.countryRegion, current.countryRegion),
     cleanText(input.companySize, current.companySize),
+    cleanText(input.peopleContext, current.peopleContext),
     cleanText(input.positiveSignals, current.positiveSignals),
     cleanText(input.negativeSignals, current.negativeSignals),
     searchMode,
@@ -561,6 +583,7 @@ export function createCampaignRun(
       niche: brief.niche,
       countryRegion: brief.countryRegion,
       companySize: brief.companySize,
+      peopleContext: brief.peopleContext,
       positiveSignals: brief.positiveSignals,
       negativeSignals: brief.negativeSignals,
       searchMode: brief.searchMode,
@@ -623,6 +646,151 @@ export function createCampaignRun(
     })
 
     db.prepare("UPDATE campaigns SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(campaignId)
+  })()
+
+  return { run: getRun(runId) }
+}
+
+export function createPeopleRunForCompanyCandidate(
+  companyCandidateId: string,
+  options: { replaceQueuedRun?: boolean; enrich?: boolean; feedback?: string; maxPeople?: number } = {},
+) {
+  const target = db
+    .query<
+      CompanyCandidateRow & { campaign_name: string; objective: string; people_context: string; positive_signals: string; negative_signals: string },
+      [string]
+    >(`
+      SELECT
+        cc.id,
+        cc.campaign_id,
+        cc.run_id,
+        cc.company_id,
+        cc.status,
+        cc.score,
+        cc.rationale,
+        cc.evidence_json,
+        cc.user_feedback,
+        cc.review_visible,
+        c.name,
+        c.domain,
+        c.linkedin_url,
+        c.industry,
+        c.employee_range,
+        c.country,
+        c.city,
+        c.description,
+        campaigns.name AS campaign_name,
+        b.objective,
+        b.people_context,
+        b.positive_signals,
+        b.negative_signals
+      FROM company_candidates cc
+      JOIN companies c ON c.id = cc.company_id
+      JOIN campaigns ON campaigns.id = cc.campaign_id
+      LEFT JOIN campaign_briefs b ON b.campaign_id = cc.campaign_id
+      WHERE cc.id = ?
+    `)
+    .get(companyCandidateId)
+  if (!target) return null
+  if (target.status !== "approved") return { error: "company_not_approved" }
+
+  const active = activePeopleRunForCompanyCandidate(companyCandidateId)
+  if (active && (!options.replaceQueuedRun || active.status !== "queued")) {
+    return { error: "active_people_run_exists", run: formatRun(active) }
+  }
+
+  const feedback = typeof options.feedback === "string" ? options.feedback.trim() : ""
+  const runId = uniqueId("run", `${target.campaign_id}_people_${target.company_id}`)
+  const jobId = uniqueId("job", `${runId}_find_people`)
+  const maxPeople = Math.min(Math.max(positiveInteger(options.maxPeople, 5), 1), 8)
+  const timeoutSeconds = 300
+  const targetCompany = {
+    companyCandidateId: target.id,
+    companyId: target.company_id,
+    name: target.name,
+    domain: target.domain,
+    linkedinUrl: target.linkedin_url,
+    country: target.country,
+    city: target.city,
+    industry: target.industry,
+    employeeRange: target.employee_range,
+    description: target.description,
+    rationale: target.rationale,
+    evidence: parseJson(target.evidence_json, []),
+  }
+  const context = {
+    campaign_id: target.campaign_id,
+    campaign_name: target.campaign_name,
+    target_company_candidate_id: target.id,
+    target_company_id: target.company_id,
+    target_company_name: target.name,
+  }
+  const jobInput = {
+    mission: "find_people",
+    campaign: {
+      id: target.campaign_id,
+      name: target.campaign_name,
+    },
+    brief: {
+      objective: target.objective || "",
+      peopleContext: target.people_context || "",
+      positiveSignals: target.positive_signals || "",
+      negativeSignals: target.negative_signals || "",
+      maxPeople,
+      maxRuntimeSeconds: timeoutSeconds,
+      discoveryMode: options.enrich ? "deep_enrich" : "company_people",
+      sourcePolicy: ["public_web", "linkedin", "hunter", "apollo"],
+    },
+    targetCompany,
+    memory: {
+      ...campaignMemory(target.campaign_id),
+      companyPeople: companyPeopleMemory(target.campaign_id, target.company_id),
+      refreshFeedback: feedback,
+    },
+    outputContract: "Return only JSON matching the requested schema.",
+  }
+
+  db.transaction(() => {
+    if (active?.status === "queued" && options.replaceQueuedRun) {
+      db.prepare(`
+        UPDATE agent_runs
+        SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'queued'
+      `).run(active.id)
+      db.prepare(`
+        UPDATE openclaw_jobs
+        SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE run_id = ? AND status = 'queued'
+      `).run(active.id)
+    }
+
+    db.prepare(`
+      INSERT INTO agent_runs (id, campaign_id, mission, status, objective, context_json, limits_json)
+      VALUES (?, ?, 'find_people', 'queued', ?, ?, ?)
+    `).run(
+      runId,
+      target.campaign_id,
+      `Buscar personas en ${target.name}`,
+      JSON.stringify(context),
+      JSON.stringify({ max_people: maxPeople, max_runtime_seconds: timeoutSeconds, target_company_candidate_id: target.id }),
+    )
+
+    db.prepare(`
+      INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json, timeout_seconds)
+      VALUES (?, ?, ?, 'find_people', 'queued', ?, ?)
+    `).run(jobId, runId, target.campaign_id, JSON.stringify(jobInput), timeoutSeconds)
+
+    insertEvent({
+      campaignId: target.campaign_id,
+      runId,
+      jobId,
+      subjectType: "company_candidate",
+      subjectId: target.id,
+      level: "info",
+      eventType: "person.search_queued",
+      message: `Búsqueda de personas en ${target.name} encolada.`,
+      payload: { companyId: target.company_id, maxPeople, enrich: options.enrich === true },
+    })
   })()
 
   return { run: getRun(runId) }
@@ -868,6 +1036,7 @@ export function completeOpenClawJob(jobId: string, output: unknown) {
 
   db.transaction(() => {
     if (job.skill === "find_companies") persistFoundCompanies(job, parsed.output)
+    if (job.skill === "find_people") persistFoundPeople(job, parsed.output)
 
     db.prepare(`
       UPDATE openclaw_jobs
@@ -878,7 +1047,7 @@ export function completeOpenClawJob(jobId: string, output: unknown) {
       UPDATE agent_runs
       SET status = ?, raw_output_json = ?, error = '', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(job.skill === "find_companies" ? "needs_review" : "completed", JSON.stringify(parsed.output), job.run_id)
+    `).run(["find_companies", "find_people"].includes(job.skill) ? "needs_review" : "completed", JSON.stringify(parsed.output), job.run_id)
     insertEvent({
       campaignId: job.campaign_id,
       runId: job.run_id,
@@ -953,9 +1122,15 @@ export function listCampaignPeople(campaignId: string) {
         pc.score,
         pc.rationale,
         pc.evidence_json,
+        pc.user_feedback,
+        pc.angle_hint,
         p.name,
         p.title,
         COALESCE(c.name, p.company_name, '') AS company_name,
+        p.linkedin_url,
+        p.email,
+        p.phone,
+        p.source_provider,
         COALESCE(c.industry, '') AS industry,
         p.country,
         p.seniority,
@@ -978,6 +1153,10 @@ export function listCampaignPeople(campaignId: string) {
     name: row.name,
     title: row.title,
     company: row.company_name || "Sin empresa",
+    linkedinUrl: row.linkedin_url,
+    email: row.email,
+    phone: row.phone,
+    sourceProvider: row.source_provider,
     industry: row.industry,
     country: row.country,
     seniority: row.seniority || seniorityFromTitle(row.title),
@@ -990,6 +1169,9 @@ export function listCampaignPeople(campaignId: string) {
     review: reviewState(row.status),
     rationale: row.rationale,
     evidence: parseJson(row.evidence_json, []),
+    userFeedback: row.user_feedback,
+    angleHint: row.angle_hint,
+    channels: { email: row.email ? "on" : "", linkedin: row.linkedin_url ? "on" : "", call: row.phone ? "on" : "" },
     lastTouch: "-",
     batch: row.campaign_id,
     owner: { i: "M", c: colorFor(row.campaign_id) },
@@ -1047,7 +1229,10 @@ export function listProspects() {
         pc.score,
         pc.status,
         pc.campaign_id,
-        p.country
+        p.country,
+        p.email,
+        p.linkedin_url,
+        p.phone
       FROM person_candidates pc
       JOIN people p ON p.id = pc.person_id
       LEFT JOIN companies c ON c.id = COALESCE(pc.company_id, p.company_id)
@@ -1055,7 +1240,7 @@ export function listProspects() {
     `)
     .all()
 
-  return rows.map((row) => ({
+  return rows.map((row: PersonCompatRow & { email?: string; linkedin_url?: string; phone?: string }) => ({
     id: row.id,
     name: row.name,
     title: row.title,
@@ -1064,7 +1249,7 @@ export function listProspects() {
     score: row.score,
     scoreBand: scoreBand(row.score),
     status: candidateStatus(row.status),
-    channels: { email: "", linkedin: "on", call: "" },
+    channels: { email: row.email ? "on" : "", linkedin: row.linkedin_url ? "on" : "", call: row.phone ? "on" : "" },
     lastTouch: "-",
     batch: row.campaign_id,
     country: row.country,
@@ -1341,6 +1526,7 @@ function reviewCandidate(
         run_id: string | null
         company_id: string | null
         person_id?: string
+        status: string
         name: string
         domain?: string
         linkedin_url?: string
@@ -1350,13 +1536,13 @@ function reviewCandidate(
     >(
       subjectType === "company_candidate"
         ? `
-          SELECT cc.id, cc.campaign_id, cc.run_id, cc.company_id, c.name, c.domain, c.linkedin_url
+          SELECT cc.id, cc.campaign_id, cc.run_id, cc.company_id, cc.status, c.name, c.domain, c.linkedin_url
           FROM company_candidates cc
           JOIN companies c ON c.id = cc.company_id
           WHERE cc.id = ?
         `
         : `
-          SELECT pc.id, pc.campaign_id, pc.run_id, pc.company_id, pc.person_id, p.name, p.linkedin_url, p.email
+          SELECT pc.id, pc.campaign_id, pc.run_id, pc.company_id, pc.person_id, pc.status, p.name, p.linkedin_url, p.email
           FROM person_candidates pc
           JOIN people p ON p.id = pc.person_id
           WHERE pc.id = ?
@@ -1404,6 +1590,9 @@ function reviewCandidate(
 
     if (status === "do_not_contact") insertSuppressionForCandidate(subjectType, row, feedback, createdBy)
     if (status === "needs_more_research") enqueueResearchJob(subjectType, row)
+    if (subjectType === "company_candidate" && status === "approved" && row.status !== "approved") {
+      createPeopleRunForCompanyCandidate(candidateId)
+    }
 
     insertEvent({
       campaignId: row.campaign_id,
@@ -1602,6 +1791,65 @@ function campaignMemory(campaignId: string) {
   }
 }
 
+function companyPeopleMemory(campaignId: string, companyId: string) {
+  const people = db
+    .query<
+      {
+        name: string
+        title: string
+        email: string
+        linkedin_url: string
+        status: string
+        user_feedback: string
+        angle_hint: string
+      },
+      [string, string]
+    >(`
+      SELECT p.name, p.title, p.email, p.linkedin_url, pc.status, pc.user_feedback, pc.angle_hint
+      FROM person_candidates pc
+      JOIN people p ON p.id = pc.person_id
+      WHERE pc.campaign_id = ? AND COALESCE(pc.company_id, p.company_id) = ?
+      ORDER BY pc.updated_at DESC, pc.created_at DESC
+      LIMIT 50
+    `)
+    .all(campaignId, companyId)
+
+  return {
+    alreadySeenPeople: people.map((row) => row.name),
+    alreadySeenEmails: people.map((row) => row.email).filter(Boolean),
+    alreadySeenLinkedinUrls: people.map((row) => row.linkedin_url).filter(Boolean),
+    approvedPeople: people.filter((row) => row.status === "approved").map((row) => ({ name: row.name, title: row.title })),
+    rejectedPeople: people
+      .filter((row) => row.status === "rejected" || row.status === "do_not_contact")
+      .map((row) => ({ name: row.name, title: row.title, feedback: row.user_feedback })),
+    feedback: people
+      .filter((row) => row.user_feedback)
+      .map((row) => ({ person: row.name, title: row.title, status: row.status, text: row.user_feedback })),
+    angleHints: people.filter((row) => row.angle_hint).map((row) => ({ person: row.name, angleHint: row.angle_hint })),
+  }
+}
+
+function activePeopleRunForCompanyCandidate(companyCandidateId: string) {
+  const rows = db
+    .query<RunRow & { input_json: string }, [string]>(`
+      SELECT ar.id, ar.campaign_id, ar.mission, ar.status, ar.objective, ar.limits_json, ar.error,
+        ar.created_at, ar.started_at, ar.finished_at, oj.input_json
+      FROM agent_runs ar
+      JOIN openclaw_jobs oj ON oj.run_id = ar.id
+      WHERE ar.status IN ('queued', 'running')
+        AND oj.skill = 'find_people'
+        AND oj.input_json LIKE ?
+      ORDER BY ar.created_at DESC
+      LIMIT 5
+    `)
+    .all(`%"companyCandidateId":"${companyCandidateId}"%`)
+
+  return rows.find((row) => {
+    const input = parseJson<{ targetCompany?: { companyCandidateId?: string } }>(row.input_json, {})
+    return input.targetCompany?.companyCandidateId === companyCandidateId
+  }) ?? null
+}
+
 function effectiveRunTimeoutSeconds(mission: string, value: unknown) {
   const configured = nonNegativeInteger(value, mission === "people" ? 300 : 900)
   if (mission === "people") return configured
@@ -1658,6 +1906,16 @@ function validateOpenClawOutput(skill: string, output: unknown): { ok: true; out
     }
   }
 
+  if (skill === "find_people") {
+    if (!Array.isArray(record.people)) return { ok: false, error: "find_people output must include people array." }
+    return {
+      ok: true,
+      output: {
+        people: record.people.map(normalizePersonOutput).filter((person) => person.name),
+      },
+    }
+  }
+
   return { ok: true, output: record }
 }
 
@@ -1686,6 +1944,30 @@ function normalizeEvidenceOutput(value: unknown) {
     type: cleanText(record.type, "source"),
     url: cleanText(record.url, ""),
     note: cleanText(record.note, ""),
+  }
+}
+
+function normalizePersonOutput(value: unknown) {
+  const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+  const score = nonNegativeInteger(record.score, 0)
+  return {
+    name: cleanText(record.name, ""),
+    title: cleanText(record.title, ""),
+    company_name: cleanText(record.company_name, ""),
+    company_domain: normalizeDomain(cleanText(record.company_domain, "")),
+    linkedin_url: cleanText(record.linkedin_url, ""),
+    email: cleanText(record.email, "").toLowerCase(),
+    phone: cleanText(record.phone, ""),
+    country: cleanText(record.country, ""),
+    city: cleanText(record.city, ""),
+    seniority: cleanText(record.seniority, ""),
+    function: cleanText(record.function, ""),
+    description: cleanText(record.description, ""),
+    score: Math.min(score, 100),
+    rationale: cleanText(record.rationale, ""),
+    angle_hint: cleanText(record.angle_hint, ""),
+    source_provider: cleanText(record.source_provider, ""),
+    evidence: Array.isArray(record.evidence) ? record.evidence.map(normalizeEvidenceOutput).filter(Boolean) : [],
   }
 }
 
@@ -1783,11 +2065,134 @@ function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unkno
   }
 }
 
+function persistFoundPeople(job: OpenClawJobRow, output: Record<string, unknown>) {
+  const people = Array.isArray(output.people) ? output.people : []
+  const input = parseJson<{ targetCompany?: { companyId?: string; name?: string; domain?: string; country?: string } }>(
+    job.input_json,
+    {},
+  )
+  const targetCompanyId = input.targetCompany?.companyId || ""
+  const targetCompanyName = input.targetCompany?.name || ""
+  const targetCompanyDomain = input.targetCompany?.domain || ""
+  const targetCountry = input.targetCompany?.country || ""
+
+  for (const person of people) {
+    if (!person || typeof person !== "object" || Array.isArray(person)) continue
+    const candidate = person as ReturnType<typeof normalizePersonOutput>
+    if (!candidate.name) continue
+
+    const companyId =
+      targetCompanyId ||
+      findExistingCompany(candidate.company_domain || targetCompanyDomain, "", normalizeName(candidate.company_name || targetCompanyName), candidate.country || targetCountry)?.id ||
+      null
+
+    insertEvent({
+      campaignId: job.campaign_id,
+      runId: job.run_id,
+      jobId: job.id,
+      subjectType: "person_candidate",
+      subjectId: "",
+      level: "info",
+      eventType: "person.proposed",
+      message: `${candidate.name} propuesta por OpenClaw.`,
+      payload: { title: candidate.title, email: candidate.email, linkedinUrl: candidate.linkedin_url, score: candidate.score },
+    })
+
+    if (isSuppressedPersonCandidate(candidate)) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "person_candidate",
+        subjectId: "",
+        level: "warning",
+        eventType: "person.suppressed",
+        message: `${candidate.name} omitida por suppression_list.`,
+        payload: { email: candidate.email, linkedinUrl: candidate.linkedin_url },
+      })
+      continue
+    }
+
+    const personId = upsertPersonFromCandidate(candidate, companyId, targetCompanyName, job.run_id)
+    const candidateId = stableId("person_candidate", job.campaign_id, personId)
+    const existingCandidate = db
+      .query<{ id: string }, [string, string]>("SELECT id FROM person_candidates WHERE campaign_id = ? AND person_id = ? LIMIT 1")
+      .get(job.campaign_id, personId)
+    if (existingCandidate) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "person_candidate",
+        subjectId: existingCandidate.id,
+        level: "info",
+        eventType: "person.dedupe_skipped",
+        message: `${candidate.name} ya existía en esta campaña.`,
+        payload: { personId, score: candidate.score },
+      })
+      continue
+    }
+
+    db.prepare(`
+      INSERT OR IGNORE INTO person_candidates (
+        id,
+        campaign_id,
+        run_id,
+        person_id,
+        company_id,
+        status,
+        score,
+        rationale,
+        evidence_json,
+        angle_hint
+      ) VALUES (?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)
+    `).run(
+      candidateId,
+      job.campaign_id,
+      job.run_id,
+      personId,
+      companyId,
+      candidate.score,
+      candidate.rationale,
+      JSON.stringify(candidate.evidence),
+      candidate.angle_hint,
+    )
+
+    insertEvent({
+      campaignId: job.campaign_id,
+      runId: job.run_id,
+      jobId: job.id,
+      subjectType: "person_candidate",
+      subjectId: candidateId,
+      level: "info",
+      eventType: "person.saved",
+      message: `${candidate.name} guardada como persona candidata.`,
+      payload: { personId, companyId, score: candidate.score, sourceProvider: candidate.source_provider },
+    })
+  }
+}
+
 function isSuppressedCompanyCandidate(company: ReturnType<typeof normalizeCompanyOutput>) {
   const checks: Array<[string, string]> = []
   if (company.domain) checks.push(["domain", normalizeName(company.domain)])
   if (company.linkedin_url) checks.push(["linkedin_url", company.linkedin_url.toLowerCase()])
   if (company.name) checks.push(["company", normalizeName(company.name)])
+
+  return checks.some(([scope, normalizedValue]) => {
+    const row = db
+      .query<{ count: number }, [string, string]>(
+        "SELECT COUNT(*) AS count FROM suppression_list WHERE scope = ? AND normalized_value = ?",
+      )
+      .get(scope, normalizedValue)
+    return Boolean(row && row.count > 0)
+  })
+}
+
+function isSuppressedPersonCandidate(person: ReturnType<typeof normalizePersonOutput>) {
+  const checks: Array<[string, string]> = []
+  if (person.email) checks.push(["email", person.email.toLowerCase()])
+  if (person.linkedin_url) checks.push(["linkedin_url", person.linkedin_url.toLowerCase()])
+  if (person.name) checks.push(["person", normalizeName(person.name)])
 
   return checks.some(([scope, normalizedValue]) => {
     const row = db
@@ -1887,9 +2292,145 @@ function findExistingCompany(domain: string, linkedinUrl: string, normalizedName
   return null
 }
 
+function upsertPersonFromCandidate(
+  person: ReturnType<typeof normalizePersonOutput>,
+  companyId: string | null,
+  fallbackCompanyName: string,
+  runId: string,
+) {
+  const normalized = normalizeName(person.name)
+  const companyName = person.company_name || fallbackCompanyName || ""
+  const existing = findExistingPerson(person.email, person.linkedin_url, normalized, companyId, companyName, person.country)
+  const personId = existing?.id ?? uniqueId("person", person.name)
+
+  if (!existing) {
+    db.prepare(`
+      INSERT INTO people (
+        id,
+        name,
+        normalized_name,
+        title,
+        company_id,
+        company_name,
+        linkedin_url,
+        email,
+        phone,
+        country,
+        city,
+        seniority,
+        function,
+        description,
+        source_provider,
+        source_json,
+        first_seen_run_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      personId,
+      person.name,
+      normalized,
+      person.title,
+      companyId,
+      companyName,
+      person.linkedin_url,
+      person.email,
+      person.phone,
+      person.country,
+      person.city,
+      person.seniority,
+      person.function,
+      person.description,
+      person.source_provider,
+      JSON.stringify({ source: "openclaw", provider: person.source_provider }),
+      runId,
+    )
+    return personId
+  }
+
+  db.prepare(`
+    UPDATE people
+    SET
+      title = CASE WHEN ? <> '' THEN ? ELSE title END,
+      company_id = COALESCE(company_id, ?),
+      company_name = CASE WHEN ? <> '' THEN ? ELSE company_name END,
+      linkedin_url = CASE WHEN ? <> '' THEN ? ELSE linkedin_url END,
+      email = CASE WHEN ? <> '' THEN ? ELSE email END,
+      phone = CASE WHEN ? <> '' THEN ? ELSE phone END,
+      country = CASE WHEN ? <> '' THEN ? ELSE country END,
+      city = CASE WHEN ? <> '' THEN ? ELSE city END,
+      seniority = CASE WHEN ? <> '' THEN ? ELSE seniority END,
+      function = CASE WHEN ? <> '' THEN ? ELSE function END,
+      description = CASE WHEN ? <> '' THEN ? ELSE description END,
+      source_provider = CASE WHEN ? <> '' THEN ? ELSE source_provider END,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    person.title,
+    person.title,
+    companyId,
+    companyName,
+    companyName,
+    person.linkedin_url,
+    person.linkedin_url,
+    person.email,
+    person.email,
+    person.phone,
+    person.phone,
+    person.country,
+    person.country,
+    person.city,
+    person.city,
+    person.seniority,
+    person.seniority,
+    person.function,
+    person.function,
+    person.description,
+    person.description,
+    person.source_provider,
+    person.source_provider,
+    personId,
+  )
+  return personId
+}
+
+function findExistingPerson(
+  email: string,
+  linkedinUrl: string,
+  normalizedName: string,
+  companyId: string | null,
+  companyName: string,
+  country: string,
+) {
+  if (email) {
+    const row = db.query<{ id: string }, [string]>("SELECT id FROM people WHERE email = ? LIMIT 1").get(email)
+    if (row) return row
+  }
+  if (linkedinUrl) {
+    const row = db.query<{ id: string }, [string]>("SELECT id FROM people WHERE linkedin_url = ? LIMIT 1").get(linkedinUrl)
+    if (row) return row
+  }
+  if (normalizedName && companyId) {
+    const row = db
+      .query<{ id: string }, [string, string]>("SELECT id FROM people WHERE normalized_name = ? AND company_id = ? LIMIT 1")
+      .get(normalizedName, companyId)
+    if (row) return row
+  }
+  if (normalizedName && companyName) {
+    const row = db
+      .query<{ id: string }, [string, string, string]>(
+        "SELECT id FROM people WHERE normalized_name = ? AND company_name = ? AND country = ? LIMIT 1",
+      )
+      .get(normalizedName, companyName, country)
+    if (row) return row
+  }
+  return null
+}
+
 function outputSummary(skill: string, output: Record<string, unknown>) {
   if (skill === "find_companies") {
     return { companies: Array.isArray(output.companies) ? output.companies.length : 0 }
+  }
+  if (skill === "find_people") {
+    return { people: Array.isArray(output.people) ? output.people.length : 0 }
   }
   return {}
 }
