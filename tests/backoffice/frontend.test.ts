@@ -116,6 +116,14 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("reviewCompanyCandidate(company.candidateId, status, feedback || undefined)")
     expect(screen).toContain("if (next) setSelectedId(next.id)")
     expect(screen).toContain("onMouseDown={(event)=>submitCompanyReview")
+    expect(screen).toContain("const ProcessLogs")
+    expect(screen).toContain("Logs")
+    expect(screen).toContain("find_companies")
+    expect(screen).toContain("research_company")
+    expect(screen).toContain("find_people")
+    expect(screen).toContain("research_person")
+    expect(screen).toContain("Abrir")
+    expect(screen).toContain("Cerrar")
     expect(devServer).toContain("startDevOpenClawWorkerOnce")
   })
 
@@ -128,6 +136,8 @@ describe("clo backoffice frontend", () => {
     expect(app).toContain("parseRouteHash")
     expect(campaigns).toContain("openCampaign(b.id)")
     expect(detail).toContain("Array.isArray(b.runs)")
+    expect(detail).toContain("<ProcessLogs runs={campaignRuns} process=\"companies\"/>")
+    expect(detail).toContain("<ProcessLogs runs={campaignRuns} process=\"people\"/>")
   })
 })
 
@@ -392,6 +402,11 @@ describe("clo backoffice local database", () => {
       expect(input.brief?.maxCompanies).toBe(10)
       expect(input.brief?.minScoreThreshold).toBe(75)
       expect(input.brief?.discoveryMode).toBe("fast_prefetch")
+      const detail = campaignId ? getCampaignDetail(campaignId) : null
+      const detailRun = detail?.runs.find((run) => run.id === runId)
+
+      expect(detailRun?.jobs?.map((item) => item.skill)).toContain("find_companies")
+      expect(detailRun?.skills).toContain("find_companies")
 
       const cancelled = cancelCampaignRun(runId)
       expect(cancelled && "run" in cancelled ? cancelled.run?.status : "").toBe("cancelled")

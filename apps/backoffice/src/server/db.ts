@@ -1305,10 +1305,40 @@ function getRunRow(runId: string) {
     .get(runId)
 }
 
+function listRunJobSummaries(runId: string) {
+  return db
+    .query<
+      Pick<
+        OpenClawJobRow,
+        "id" | "skill" | "status" | "error" | "attempt" | "max_attempts" | "timeout_seconds" | "started_at" | "finished_at" | "created_at"
+      >,
+      [string]
+    >(`
+      SELECT id, skill, status, error, attempt, max_attempts, timeout_seconds, started_at, finished_at, created_at
+      FROM openclaw_jobs
+      WHERE run_id = ?
+      ORDER BY created_at ASC
+    `)
+    .all(runId)
+    .map((row) => ({
+      id: row.id,
+      skill: row.skill,
+      status: row.status,
+      error: row.error,
+      attempt: row.attempt,
+      maxAttempts: row.max_attempts,
+      timeoutSeconds: row.timeout_seconds,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      created: formatDateLabel(row.created_at),
+    }))
+}
+
 function formatRun(row: RunRow) {
   const companyCandidates =
     db.query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM company_candidates WHERE run_id = ?").get(row.id)
       ?.count ?? 0
+  const jobs = listRunJobSummaries(row.id)
 
   return {
     id: row.id,
@@ -1317,6 +1347,8 @@ function formatRun(row: RunRow) {
     objective: row.objective,
     companyCandidates,
     limits: parseJson(row.limits_json, {}),
+    jobs,
+    skills: jobs.map((job) => job.skill),
     error: row.error,
     created: formatDateLabel(row.created_at),
     startedAt: row.started_at,

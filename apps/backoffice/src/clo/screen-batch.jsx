@@ -179,17 +179,25 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
         <div className="batch-tab-body">
           {tab==="busqueda" && <BatchBusqueda b={b} onSaved={(campaign)=>setDetail(campaign)}/>}
           {tab==="empresas" && (
-            <BatchEmpresas
-              companies={companies}
-              brief={b.brief}
-              activeRun={activeRun}
-              hiddenCount={companies?.hiddenCount || 0}
-              onRerun={()=>launchRun({ replaceQueuedRun: true, revealCachedCompanies: true, reviewBatchSize: 10, prefetchCompanies: companyPrefetchSize(b.brief) })}
-              rerunBusy={runBusy}
-              onOpenAutoSearch={()=>setAutoSearchOpen(true)}
-            />
+            <>
+              <BatchEmpresas
+                companies={companies}
+                brief={b.brief}
+                activeRun={activeRun}
+                hiddenCount={companies?.hiddenCount || 0}
+                onRerun={()=>launchRun({ replaceQueuedRun: true, revealCachedCompanies: true, reviewBatchSize: 10, prefetchCompanies: companyPrefetchSize(b.brief) })}
+                rerunBusy={runBusy}
+                onOpenAutoSearch={()=>setAutoSearchOpen(true)}
+              />
+              <ProcessLogs runs={campaignRuns} process="companies"/>
+            </>
           )}
-          {tab==="personas" && <BatchPersonas people={people}/>}
+          {tab==="personas" && (
+            <>
+              <BatchPersonas people={people}/>
+              <ProcessLogs runs={campaignRuns} process="people"/>
+            </>
+          )}
           {tab==="angulo"   && <BatchAngulo/>}
           {tab==="contenido"&& <BatchContenido/>}
         </div>
@@ -235,6 +243,94 @@ const emptyBrief = {
   maxPeople: 0,
   maxRuntimeSeconds: 120,
   minScoreThreshold: 75,
+};
+
+const COMPANY_LOG_SKILLS = ["find_companies", "research_company", "score_company"];
+const PEOPLE_LOG_SKILLS = ["find_people", "research_person", "score_person", "draft_outreach"];
+const COMPANY_LOG_MISSIONS = ["companies", "companies_then_people", "find_companies"];
+const PEOPLE_LOG_MISSIONS = ["people", "find_people"];
+
+const runLogSkills = (run) => {
+  const jobs = Array.isArray(run?.jobs) ? run.jobs : [];
+  return [...new Set(jobs.map((job) => job.skill).filter(Boolean))];
+};
+
+const runMatchesProcess = (run, process) => {
+  const skills = runLogSkills(run);
+  if (process === "companies") {
+    return skills.some((skill) => COMPANY_LOG_SKILLS.includes(skill)) || COMPANY_LOG_MISSIONS.includes(run?.mission);
+  }
+  return skills.some((skill) => PEOPLE_LOG_SKILLS.includes(skill)) || PEOPLE_LOG_MISSIONS.includes(run?.mission);
+};
+
+const runStatusKind = (status) => {
+  if (status === "succeeded") return "done";
+  if (status === "failed" || status === "cancelled") return "danger";
+  if (status === "running") return "running";
+  if (status === "queued") return "warn";
+  return "empty";
+};
+
+const runDateLabel = (run) => run.finishedAt || run.startedAt || run.created || "-";
+
+const ProcessLogs = ({ runs, process }) => {
+  const [open, setOpen] = React.useState(true);
+  const filteredRuns = (Array.isArray(runs) ? runs : []).filter((run) => runMatchesProcess(run, process));
+  const title = process === "companies" ? "Corridas de empresas" : "Corridas de personas";
+
+  return (
+    <div className="card" style={{marginTop:14}}>
+      <div className="card-head">
+        <div>
+          <div className="card-title">Logs</div>
+          <div style={{fontSize:12, color:"var(--fg-3)", marginTop:4}}>{title}</div>
+        </div>
+        <div className="card-actions">
+          <span className="entity"><Icons.Activity size={11}/>{filteredRuns.length} corridas</span>
+          <button className="ghost-btn sm" onClick={()=>setOpen(!open)}>
+            {open ? <Icons.ChevronDown size={12}/> : <Icons.Chevron size={12}/>}
+            {open ? "Cerrar" : "Abrir"}
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div style={{padding:"0 20px 16px"}}>
+          {filteredRuns.length === 0 && (
+            <div style={{padding:"18px 0", color:"var(--fg-3)", fontSize:13}}>Sin logs todavía.</div>
+          )}
+          {filteredRuns.length > 0 && (
+            <table className="dt">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Skills</th>
+                  <th>Estado</th>
+                  <th className="right">Candidatos</th>
+                  <th>Última actividad</th>
+                  <th>Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRuns.map((run) => {
+                  const skills = runLogSkills(run);
+                  return (
+                    <tr key={run.id}>
+                      <td><span className="mono" style={{fontSize:11.5}}>{run.id}</span></td>
+                      <td>{skills.length ? skills.join(", ") : run.mission}</td>
+                      <td><window.StatusPill kind={runStatusKind(run.status)} label={run.status}/></td>
+                      <td className="right num">{process === "companies" ? (run.companyCandidates ?? 0) : "-"}</td>
+                      <td style={{fontSize:12, color:"var(--fg-2)"}}>{runDateLabel(run)}</td>
+                      <td style={{fontSize:12, color:"var(--danger)"}}>{run.error || "-"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const BatchBusqueda = ({ b, onSaved }) => {
