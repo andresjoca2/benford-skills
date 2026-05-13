@@ -1025,18 +1025,7 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
             </div>
           </div>
 
-          <div style={{padding:"18px 20px", display:"grid", gap:16}}>
-            <label className="form-row" style={{margin:0}}>
-              <span className="form-label">Motivo para refrescar esta empresa</span>
-              <textarea
-                className="ang-textarea"
-                rows={2}
-                value={companyFeedback}
-                onChange={(event)=>setCompanyFeedback(event.target.value)}
-                placeholder="Qué faltó en las personas anteriores. Ej. buscar partnerships o marketing; evitar perfiles de ventas."
-              />
-            </label>
-
+          <div style={{padding:"12px 20px 16px", display:"grid", gap:10}}>
             {companyRunActive && (
               <div className="inline-alert">Hay una búsqueda de personas corriendo o en cola. El worker la procesará en segundo plano.</div>
             )}
@@ -1054,11 +1043,11 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
                   const personFeedback = feedbackByPerson[person.id] ?? person.userFeedback ?? "";
                   return (
                     <div key={person.id} style={{borderBottom:"1px solid var(--border)", background:expanded ? "var(--bg)" : "var(--bg-1)"}}>
-                      <div style={{display:"grid", gridTemplateColumns:"minmax(280px, 3fr) minmax(260px, 2fr)", gap:14, padding:"12px 14px", alignItems:"stretch"}}>
+                      <div style={{display:"grid", gridTemplateColumns:"minmax(280px, 3fr) minmax(260px, 2fr)", gap:12, padding:"8px 10px", alignItems:"stretch"}}>
                         <button
                           className={`emp-item ${expanded?"selected":""}`}
                           onClick={()=>setSelectedPersonId(expanded ? "" : person.id)}
-                          style={{width:"100%", minHeight:116, border:"1px solid var(--border)", borderRadius:8, background:expanded ? "var(--hover)" : "var(--bg)", alignItems:"flex-start"}}
+                          style={{width:"100%", minHeight:82, padding:"10px 12px", border:"1px solid var(--border)", borderRadius:8, background:expanded ? "var(--hover)" : "var(--bg)", alignItems:"center"}}
                         >
                           <window.Avatar initials={person.name.split(" ").map(x=>x[0]).slice(0,2).join("")} color="#27272A"/>
                           <div style={{flex:1, minWidth:0}}>
@@ -1067,44 +1056,44 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
                               {person.review==="aceptada" && <span className="emp-dot" style={{background:"var(--ok)"}}/>}
                               {person.review==="enrich" && <span className="emp-dot" style={{background:"var(--warn)"}}/>}
                               {person.review==="rechazada" && <span className="emp-dot" style={{background:"var(--danger)"}}/>}
-                              <span className="mono" style={{marginLeft:"auto", fontSize:13, color:"var(--fg)"}}>{person.score}%</span>
                             </div>
-                            <div className="row-sub" style={{marginTop:5, whiteSpace:"normal", lineHeight:1.35}}>{person.title || "Sin cargo"}</div>
-                            <div style={{display:"flex", gap:5, marginTop:10, flexWrap:"wrap"}}>
-                              <span className={`entity ${person.email ? "" : "muted"}`} title={person.email || "Sin email"}><Icons.Mail size={10}/></span>
-                              <span className={`entity ${person.linkedinUrl ? "" : "muted"}`} title={person.linkedinUrl || "Sin LinkedIn"}><Icons.Linkedin size={10}/></span>
-                              <span className={`entity ${person.phone ? "" : "muted"}`} title={person.phone || "Sin teléfono"}><Icons.Phone size={10}/></span>
-                              <span className="entity" style={{fontSize:11}}><Icons.Chevron size={10}/>{expanded ? "Cerrar" : "Detalle"}</span>
+                            <div className="row-sub" style={{marginTop:4, whiteSpace:"normal", lineHeight:1.25, fontSize:12}}>{person.title || "Sin cargo"}</div>
+                          </div>
+                          <div style={{display:"grid", justifyItems:"end", alignSelf:"stretch", alignContent:"space-between", flexShrink:0, minWidth:58}}>
+                            <span className="mono" style={{fontSize:13, color:"var(--fg)"}}>{person.score}%</span>
+                            <div style={{display:"flex", gap:4, flexWrap:"wrap", justifyContent:"flex-end"}}>
+                              <span className={`entity ${person.email ? "" : "muted"}`} title={person.email || "Sin email"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Mail size={10}/></span>
+                              <span className={`entity ${person.linkedinUrl ? "" : "muted"}`} title={person.linkedinUrl || "Sin LinkedIn"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Linkedin size={10}/></span>
+                              <span className={`entity ${person.phone ? "" : "muted"}`} title={person.phone || "Sin teléfono"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Phone size={10}/></span>
                             </div>
                           </div>
                         </button>
 
-                        <div style={{display:"grid", gap:10, alignContent:"start"}}>
+                        <div style={{display:"grid", gap:7, alignContent:"start"}}>
                           <label className="form-row" style={{margin:0}}>
-                            <span className="form-label">Motivo</span>
                             <textarea
                               className="ang-textarea"
-                              rows={3}
+                              rows={2}
                               value={personFeedback}
                               onChange={(event)=>setFeedbackByPerson((items) => ({...items, [person.id]: event.target.value}))}
-                              placeholder="Por qué esta persona sí o no sirve. Esto aprende para toda la campaña."
-                              style={{minHeight:76}}
+                              placeholder="Por qué esta persona sí o no sirve."
+                              style={{minHeight:52, padding:"9px 10px"}}
                             />
                           </label>
 
                           <div style={{display:"flex", gap:8, justifyContent:"flex-end", flexWrap:"wrap"}}>
                             {person.review !== "aceptada" && (
-                              <button className="review-btn accept" onClick={()=>setPersonReview(person, "approved", personFeedback)}>
+                              <button className="review-btn accept" style={{height:28, padding:"0 10px"}} onClick={()=>setPersonReview(person, "approved", personFeedback)}>
                                 <Icons.Check size={12} sw={2.4}/> Aceptar
                               </button>
                             )}
                             {person.review !== "enrich" && (
-                              <button className="review-btn enrich" onClick={()=>setPersonReview(person, "needs_more_research", personFeedback)}>
+                              <button className="review-btn enrich" style={{height:28, padding:"0 10px"}} onClick={()=>setPersonReview(person, "needs_more_research", personFeedback)}>
                                 <Icons.Search size={12} sw={2.4}/> Enrich
                               </button>
                             )}
                             {person.review !== "rechazada" && (
-                              <button className="review-btn reject" onClick={()=>setPersonReview(person, "rejected", personFeedback)}>
+                              <button className="review-btn reject" style={{height:28, padding:"0 10px"}} onClick={()=>setPersonReview(person, "rejected", personFeedback)}>
                                 <Icons.X size={12} sw={2.4}/> Rechazar
                               </button>
                             )}
