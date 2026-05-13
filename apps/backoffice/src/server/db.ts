@@ -2001,16 +2001,20 @@ function normalizePersonOutput(value: unknown) {
 }
 
 export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, input: PeopleScoringInput = {}) {
-  const text = normalizeName(
+  const roleText = normalizeName(
     [
       person.title,
       person.seniority,
       person.function,
       person.description,
-      person.rationale,
-      person.angle_hint,
       person.country,
       person.city,
+    ].join(" "),
+  )
+  const explanationText = normalizeName(
+    [
+      person.rationale,
+      person.angle_hint,
     ].join(" "),
   )
   const campaignText = normalizeName(
@@ -2029,7 +2033,7 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
       .map((item) => `${item?.type} ${item?.url} ${item?.note}`)
       .join(" "),
   )
-  const personScopeText = `${text} ${evidenceText}`
+  const personScopeText = `${roleText} ${evidenceText}`
   const largeCompany = isLargeCompanyRange(input.targetCompany?.employeeRange || "")
   const partnershipMotion = hasAny(campaignText, [
     "partner",
@@ -2048,10 +2052,10 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
     "ecosystem",
     "ecosistema",
   ])
-  const executive = hasAny(text, ["ceo", "chief executive officer", "founder", "co founder", "cofundador", "president", "chairman", "owner", "dueno", "propietario"])
-  const globalExecutive = executive && hasAny(text, ["global", "corporate", "group", "worldwide", "international", "executive chairman", "board"])
+  const executive = hasAny(roleText, ["ceo", "chief executive officer", "founder", "co founder", "cofundador", "chairman", "owner", "dueno", "propietario"])
+  const globalExecutive = executive && hasAny(roleText, ["global", "corporate", "group", "worldwide", "international", "executive chairman", "board"])
   const explicitExecutiveAsk = hasAny(campaignText, ["ceo", "founder", "fundador", "c level", "c suite", "director general", "dueno", "owner"])
-  const relevantOperator = hasAny(text, [
+  const relevantOperator = hasAny(roleText, [
     "partnership",
     "partnerships",
     "partner",
@@ -2083,7 +2087,8 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
     "operaciones",
   ])
   const localScope = hasAny(personScopeText, ["mexico", "mex", "mx", "latam", "latin america", "america latina", "hispanoamerica"])
-  const operatorSeniority = hasAny(text, ["head", "director", "lead", "lider", "manager", "gerente", "vp", "vice president", "country", "regional"])
+  const explanationClaimsOwnership = hasAny(explanationText, ["partnership", "partnerships", "alianza", "alianzas", "canal", "channel"])
+  const operatorSeniority = hasAny(roleText, ["head", "director", "lead", "lider", "manager", "gerente", "vp", "vice president", "country", "regional"])
   const contactable = Boolean(person.email || person.linkedin_url || person.phone)
   const evidenceBacked = person.evidence.some((item) => Boolean(item?.url))
 
@@ -2105,6 +2110,9 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
   if (contactable) {
     delta += 4
     notes.push("sube por canal encontrado")
+  } else {
+    delta -= 6
+    notes.push("baja por falta de canal directo")
   }
   if (!evidenceBacked) {
     delta -= 12
@@ -2120,6 +2128,10 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
   if (partnershipMotion && !relevantOperator && executive && largeCompany) {
     delta -= 10
     notes.push("baja porque no muestra ownership de partnerships/canal")
+  }
+  if (partnershipMotion && explanationClaimsOwnership && !relevantOperator && largeCompany) {
+    delta -= 6
+    notes.push("baja porque el fit viene de la explicación, no del rol")
   }
 
   const score = clampScore(person.score + delta)
