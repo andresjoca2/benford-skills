@@ -109,6 +109,8 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("scoreFilterOn")
     expect(screen).toContain("minScoreThreshold")
     expect(screen).toContain("<span className=\"form-label\">Motivo</span>")
+    expect(screen).toContain("Enrich")
+    expect(screen).toContain("needs_more_research")
     expect(screen).toContain("reviewCompanyCandidate(company.candidateId, status, feedback || undefined)")
     expect(screen).toContain("if (next) setSelectedId(next.id)")
     expect(screen).toContain("onMouseDown={(event)=>submitCompanyReview")
@@ -793,10 +795,15 @@ describe("clo backoffice local database", () => {
         feedback: "Investigar rol actual.",
         createdBy: "Test",
       })
+      const enrichCompany = reviewCompanyCandidate("company_candidate_clip_fintech", {
+        status: "needs_more_research",
+        feedback: "No estoy seguro; revisar evidencia y sitio antes de decidir.",
+        createdBy: "Test",
+      })
 
       const feedback = db
         .query<{ count: number }, []>(
-          "SELECT COUNT(*) AS count FROM feedback WHERE subject_id IN ('company_candidate_mendel_fintech', 'person_candidate_andres_fintech') AND created_by = 'Test'",
+          "SELECT COUNT(*) AS count FROM feedback WHERE subject_id IN ('company_candidate_mendel_fintech', 'person_candidate_andres_fintech', 'company_candidate_clip_fintech') AND created_by = 'Test'",
         )
         .get()
       const suppression = db
@@ -806,21 +813,31 @@ describe("clo backoffice local database", () => {
         .get()
       const researchJob = db
         .query<{ count: number }, []>(
-          "SELECT COUNT(*) AS count FROM openclaw_jobs WHERE run_id = 'run_fintech_001' AND skill = 'research_person'",
+          "SELECT COUNT(*) AS count FROM openclaw_jobs WHERE run_id = 'run_fintech_001' AND skill IN ('research_person', 'research_company')",
         )
         .get()
+      const nextRun = createCampaignRun("campaign_fintech_latam", { prefetchCompanies: 10, reviewBatchSize: 10 })
+      const nextRunId = nextRun && "run" in nextRun ? nextRun.run?.id ?? "" : ""
+      const nextJob = db
+        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
+        .get(nextRunId)
+      const nextInput = nextJob ? JSON.parse(nextJob.input_json) : {}
 
       expect(company && "review" in company ? company.review : "").toBe("rechazada")
-      expect(person && "review" in person ? person.review : "").toBe("pendiente")
-      expect(feedback?.count).toBeGreaterThanOrEqual(2)
+      expect(person && "review" in person ? person.review : "").toBe("enrich")
+      expect(enrichCompany && "review" in enrichCompany ? enrichCompany.review : "").toBe("enrich")
+      expect(nextInput.memory?.needsMoreResearchCompanies?.map((row: { name: string }) => row.name)).toContain("Clip")
+      expect(feedback?.count).toBeGreaterThanOrEqual(3)
       expect(suppression?.count).toBeGreaterThanOrEqual(1)
-      expect(researchJob?.count).toBeGreaterThanOrEqual(1)
+      expect(researchJob?.count).toBeGreaterThanOrEqual(2)
     } finally {
-      db.prepare("UPDATE company_candidates SET status = 'new', user_feedback = '' WHERE id = 'company_candidate_mendel_fintech'").run()
+      db.prepare("UPDATE company_candidates SET status = 'new', user_feedback = '' WHERE id IN ('company_candidate_mendel_fintech', 'company_candidate_clip_fintech')").run()
       db.prepare("UPDATE person_candidates SET status = 'new', user_feedback = '' WHERE id = 'person_candidate_andres_fintech'").run()
       db.prepare("DELETE FROM feedback WHERE created_by = 'Test'").run()
       db.prepare("DELETE FROM suppression_list WHERE source = 'backoffice_review' AND created_by = 'Test'").run()
-      db.prepare("DELETE FROM openclaw_jobs WHERE run_id = 'run_fintech_001' AND skill = 'research_person'").run()
+      db.prepare("DELETE FROM openclaw_jobs WHERE run_id = 'run_fintech_001' AND skill IN ('research_person', 'research_company')").run()
+      db.prepare("DELETE FROM openclaw_jobs WHERE run_id LIKE 'run_campaign_fintech_latam_%'").run()
+      db.prepare("DELETE FROM agent_runs WHERE id LIKE 'run_campaign_fintech_latam_%'").run()
     }
   })
 

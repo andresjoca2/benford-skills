@@ -494,6 +494,7 @@ const BatchEmpresas = ({ companies, brief, activeRun, hiddenCount = 0, onRerun, 
   const counts = {
     todas:     visibleByScore.length,
     pendiente: visibleByScore.filter(r=>r.review==="pendiente").length,
+    enrich:    visibleByScore.filter(r=>r.review==="enrich").length,
     aceptada:  visibleByScore.filter(r=>r.review==="aceptada").length,
     rechazada: visibleByScore.filter(r=>r.review==="rechazada").length,
   };
@@ -527,13 +528,13 @@ const BatchEmpresas = ({ companies, brief, activeRun, hiddenCount = 0, onRerun, 
 
   const setCompanyReview = (id, val) => {
     const feedback = reviewFeedback.trim();
-    const order = state.filter(c => c.review==="pendiente" && c.id!==id);
+    const order = state.filter(c => ["pendiente", "enrich"].includes(c.review) && c.id!==id);
     const currentIndex = state.findIndex(c=>c.id===id);
     const next = order.find(c => state.findIndex(row=>row.id===c.id) > currentIndex) || order[0];
     setState(s => s.map(r => r.id===id ? {...r, review: val, userFeedback: feedback} : r));
     if (next) setSelectedId(next.id);
     const company = state.find(r => r.id === id);
-    const status = val === "aceptada" ? "approved" : val === "rechazada" ? "rejected" : "new";
+    const status = val === "aceptada" ? "approved" : val === "rechazada" ? "rejected" : val === "enrich" ? "needs_more_research" : "new";
     if (!company?.candidateId) return;
 
     window.BackofficeAPI?.reviewCompanyCandidate(company.candidateId, status, feedback || undefined)
@@ -555,6 +556,7 @@ const BatchEmpresas = ({ companies, brief, activeRun, hiddenCount = 0, onRerun, 
           <div className="tabs" style={{borderBottom:"none", padding:0}}>
             <div className={`tab ${tab==="todas"?"active":""}`}     onClick={()=>setTab("todas")}>Todas <span className="tab-count">{counts.todas}</span></div>
             <div className={`tab ${tab==="pendiente"?"active":""}`} onClick={()=>setTab("pendiente")}>Pendientes <span className="tab-count">{counts.pendiente}</span></div>
+            <div className={`tab ${tab==="enrich"?"active":""}`}    onClick={()=>setTab("enrich")}>Enrich <span className="tab-count">{counts.enrich}</span></div>
             <div className={`tab ${tab==="aceptada"?"active":""}`}  onClick={()=>setTab("aceptada")}>Aceptadas <span className="tab-count">{counts.aceptada}</span></div>
             <div className={`tab ${tab==="rechazada"?"active":""}`} onClick={()=>setTab("rechazada")}>Rechazadas <span className="tab-count">{counts.rechazada}</span></div>
           </div>
@@ -621,6 +623,7 @@ const BatchEmpresas = ({ companies, brief, activeRun, hiddenCount = 0, onRerun, 
                     <div style={{display:"flex", alignItems:"center", gap:6, marginBottom:2}}>
                       <span className="row-title" style={{fontSize:13, fontWeight:500}}>{c.name}</span>
                       {c.review==="aceptada"  && <span className="emp-dot" style={{background:"var(--ok)"}}></span>}
+                      {c.review==="enrich"    && <span className="emp-dot" style={{background:"var(--warn)"}}></span>}
                       {c.review==="rechazada" && <span className="emp-dot" style={{background:"var(--danger)"}}></span>}
                     </div>
                     <div style={{display:"flex", alignItems:"center", gap:8, fontSize:11.5, color:"var(--fg-3)"}}>
@@ -650,6 +653,7 @@ const BatchEmpresas = ({ companies, brief, activeRun, hiddenCount = 0, onRerun, 
                   <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:3}}>
                     <div className="card-title" style={{fontSize:16, fontWeight:600}}>{selected.name}</div>
                     {selected.review==="aceptada"  && <window.StatusPill kind="done"   label="Aceptada"/>}
+                    {selected.review==="enrich"    && <window.StatusPill kind="warn"   label="Enrich"/>}
                     {selected.review==="rechazada" && <window.StatusPill kind="danger" label="Rechazada"/>}
                     {selected.review==="pendiente" && <window.StatusPill kind="empty"  label="Pendiente"/>}
                   </div>
@@ -682,12 +686,17 @@ const BatchEmpresas = ({ companies, brief, activeRun, hiddenCount = 0, onRerun, 
                 <div className="card-actions" style={{justifyContent:"flex-end", marginLeft:0, paddingBottom:1}}>
                   {selected.review!=="rechazada" && (
                     <button type="button" className="review-btn reject" onMouseDown={(event)=>submitCompanyReview(event, selected.id, "rechazada")}>
-                      <Icons.X size={12} sw={2.4}/> Rechazar empresa
+                      <Icons.X size={12} sw={2.4}/> Rechazar
+                    </button>
+                  )}
+                  {selected.review!=="enrich" && (
+                    <button type="button" className="review-btn enrich" onMouseDown={(event)=>submitCompanyReview(event, selected.id, "enrich")}>
+                      <Icons.Search size={12} sw={2.4}/> Enrich
                     </button>
                   )}
                   {selected.review!=="aceptada" && (
                     <button type="button" className="review-btn accept" onMouseDown={(event)=>submitCompanyReview(event, selected.id, "aceptada")}>
-                      <Icons.Check size={12} sw={2.4}/> Aceptar empresa
+                      <Icons.Check size={12} sw={2.4}/> Aceptar
                     </button>
                   )}
                 </div>

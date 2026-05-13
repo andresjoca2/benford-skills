@@ -100,8 +100,8 @@ That browser session is local, but the API and SQLite writes are remote.
    - `company_candidates`
    - `agent_events`
 9. Review companies in the UI.
-10. Before accepting/rejecting, optionally write feedback in `Motivo`.
-11. Click accept/reject.
+10. Before accepting, rejecting, or sending to `Enrich`, optionally write feedback in `Motivo`.
+11. Click accept/reject, or `Enrich` when the candidate needs more evidence before a final decision.
 12. Click `Re-ejecutar búsqueda` again.
 
 The frontend sends:
@@ -132,7 +132,8 @@ The next job input includes:
     "approvedCompanies": [],
     "rejectedCompanies": [],
     "suppression": [],
-    "feedback": []
+    "feedback": [],
+    "needsMoreResearchCompanies": []
   }
 }
 ```

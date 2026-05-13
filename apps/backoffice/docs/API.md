@@ -164,8 +164,10 @@ approved, rejected, maybe, needs_more_research, do_not_contact, new
 
 Writes candidate status and an `agent_events` record. Non-empty `feedback` also
 writes a `feedback` row. `do_not_contact` also writes `suppression_list`;
-`needs_more_research` enqueues a research job. Non-empty feedback text is memory
-for the next run and is sent in `openclaw_jobs.input_json.memory.feedback`.
+`needs_more_research` is exposed in the UI as `Enrich`: it keeps the candidate
+available as enrichment context for the next run and enqueues a research job.
+Non-empty feedback text is memory for the next run and is sent in
+`openclaw_jobs.input_json.memory.feedback`.
 
 ### `POST /api/candidates/person/:id/review`
 

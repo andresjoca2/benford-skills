@@ -1267,6 +1267,7 @@ function candidateStatus(status: string) {
 
 function reviewState(status: string) {
   if (status === "approved") return "aceptada"
+  if (status === "needs_more_research") return "enrich"
   if (status === "rejected" || status === "do_not_contact") return "rechazada"
   return "pendiente"
 }
@@ -1583,6 +1584,14 @@ function campaignMemory(campaignId: string) {
     alreadySeenLinkedinUrls: companies.map((row) => row.linkedin_url).filter(Boolean),
     approvedCompanies: companies.filter((row) => row.status === "approved").map((row) => row.name),
     rejectedCompanies: companies.filter((row) => row.status === "rejected" || row.status === "do_not_contact").map((row) => row.name),
+    needsMoreResearchCompanies: companies
+      .filter((row) => row.status === "needs_more_research")
+      .map((row) => ({
+        name: row.name,
+        domain: row.domain,
+        linkedinUrl: row.linkedin_url,
+        note: row.user_feedback,
+      })),
     suppression: suppression.map((row) => row.value),
     feedback: feedback.map((row) => ({
       company: row.company_name || row.subject_id,
