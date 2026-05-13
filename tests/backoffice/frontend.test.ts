@@ -51,12 +51,16 @@ function restoreFintechBrief() {
 describe("clo backoffice frontend", () => {
   test("uses local runtime and local JSX screens", async () => {
     const html = await readFile(path.join(appRoot, "index.html"), "utf8")
+    const runtime = await readFile(path.join(appRoot, "src/vendor/react-lite.js"), "utf8")
 
     expect(html).toContain("/src/vendor/react-lite.js")
       expect(html).toContain("/src/clo/app.jsx")
       expect(html).toContain("/src/clo/screen-tablas.jsx")
     expect(html).not.toContain("unpkg.com")
     expect(html).not.toContain("text/babel")
+    expect(runtime).toContain("captureFormState")
+    expect(runtime).toContain("restoreFormState")
+    expect(runtime).toContain("__reactLiteControlled")
   })
 
   test("keeps referenced scripts present on disk", async () => {

@@ -118,6 +118,9 @@
 
   function setProp(node, name, value) {
     if (name === "children" || name === "key") return;
+    if (name === "value" || name === "checked") {
+      node.__reactLiteControlled = true;
+    }
     if (name === "className") {
       node.setAttribute("class", value || "");
       return;
@@ -146,6 +149,76 @@
       }
     } else {
       node.setAttribute(name, String(value));
+    }
+  }
+
+  function formFieldKey(node, indexByKey) {
+    if (!node || !node.tagName) return "";
+    const tag = node.tagName.toLowerCase();
+    if (!["input", "textarea", "select"].includes(tag)) return "";
+    const name = node.getAttribute("name") || node.id || "";
+    if (!name) return "";
+    const form = node.closest("form");
+    const formKey = form ? (form.id || form.getAttribute("name") || "") : "";
+    const type = tag === "input" ? (node.getAttribute("type") || "text") : "";
+    const base = `${formKey}|${tag}|${type}|${name}`;
+    const index = indexByKey.get(base) || 0;
+    indexByKey.set(base, index + 1);
+    return `${base}|${index}`;
+  }
+
+  function captureFormState(root) {
+    if (!root || typeof root.querySelectorAll !== "function") return { fields: new Map(), activeKey: "", selection: null };
+    const fields = new Map();
+    const indexByKey = new Map();
+    const activeElement = document.activeElement;
+    let activeKey = "";
+    let selection = null;
+
+    root.querySelectorAll("input, textarea, select").forEach((node) => {
+      const key = formFieldKey(node, indexByKey);
+      if (!key || node.__reactLiteControlled) return;
+      const state = {
+        checked: node.checked,
+        value: node.value,
+      };
+      fields.set(key, state);
+
+      if (node === activeElement) {
+        activeKey = key;
+        if (typeof node.selectionStart === "number" && typeof node.selectionEnd === "number") {
+          selection = { start: node.selectionStart, end: node.selectionEnd };
+        }
+      }
+    });
+
+    return { fields, activeKey, selection };
+  }
+
+  function restoreFormState(root, snapshot) {
+    if (!root || !snapshot || !(snapshot.fields instanceof Map)) return;
+    const indexByKey = new Map();
+    let activeNode = null;
+
+    root.querySelectorAll("input, textarea, select").forEach((node) => {
+      const key = formFieldKey(node, indexByKey);
+      const state = snapshot.fields.get(key);
+      if (!state || node.__reactLiteControlled) return;
+      if (node.type === "checkbox" || node.type === "radio") {
+        node.checked = Boolean(state.checked);
+      } else {
+        node.value = state.value;
+      }
+      if (key === snapshot.activeKey) activeNode = node;
+    });
+
+    if (activeNode && typeof activeNode.focus === "function") {
+      activeNode.focus();
+      if (snapshot.selection && typeof activeNode.setSelectionRange === "function") {
+        try {
+          activeNode.setSelectionRange(snapshot.selection.start, snapshot.selection.end);
+        } catch {}
+      }
     }
   }
 
@@ -204,7 +277,9 @@
     currentComponentKey = null;
     hookIndex = 0;
     effects = [];
+    const formState = captureFormState(rootNode);
     rootNode.replaceChildren(renderElement(rootComponent()));
+    restoreFormState(rootNode, formState);
     rendering = false;
     runEffects();
   }
