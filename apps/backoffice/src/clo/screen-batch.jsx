@@ -875,7 +875,7 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
   const [tab, setTab] = React.useState("todas");
   const [selectedCompanyId, setSelectedCompanyId] = React.useState(approvedCompanies[0]?.id || "");
   const [selectedPersonId, setSelectedPersonId] = React.useState("");
-  const [feedback, setFeedback] = React.useState("");
+  const [feedbackByPerson, setFeedbackByPerson] = React.useState({});
   const [companyFeedback, setCompanyFeedback] = React.useState("");
   const [busyCompanyId, setBusyCompanyId] = React.useState("");
   const [notice, setNotice] = React.useState("");
@@ -907,11 +907,6 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
   };
   const companiesMissingAccepted = approvedCompanies.filter(company => !rows.some(p => p.companyId === company.id && p.review === "aceptada"));
 
-  React.useEffect(() => {
-    if (selectedPerson) setFeedback(selectedPerson.userFeedback || "");
-    else setFeedback("");
-  }, [selectedPerson?.candidateId, peopleKey]);
-
   const runPeopleSearch = (company, enrich = false) => {
     if (!company?.candidateId || busyCompanyId) return;
     setBusyCompanyId(company.id);
@@ -933,9 +928,9 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
       .finally(() => setBusyCompanyId(""));
   };
 
-  const setPersonReview = (person, status) => {
+  const setPersonReview = (person, status, feedbackText) => {
     const nextReview = status === "approved" ? "aceptada" : status === "rejected" || status === "do_not_contact" ? "rechazada" : status === "needs_more_research" ? "enrich" : "pendiente";
-    const text = feedback.trim();
+    const text = (feedbackText ?? feedbackByPerson[person.id] ?? person.userFeedback ?? "").trim();
     setRows((items) => items.map((item) => item.id === person.id ? {...item, review: nextReview, userFeedback: text} : item));
     if (!person.candidateId) return;
 
@@ -1056,63 +1051,69 @@ const BatchPersonas = ({ companies, people, brief, activeRun, onRefresh }) => {
               <div style={{border:"1px solid var(--border)", borderRadius:8, overflow:"hidden", display:"grid"}}>
                 {selectedPeople.map(person => {
                   const expanded = selectedPerson?.id === person.id;
+                  const personFeedback = feedbackByPerson[person.id] ?? person.userFeedback ?? "";
                   return (
                     <div key={person.id} style={{borderBottom:"1px solid var(--border)", background:expanded ? "var(--bg)" : "var(--bg-1)"}}>
-                      <button
-                        className={`emp-item ${expanded?"selected":""}`}
-                        onClick={()=>setSelectedPersonId(expanded ? "" : person.id)}
-                        style={{width:"100%", borderBottom:expanded ? "1px solid var(--border)" : "none", minHeight:72}}
-                      >
-                        <window.Avatar initials={person.name.split(" ").map(x=>x[0]).slice(0,2).join("")} color="#27272A"/>
-                        <div style={{flex:1, minWidth:0}}>
-                          <div style={{display:"flex", alignItems:"center", gap:8, minWidth:0}}>
-                            <span className="row-title" style={{fontSize:13.5, fontWeight:600}}>{person.name}</span>
-                            {person.review==="aceptada" && <span className="emp-dot" style={{background:"var(--ok)"}}/>}
-                            {person.review==="enrich" && <span className="emp-dot" style={{background:"var(--warn)"}}/>}
-                            {person.review==="rechazada" && <span className="emp-dot" style={{background:"var(--danger)"}}/>}
-                            <span className="mono" style={{marginLeft:"auto", fontSize:12, color:"var(--fg)"}}>{person.score}%</span>
+                      <div style={{display:"grid", gridTemplateColumns:"minmax(280px, 3fr) minmax(260px, 2fr)", gap:14, padding:"12px 14px", alignItems:"stretch"}}>
+                        <button
+                          className={`emp-item ${expanded?"selected":""}`}
+                          onClick={()=>setSelectedPersonId(expanded ? "" : person.id)}
+                          style={{width:"100%", minHeight:116, border:"1px solid var(--border)", borderRadius:8, background:expanded ? "var(--hover)" : "var(--bg)", alignItems:"flex-start"}}
+                        >
+                          <window.Avatar initials={person.name.split(" ").map(x=>x[0]).slice(0,2).join("")} color="#27272A"/>
+                          <div style={{flex:1, minWidth:0}}>
+                            <div style={{display:"flex", alignItems:"center", gap:8, minWidth:0}}>
+                              <span className="row-title" style={{fontSize:14, fontWeight:600}}>{person.name}</span>
+                              {person.review==="aceptada" && <span className="emp-dot" style={{background:"var(--ok)"}}/>}
+                              {person.review==="enrich" && <span className="emp-dot" style={{background:"var(--warn)"}}/>}
+                              {person.review==="rechazada" && <span className="emp-dot" style={{background:"var(--danger)"}}/>}
+                              <span className="mono" style={{marginLeft:"auto", fontSize:13, color:"var(--fg)"}}>{person.score}%</span>
+                            </div>
+                            <div className="row-sub" style={{marginTop:5, whiteSpace:"normal", lineHeight:1.35}}>{person.title || "Sin cargo"}</div>
+                            <div style={{display:"flex", gap:5, marginTop:10, flexWrap:"wrap"}}>
+                              <span className={`entity ${person.email ? "" : "muted"}`} title={person.email || "Sin email"}><Icons.Mail size={10}/></span>
+                              <span className={`entity ${person.linkedinUrl ? "" : "muted"}`} title={person.linkedinUrl || "Sin LinkedIn"}><Icons.Linkedin size={10}/></span>
+                              <span className={`entity ${person.phone ? "" : "muted"}`} title={person.phone || "Sin teléfono"}><Icons.Phone size={10}/></span>
+                              <span className="entity" style={{fontSize:11}}><Icons.Chevron size={10}/>{expanded ? "Cerrar" : "Detalle"}</span>
+                            </div>
                           </div>
-                          <div className="row-sub" style={{marginTop:3}}>{person.title || "Sin cargo"}</div>
-                          <div style={{display:"flex", gap:5, marginTop:7}}>
-                            <span className={`entity ${person.email ? "" : "muted"}`} title={person.email || "Sin email"}><Icons.Mail size={10}/></span>
-                            <span className={`entity ${person.linkedinUrl ? "" : "muted"}`} title={person.linkedinUrl || "Sin LinkedIn"}><Icons.Linkedin size={10}/></span>
-                            <span className={`entity ${person.phone ? "" : "muted"}`} title={person.phone || "Sin teléfono"}><Icons.Phone size={10}/></span>
-                            <span className="entity" style={{fontSize:11}}><Icons.Chevron size={10}/>{expanded ? "Cerrar" : "Detalle"}</span>
-                          </div>
-                        </div>
-                      </button>
+                        </button>
 
-                      {expanded && (
-                        <div style={{padding:"14px 16px 16px", display:"grid", gap:14}}>
+                        <div style={{display:"grid", gap:10, alignContent:"start"}}>
                           <label className="form-row" style={{margin:0}}>
                             <span className="form-label">Motivo</span>
                             <textarea
                               className="ang-textarea"
-                              rows={2}
-                              value={feedback}
-                              onChange={(event)=>setFeedback(event.target.value)}
+                              rows={3}
+                              value={personFeedback}
+                              onChange={(event)=>setFeedbackByPerson((items) => ({...items, [person.id]: event.target.value}))}
                               placeholder="Por qué esta persona sí o no sirve. Esto aprende para toda la campaña."
+                              style={{minHeight:76}}
                             />
                           </label>
 
                           <div style={{display:"flex", gap:8, justifyContent:"flex-end", flexWrap:"wrap"}}>
                             {person.review !== "aceptada" && (
-                              <button className="review-btn accept" onClick={(event)=>{ event.stopPropagation(); setPersonReview(person, "approved"); }}>
+                              <button className="review-btn accept" onClick={()=>setPersonReview(person, "approved", personFeedback)}>
                                 <Icons.Check size={12} sw={2.4}/> Aceptar
                               </button>
                             )}
                             {person.review !== "enrich" && (
-                              <button className="review-btn enrich" onClick={(event)=>{ event.stopPropagation(); setPersonReview(person, "needs_more_research"); }}>
+                              <button className="review-btn enrich" onClick={()=>setPersonReview(person, "needs_more_research", personFeedback)}>
                                 <Icons.Search size={12} sw={2.4}/> Enrich
                               </button>
                             )}
                             {person.review !== "rechazada" && (
-                              <button className="review-btn reject" onClick={(event)=>{ event.stopPropagation(); setPersonReview(person, "rejected"); }}>
+                              <button className="review-btn reject" onClick={()=>setPersonReview(person, "rejected", personFeedback)}>
                                 <Icons.X size={12} sw={2.4}/> Rechazar
                               </button>
                             )}
                           </div>
+                        </div>
+                      </div>
 
+                      {expanded && (
+                        <div style={{padding:"0 14px 16px", display:"grid", gap:14}}>
                           <div style={{display:"grid", gridTemplateColumns:"repeat(3, minmax(0, 1fr))", gap:10}}>
                             <div className="kpi" style={{minHeight:66}}>
                               <div className="kpi-lbl">Email</div>
