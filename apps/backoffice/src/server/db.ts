@@ -2001,11 +2001,15 @@ function normalizePersonOutput(value: unknown) {
 }
 
 export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, input: PeopleScoringInput = {}) {
-  const roleText = normalizeName(
+  const titleText = normalizeName(
     [
       person.title,
       person.seniority,
       person.function,
+    ].join(" "),
+  )
+  const personContextText = normalizeName(
+    [
       person.description,
       person.country,
       person.city,
@@ -2033,7 +2037,7 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
       .map((item) => `${item?.type} ${item?.url} ${item?.note}`)
       .join(" "),
   )
-  const personScopeText = `${roleText} ${evidenceText}`
+  const personScopeText = `${titleText} ${personContextText} ${evidenceText}`
   const largeCompany = isLargeCompanyRange(input.targetCompany?.employeeRange || "")
   const partnershipMotion = hasAny(campaignText, [
     "partner",
@@ -2052,10 +2056,10 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
     "ecosystem",
     "ecosistema",
   ])
-  const executive = hasAny(roleText, ["ceo", "chief executive officer", "founder", "co founder", "cofundador", "chairman", "owner", "dueno", "propietario"])
-  const globalExecutive = executive && hasAny(roleText, ["global", "corporate", "group", "worldwide", "international", "executive chairman", "board"])
+  const executive = hasAny(titleText, ["ceo", "chief executive officer", "founder", "co founder", "cofundador", "chairman", "owner", "dueno", "propietario"])
+  const globalExecutive = executive && hasAny(titleText, ["global", "corporate", "group", "worldwide", "international", "executive chairman", "board"])
   const explicitExecutiveAsk = hasAny(campaignText, ["ceo", "founder", "fundador", "c level", "c suite", "director general", "dueno", "owner"])
-  const relevantOperator = hasAny(roleText, [
+  const relevantOperator = hasAny(titleText, [
     "partnership",
     "partnerships",
     "partner",
@@ -2088,7 +2092,7 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
   ])
   const localScope = hasAny(personScopeText, ["mexico", "mex", "mx", "latam", "latin america", "america latina", "hispanoamerica"])
   const explanationClaimsOwnership = hasAny(explanationText, ["partnership", "partnerships", "alianza", "alianzas", "canal", "channel"])
-  const operatorSeniority = hasAny(roleText, ["head", "director", "lead", "lider", "manager", "gerente", "vp", "vice president", "country", "regional"])
+  const operatorSeniority = hasAny(titleText, ["head", "director", "lead", "lider", "manager", "gerente", "vp", "vice president", "country", "regional"])
   const contactable = Boolean(person.email || person.linkedin_url || person.phone)
   const evidenceBacked = person.evidence.some((item) => Boolean(item?.url))
 
@@ -2134,7 +2138,10 @@ export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, 
     notes.push("baja porque el fit viene de la explicación, no del rol")
   }
 
-  const score = clampScore(person.score + delta)
+  let score = clampScore(person.score + delta)
+  if (!contactable) score = Math.min(score, 88)
+  if (largeCompany && executive && !explicitExecutiveAsk && !relevantOperator) score = Math.min(score, 70)
+  if (largeCompany && globalExecutive && !explicitExecutiveAsk) score = Math.min(score, 68)
   return {
     ...person,
     score,
@@ -2284,6 +2291,26 @@ function persistFoundPeople(job: OpenClawJobRow, output: Record<string, unknown>
     const candidate = person
     if (!candidate.name) continue
 
+    if (isDifferentTargetCompany(candidate, targetCompanyName, targetCompanyDomain)) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "person_candidate",
+        subjectId: "",
+        level: "warning",
+        eventType: "person.company_mismatch",
+        message: `${candidate.name} omitida porque pertenece a otra empresa.`,
+        payload: {
+          expectedCompany: targetCompanyName,
+          expectedDomain: targetCompanyDomain,
+          returnedCompany: candidate.company_name,
+          returnedDomain: candidate.company_domain,
+        },
+      })
+      continue
+    }
+
     const companyId =
       targetCompanyId ||
       findExistingCompany(candidate.company_domain || targetCompanyDomain, "", normalizeName(candidate.company_name || targetCompanyName), candidate.country || targetCountry)?.id ||
@@ -2396,6 +2423,17 @@ function persistFoundPeople(job: OpenClawJobRow, output: Record<string, unknown>
       payload: { personId, companyId, score: candidate.score, sourceProvider: candidate.source_provider },
     })
   }
+}
+
+function isDifferentTargetCompany(person: NormalizedPersonOutput, targetCompanyName: string, targetCompanyDomain: string) {
+  const returnedDomain = normalizeDomain(person.company_domain)
+  const expectedDomain = normalizeDomain(targetCompanyDomain)
+  if (returnedDomain && expectedDomain && returnedDomain !== expectedDomain) return true
+
+  const returnedName = normalizeName(person.company_name)
+  const expectedName = normalizeName(targetCompanyName)
+  if (!returnedName || !expectedName) return false
+  return !returnedName.includes(expectedName) && !expectedName.includes(returnedName)
 }
 
 function isSuppressedCompanyCandidate(company: ReturnType<typeof normalizeCompanyOutput>) {

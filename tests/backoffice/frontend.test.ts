@@ -921,10 +921,30 @@ describe("clo backoffice local database", () => {
               source_provider: "apollo",
               evidence: [{ type: "apollo", url: "https://apollo.io", note: "Perfil demo actualizado." }],
             },
+            {
+              name: "Wrong Company Personas Test",
+              title: "Head of Partnerships",
+              company_name: "Otra Empresa",
+              company_domain: "otra-empresa.test",
+              linkedin_url: "https://linkedin.com/in/wrong-company-personas-test",
+              email: "",
+              phone: "",
+              country: "MX",
+              city: "CDMX",
+              seniority: "Head",
+              function: "Partnerships",
+              description: "No pertenece a la empresa target.",
+              score: 99,
+              rationale: "Debe omitirse por mismatch de empresa.",
+              angle_hint: "",
+              source_provider: "linkedin",
+              evidence: [{ type: "linkedin", url: "https://linkedin.com/in/wrong-company-personas-test", note: "Perfil de otra empresa." }],
+            },
           ],
         })
       }
       const updatedPerson = listCampaignPeople(campaignId).find((candidate) => candidate.name === "Ana Partnerships Personas Test")
+      const wrongCompanyPerson = listCampaignPeople(campaignId).find((candidate) => candidate.name === "Wrong Company Personas Test")
 
       expect(peopleInput.brief?.peopleContext).toContain("partnerships")
       expect(peopleInput.targetCompany?.name).toBe("Nuvemshop Personas Test")
@@ -933,6 +953,7 @@ describe("clo backoffice local database", () => {
       expect(person?.sourceProvider).toBe("apollo")
       expect(person?.angleHint).toContain("alianzas")
       expect(updatedPerson?.rationale).toContain("Actualizada por rerun")
+      expect(wrongCompanyPerson).toBeUndefined()
       expect(reviewed && "review" in reviewed ? reviewed.review : "").toBe("aceptada")
       expect(refreshed && "run" in refreshed ? refreshed.run?.mission : "").toBe("find_people")
     } finally {
@@ -974,7 +995,7 @@ describe("clo backoffice local database", () => {
         city: "",
         seniority: "C-Level",
         function: "Executive",
-        description: "Global executive profile.",
+        description: "Global executive profile that mentions partner ecosystem.",
         score: 96,
         rationale: "Es la persona más senior y podría destrabar partnerships estratégicos.",
         angle_hint: "Hablar de alianza para sellers.",
