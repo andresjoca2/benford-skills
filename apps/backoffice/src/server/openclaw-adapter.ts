@@ -21,8 +21,23 @@ export async function runOpenClawJob(job: OpenClawQueuedJob): Promise<RunOpenCla
   const thinking = resolveOpenClawThinking(job)
   const timeoutSeconds = Math.max(Number(job.timeoutSeconds || 0), 1)
   const sessionId = openClawSessionId(job)
-  const proc = spawnOpenClaw(command, agent, thinking, sessionId, timeoutSeconds, prompt)
+  const result = await runOpenClawOnce(command, agent, thinking, sessionId, timeoutSeconds, prompt)
+  if (!shouldRetryEmptyFindCompanies(job, result.output)) return result
 
+  const retryPrompt = buildPrompt(job, { emptyRetry: true })
+  const retryThinking = thinking === "off" ? "minimal" : thinking
+  return runOpenClawOnce(command, agent, retryThinking, `${sessionId}-retry-empty`, timeoutSeconds, retryPrompt)
+}
+
+async function runOpenClawOnce(
+  command: string,
+  agent: string,
+  thinking: string,
+  sessionId: string,
+  timeoutSeconds: number,
+  prompt: string,
+) {
+  const proc = spawnOpenClaw(command, agent, thinking, sessionId, timeoutSeconds, prompt)
   let timer: ReturnType<typeof setTimeout> | undefined
   const killed = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -49,6 +64,13 @@ export async function runOpenClawJob(job: OpenClawQueuedJob): Promise<RunOpenCla
   }
 }
 
+function shouldRetryEmptyFindCompanies(job: OpenClawQueuedJob, output: unknown) {
+  if (job.skill !== "find_companies") return false
+  if (!output || typeof output !== "object" || Array.isArray(output)) return false
+  const companies = (output as { companies?: unknown }).companies
+  return Array.isArray(companies) && companies.length === 0
+}
+
 function spawnOpenClaw(command: string, agent: string, thinking: string, sessionId: string, timeoutSeconds: number, prompt: string) {
   const sshTarget = Bun.env.OPENCLAW_SSH_TARGET
   if (sshTarget) {
@@ -70,7 +92,7 @@ function spawnOpenClaw(command: string, agent: string, thinking: string, session
   })
 }
 
-function buildPrompt(job: OpenClawQueuedJob) {
+function buildPrompt(job: OpenClawQueuedJob, options: { emptyRetry?: boolean } = {}) {
   const input = job.input as { brief?: { discoveryMode?: string; maxCompanies?: number; minScoreThreshold?: number; reviewBatchSize?: number }; memory?: Record<string, unknown> }
   const maxCompanies = Math.max(Math.min(Number(input.brief?.maxCompanies || 10), 50), 1)
   const minScore = Math.max(Math.min(Number(input.brief?.minScoreThreshold || 75), 100), 0)
@@ -104,6 +126,14 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "You are running a Benford Backoffice prospecting job.",
     "Treat this as an independent fresh run. Ignore any previous conversation, prior test prompts, or earlier empty outputs.",
     "Use the find-companies skill if it is available at skills/find-companies/SKILL.md in the OpenClaw workspace.",
+    ...(options.emptyRetry
+      ? [
+          "The previous attempt returned zero companies. That is not useful for this backoffice workflow.",
+          "Run a broader recovery search now. Expand into adjacent but relevant channels: seller platforms, payment tools, appointment/booking platforms, industry-specific SaaS, professional marketplaces, business enablement tools, and Mexico/LATAM SMB platforms.",
+          "Use the prior memory only as a duplicate blocklist and taste signal. Do not treat the existing list as market exhaustion.",
+          `Return at least ${reviewBatchSize} new non-duplicate candidates if any credible public matches exist. Only return an empty array if every credible adjacent search angle is impossible or fully duplicated.`,
+        ]
+      : []),
     `Your task is to research the market and return up to ${maxCompanies} NEW real company/business candidates that match the campaign brief.`,
     "Use available research/browser/search tools when useful. Prefer primary company websites and credible public sources.",
     ...(fastPrefetch

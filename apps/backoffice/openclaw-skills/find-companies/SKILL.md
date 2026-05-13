@@ -64,6 +64,8 @@ Return fewer than maxCompanies only if weak, duplicated, directory-only, or off-
 
 For follow-up fast_prefetch runs, never time out trying to fill the full requested count after a solid review batch is available. Returning 10 strong non-duplicate companies is better than returning nothing after exhausting the timeout.
 
+For follow-up runs with many already-seen companies, use memory as a duplicate blocklist and taste signal, not as proof that the market is exhausted. If exact matches are thin, broaden into adjacent but relevant channels before returning: seller platforms, payment tools, appointment/booking platforms, industry-specific SaaS, professional marketplaces, business enablement tools, and Mexico/LATAM SMB platforms. Empty `companies: []` is a failure for interactive discovery unless every credible adjacent search angle is impossible or already duplicated.
+
 ## Feedback Memory
 
 Prior acceptance/rejection feedback is part of the brief memory. Use it to adjust the next search:

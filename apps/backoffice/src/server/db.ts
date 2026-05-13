@@ -1682,6 +1682,7 @@ function validateOpenClawOutput(skill: string, output: unknown): { ok: true; out
 
   if (skill === "find_companies") {
     if (!Array.isArray(record.companies)) return { ok: false, error: "find_companies output must include companies array." }
+    if (record.companies.length === 0) return { ok: false, error: "find_companies returned zero companies." }
     return {
       ok: true,
       output: {

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -122,8 +122,8 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("research_company")
     expect(screen).toContain("find_people")
     expect(screen).toContain("research_person")
-    expect(screen).toContain("Abrir")
-    expect(screen).toContain("Cerrar")
+    expect(screen).toContain("Mostrar logs")
+    expect(screen).toContain("Ocultar logs")
     expect(devServer).toContain("startDevOpenClawWorkerOnce")
   })
 
@@ -748,6 +748,74 @@ describe("clo backoffice local database", () => {
     }
   })
 
+  test("retries empty find_companies OpenClaw output once", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "backoffice-openclaw-retry-"))
+    const script = path.join(dir, "openclaw-stub.sh")
+    const state = path.join(dir, "state")
+    const previousMock = Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+    const previousCommand = Bun.env.OPENCLAW_COMMAND
+    const previousState = Bun.env.OPENCLAW_STUB_STATE
+
+    writeFileSync(
+      script,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "if [ ! -f \"$OPENCLAW_STUB_STATE\" ]; then",
+        "  echo first > \"$OPENCLAW_STUB_STATE\"",
+        "  printf '{\"companies\":[]}'",
+        "else",
+        "  printf '{\"companies\":[{\"name\":\"Retry Demo\",\"domain\":\"retry-demo.mx\",\"linkedin_url\":\"\",\"country\":\"MX\",\"city\":\"CDMX\",\"industry\":\"SaaS\",\"employee_range\":\"\",\"description\":\"Demo\",\"score\":82,\"rationale\":\"Match\",\"evidence\":[{\"type\":\"website\",\"url\":\"https://retry-demo.mx\",\"note\":\"Sitio oficial.\"}]}]}'",
+        "fi",
+        "",
+      ].join("\n"),
+    )
+    chmodSync(script, 0o755)
+    delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+    Bun.env.OPENCLAW_COMMAND = script
+    Bun.env.OPENCLAW_STUB_STATE = state
+
+    try {
+      const result = await runOpenClawJob({
+        id: "job_retry_empty",
+        runId: "run_retry_empty",
+        campaignId: "campaign_retry_empty",
+        skill: "find_companies",
+        status: "queued",
+        input: {
+          brief: {
+            industry: "SaaS",
+            countryRegion: "MX",
+            maxCompanies: 10,
+            reviewBatchSize: 10,
+            discoveryMode: "fast_prefetch",
+          },
+          memory: { alreadySeenCompanies: ["Mercado Libre"] },
+        },
+        output: {},
+        error: "",
+        attempt: 0,
+        maxAttempts: 1,
+        timeoutSeconds: 5,
+        startedAt: null,
+        finishedAt: null,
+        createdAt: "",
+        updatedAt: "",
+      })
+      const output = result.output as { companies?: Array<{ name?: string }> }
+
+      expect(output.companies?.map((company) => company.name)).toContain("Retry Demo")
+    } finally {
+      if (previousMock === undefined) delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+      else Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = previousMock
+      if (previousCommand === undefined) delete Bun.env.OPENCLAW_COMMAND
+      else Bun.env.OPENCLAW_COMMAND = previousCommand
+      if (previousState === undefined) delete Bun.env.OPENCLAW_STUB_STATE
+      else Bun.env.OPENCLAW_STUB_STATE = previousState
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test("persists find_companies OpenClaw output into company candidates", () => {
     setupDatabase()
     let campaignId = ""
@@ -795,6 +863,36 @@ describe("clo backoffice local database", () => {
     } finally {
       if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
       db.prepare("DELETE FROM companies WHERE domain = 'clinica-demo-backoffice.mx'").run()
+    }
+  })
+
+  test("marks empty find_companies output as failed instead of needs_review", () => {
+    setupDatabase()
+    let campaignId = ""
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Empty OpenClaw Output",
+        objective: "Encontrar empresas para probar salida vacia.",
+        industry: "Servicios",
+        countryRegion: "Mexico",
+        searchMode: "companies",
+        maxCompanies: 10,
+      })
+      campaignId = campaign?.id ?? ""
+      const created = campaignId ? createCampaignRun(campaignId) : null
+      const runId = created && "run" in created ? created.run?.id ?? "" : ""
+      const job = db
+        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
+        .get(runId)
+      const completed = job ? completeOpenClawJob(job.id, { companies: [] }) : null
+      const run = db.query<{ status: string; error: string }, [string]>("SELECT status, error FROM agent_runs WHERE id = ?").get(runId)
+
+      expect(completed?.status).toBe("failed")
+      expect(run?.status).toBe("failed")
+      expect(run?.error).toContain("zero companies")
+    } finally {
+      if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
     }
   })
 

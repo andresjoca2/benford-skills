@@ -277,6 +277,11 @@ const ProcessLogs = ({ runs, process }) => {
   const [open, setOpen] = React.useState(true);
   const filteredRuns = (Array.isArray(runs) ? runs : []).filter((run) => runMatchesProcess(run, process));
   const title = process === "companies" ? "Corridas de empresas" : "Corridas de personas";
+  const runState = filteredRuns.map((run) => `${run.id}:${run.status}:${run.companyCandidates ?? 0}`).join("|");
+
+  React.useEffect(() => {
+    setOpen(true);
+  }, [process, runState]);
 
   return (
     <div className="card" style={{marginTop:14}}>
@@ -289,10 +294,15 @@ const ProcessLogs = ({ runs, process }) => {
           <span className="entity"><Icons.Activity size={11}/>{filteredRuns.length} corridas</span>
           <button className="ghost-btn sm" onClick={()=>setOpen(!open)}>
             {open ? <Icons.ChevronDown size={12}/> : <Icons.Chevron size={12}/>}
-            {open ? "Cerrar" : "Abrir"}
+            {open ? "Ocultar logs" : "Mostrar logs"}
           </button>
         </div>
       </div>
+      {!open && filteredRuns[0] && (
+        <div style={{padding:"0 20px 16px", fontSize:12, color:"var(--fg-3)"}}>
+          Última corrida: <span className="mono">{filteredRuns[0].id}</span> · {runLogSkills(filteredRuns[0]).join(", ") || filteredRuns[0].mission} · {filteredRuns[0].status}
+        </div>
+      )}
       {open && (
         <div style={{padding:"0 20px 16px"}}>
           {filteredRuns.length === 0 && (
