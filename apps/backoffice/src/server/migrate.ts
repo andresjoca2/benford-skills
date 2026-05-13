@@ -14,10 +14,39 @@ export function resolveDbPath() {
 export function openDatabase(databasePath = resolveDbPath()) {
   mkdirSync(path.dirname(databasePath), { recursive: true })
   const database = new Database(databasePath, { create: true })
-  database.exec("PRAGMA journal_mode = WAL;")
-  database.exec("PRAGMA foreign_keys = ON;")
-  migrateDatabase(database)
+  execWithRetry(database, "PRAGMA busy_timeout = 10000;")
+  execWithRetry(database, "PRAGMA journal_mode = WAL;")
+  execWithRetry(database, "PRAGMA foreign_keys = ON;")
+  withSqliteRetry(() => migrateDatabase(database))
   return database
+}
+
+function execWithRetry(database: Database, sql: string) {
+  return withSqliteRetry(() => database.exec(sql))
+}
+
+function withSqliteRetry<T>(operation: () => T) {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return operation()
+    } catch (error) {
+      lastError = error
+      if (!isTransientSqliteBusy(error)) throw error
+      sleepSync(80 * (attempt + 1))
+    }
+  }
+  throw lastError
+}
+
+function isTransientSqliteBusy(error: unknown) {
+  if (!error || typeof error !== "object") return false
+  const code = (error as { code?: unknown }).code
+  return code === "SQLITE_BUSY" || code === "SQLITE_BUSY_RECOVERY" || code === "SQLITE_LOCKED"
+}
+
+function sleepSync(ms: number) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
 export function migrateDatabase(database: Database) {
