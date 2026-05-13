@@ -24,6 +24,7 @@ import {
   reviewCompanyCandidate,
   reviewPersonCandidate,
   revealCachedCompanyCandidates,
+  scorePersonCandidateForCampaign,
   setupDatabase,
   updateCampaignBrief,
 } from "../../apps/backoffice/src/server/db.ts"
@@ -911,6 +912,72 @@ describe("clo backoffice local database", () => {
       db.prepare("DELETE FROM people WHERE email = 'ana@nuvemshop-personas-test.com'").run()
       db.prepare("DELETE FROM feedback WHERE created_by = 'Test'").run()
     }
+  })
+
+  test("people scoring favors actionable operators over global executives for large companies", () => {
+    const input = {
+      brief: {
+        objective: "Encontrar partnerships para una campaña con marketplaces y sellers en Mexico.",
+        peopleContext: "",
+        positiveSignals: "Alianzas, marketplace, vendedores, canal.",
+        negativeSignals: "",
+      },
+      targetCompany: {
+        name: "Marketplace Grande Test",
+        country: "MX",
+        industry: "Marketplace",
+        employeeRange: "1001-5000",
+        description: "Marketplace con operación regional.",
+      },
+    }
+    const globalExecutive = scorePersonCandidateForCampaign(
+      {
+        name: "Ejecutiva Global Test",
+        title: "Chief Executive Officer",
+        company_name: "Marketplace Grande Test",
+        company_domain: "marketplace-grande-test.com",
+        linkedin_url: "https://linkedin.com/in/ejecutiva-global-test",
+        email: "",
+        phone: "",
+        country: "US",
+        city: "",
+        seniority: "C-Level",
+        function: "Executive",
+        description: "Global executive profile.",
+        score: 96,
+        rationale: "Es la persona más senior de la empresa.",
+        angle_hint: "",
+        source_provider: "linkedin",
+        evidence: [{ type: "linkedin", url: "https://linkedin.com/in/ejecutiva-global-test", note: "Perfil público." }],
+      },
+      input,
+    )
+    const mexicoOperator = scorePersonCandidateForCampaign(
+      {
+        name: "Operadora Partnerships Test",
+        title: "Head of Partnerships Mexico",
+        company_name: "Marketplace Grande Test",
+        company_domain: "marketplace-grande-test.com",
+        linkedin_url: "https://linkedin.com/in/operadora-partnerships-test",
+        email: "operadora@marketplace-grande-test.com",
+        phone: "",
+        country: "MX",
+        city: "CDMX",
+        seniority: "Head",
+        function: "Partnerships",
+        description: "Lidera alianzas con sellers y canales en Mexico.",
+        score: 82,
+        rationale: "Tiene ownership operativo de alianzas.",
+        angle_hint: "Proponer alianza para sellers.",
+        source_provider: "apollo",
+        evidence: [{ type: "apollo", url: "https://apollo.io", note: "Perfil con rol de partnerships en Mexico." }],
+      },
+      input,
+    )
+
+    expect(mexicoOperator.score).toBeGreaterThan(globalExecutive.score)
+    expect(mexicoOperator.rationale).toContain("rol operativo relevante")
+    expect(globalExecutive.rationale).toContain("ejecutivo demasiado alto")
   })
 
   test("reviews candidates with feedback, suppression, and research jobs", () => {

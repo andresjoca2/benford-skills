@@ -129,6 +129,10 @@ function buildPrompt(job: OpenClawQueuedJob) {
                 score: 0,
                 rationale: "string",
                 angle_hint: "string",
+                role_category: "partnerships|business_development|marketing|sales|technology|operations|finance|executive|owner|other",
+                geo_scope: "Mexico|LATAM|Global|Unknown",
+                seniority_fit: "operator|manager|director|vp|c_level|owner|unknown",
+                reachability_reason: "string",
                 source_provider: "public_web|linkedin|hunter|apollo",
                 evidence: [{ type: "linkedin", url: "https://example.com", note: "string" }],
               },
@@ -140,16 +144,26 @@ function buildPrompt(job: OpenClawQueuedJob) {
     return [
       "You are running a Benford Backoffice people-discovery job.",
       "Treat this as an independent fresh run. Ignore previous conversations and previous empty outputs.",
+      "Use the find-people skill if it is available at skills/find-people/SKILL.md in the OpenClaw workspace.",
       `Find ${maxPeople} real people at the target company who are plausible outreach targets for the campaign.`,
       "Use the campaign objective, company context, peopleContext, and operator feedback to infer the right buying committee.",
-      "Do not overfit to one title. Consider founders, CEO, partnerships, marketing, sales, technology, operations, finance, or owner roles depending on the company and campaign.",
+      "Optimize for actionable outreach, not fame or org-chart rank. The best person is usually the operator who owns the relevant motion, not necessarily the CEO.",
+      "For large companies, prefer Mexico or LATAM operators/directors/heads in partnerships, alliances, business development, channel, growth, seller ecosystem, merchant success, marketplace, commercial operations, marketing, or sales depending on the campaign.",
+      "Use CEO, founder, president, executive chairman, or global C-level only as a fallback when the company is small/owner-led, when the brief explicitly asks for executives, or when evidence shows that executive personally owns the relevant motion.",
+      "If the campaign is partnership/channel/marketplace oriented, first search for partnerships, alliances, business development, ecosystem, channel, merchant/seller, and Mexico/LATAM role variants before considering general executives.",
+      "If public leadership pages surface only global executives, continue searching targeted role queries before returning them.",
+      "Do not overfit to one title. Return a buying committee mix when useful, but avoid filling the list with top executives from the same global leadership page.",
       "Prefer 3-5 people when the company has a real team. Return 1 person if it appears to be a solo-owner or very small practice.",
       "Each person may need a different future sales angle. Include a concise angle_hint for how to approach that person.",
+      "For every person, explain the operational reason they apply. Include role_category, geo_scope, seniority_fit, and reachability_reason even if the backend does not persist every field yet.",
+      "Scoring guidance: score Mexico/LATAM role owners and functionally relevant operators highest; demote global C-levels at large companies unless they directly own the motion; never give a high score only because the title is senior.",
+      "Suggested targeted searches: company + Mexico + partnerships/alliances/business development/channel/growth/marketplace/seller ecosystem; Spanish equivalents alianzas, desarrollo de negocio, canal, ecosistema, vendedores, comercios.",
       "Source policy: first use public web and LinkedIn; then use Hunter and Apollo if available in the environment or tools; never invent contact data.",
       "Return email and phone only when a credible source/tool provides them. Leave unknown email/phone as an empty string.",
       "Do not return duplicate people, suppressed people, generic company pages, or role guesses without a real person name.",
       "Every returned person must include evidence with a URL and a note explaining why that person is relevant.",
       "Use memory.feedback and memory.companyPeople feedback as learning signal for the whole campaign and for this company.",
+      "Respect rejected-person feedback such as 'too senior', 'too global', 'not Mexico', 'not partnerships', or 'not operator' as explicit negative examples.",
       "Return only valid JSON. Do not include markdown, prose, or code fences.",
       "",
       `Skill: ${job.skill}`,
@@ -246,11 +260,13 @@ function quoteShell(value: string) {
 
 function resolveOpenClawAgent(job: OpenClawQueuedJob) {
   if (job.skill === "find_companies") return Bun.env.OPENCLAW_FIND_COMPANIES_AGENT || Bun.env.OPENCLAW_AGENT || "research-agent"
+  if (job.skill === "find_people") return Bun.env.OPENCLAW_FIND_PEOPLE_AGENT || Bun.env.OPENCLAW_AGENT || "research-agent"
   return Bun.env.OPENCLAW_AGENT || "prospecting-agent"
 }
 
 function resolveOpenClawThinking(job: OpenClawQueuedJob) {
   if (job.skill === "find_companies") return Bun.env.OPENCLAW_FIND_COMPANIES_THINKING || Bun.env.OPENCLAW_THINKING || "off"
+  if (job.skill === "find_people") return Bun.env.OPENCLAW_FIND_PEOPLE_THINKING || Bun.env.OPENCLAW_THINKING || "minimal"
   return Bun.env.OPENCLAW_THINKING || "minimal"
 }
 

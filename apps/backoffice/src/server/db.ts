@@ -166,6 +166,26 @@ type ReviewStatus = "approved" | "rejected" | "maybe" | "needs_more_research" | 
 
 export type OpenClawQueuedJob = ReturnType<typeof formatOpenClawJob>
 
+type NormalizedPersonOutput = ReturnType<typeof normalizePersonOutput>
+
+type PeopleScoringInput = {
+  brief?: {
+    objective?: string
+    peopleContext?: string
+    positiveSignals?: string
+    negativeSignals?: string
+  }
+  targetCompany?: {
+    name?: string
+    country?: string
+    city?: string
+    industry?: string
+    employeeRange?: string
+    description?: string
+    rationale?: string
+  }
+}
+
 const colors = ["#A855F7", "#0EA5E9", "#16A34A", "#2563EB", "#0F766E", "#DC2626", "#7C3AED"]
 let uniqueIdCounter = 0
 const inspectableTables = [
@@ -1950,6 +1970,15 @@ function normalizeEvidenceOutput(value: unknown) {
 function normalizePersonOutput(value: unknown) {
   const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
   const score = nonNegativeInteger(record.score, 0)
+  const reachabilityReason = cleanText(record.reachability_reason, "")
+  const geoScope = cleanText(record.geo_scope, "")
+  const seniorityFit = cleanText(record.seniority_fit, "")
+  const roleCategory = cleanText(record.role_category, "")
+  const rationale = cleanText(record.rationale, "")
+  const rationaleContext = [
+    reachabilityReason ? `Alcance: ${reachabilityReason}` : "",
+    geoScope ? `Scope: ${geoScope}` : "",
+  ].filter(Boolean)
   return {
     name: cleanText(record.name, ""),
     title: cleanText(record.title, ""),
@@ -1960,15 +1989,176 @@ function normalizePersonOutput(value: unknown) {
     phone: cleanText(record.phone, ""),
     country: cleanText(record.country, ""),
     city: cleanText(record.city, ""),
-    seniority: cleanText(record.seniority, ""),
-    function: cleanText(record.function, ""),
+    seniority: cleanText(record.seniority, seniorityFit),
+    function: cleanText(record.function, roleCategory),
     description: cleanText(record.description, ""),
     score: Math.min(score, 100),
-    rationale: cleanText(record.rationale, ""),
+    rationale: [rationale, ...rationaleContext].filter(Boolean).join(" "),
     angle_hint: cleanText(record.angle_hint, ""),
     source_provider: cleanText(record.source_provider, ""),
     evidence: Array.isArray(record.evidence) ? record.evidence.map(normalizeEvidenceOutput).filter(Boolean) : [],
   }
+}
+
+export function scorePersonCandidateForCampaign(person: NormalizedPersonOutput, input: PeopleScoringInput = {}) {
+  const text = normalizeName(
+    [
+      person.title,
+      person.seniority,
+      person.function,
+      person.description,
+      person.rationale,
+      person.angle_hint,
+      person.country,
+      person.city,
+    ].join(" "),
+  )
+  const campaignText = normalizeName(
+    [
+      input.brief?.objective,
+      input.brief?.peopleContext,
+      input.brief?.positiveSignals,
+      input.targetCompany?.industry,
+      input.targetCompany?.description,
+      input.targetCompany?.rationale,
+    ].join(" "),
+  )
+  const evidenceText = normalizeName(
+    person.evidence
+      .filter((item) => Boolean(item))
+      .map((item) => `${item?.type} ${item?.url} ${item?.note}`)
+      .join(" "),
+  )
+  const personScopeText = `${text} ${evidenceText}`
+  const largeCompany = isLargeCompanyRange(input.targetCompany?.employeeRange || "")
+  const partnershipMotion = hasAny(campaignText, [
+    "partner",
+    "partnership",
+    "partnerships",
+    "alianza",
+    "alianzas",
+    "canal",
+    "channel",
+    "marketplace",
+    "seller",
+    "sellers",
+    "vendedor",
+    "vendedores",
+    "merchant",
+    "ecosystem",
+    "ecosistema",
+  ])
+  const executive = hasAny(text, ["ceo", "chief executive officer", "founder", "co founder", "cofundador", "president", "chairman", "owner", "dueno", "propietario"])
+  const globalExecutive = executive && hasAny(text, ["global", "corporate", "group", "worldwide", "international", "executive chairman", "board"])
+  const explicitExecutiveAsk = hasAny(campaignText, ["ceo", "founder", "fundador", "c level", "c suite", "director general", "dueno", "owner"])
+  const relevantOperator = hasAny(text, [
+    "partnership",
+    "partnerships",
+    "partner",
+    "alliances",
+    "alliance",
+    "alianza",
+    "alianzas",
+    "business development",
+    "desarrollo de negocio",
+    "bd",
+    "channel",
+    "canal",
+    "ecosystem",
+    "ecosistema",
+    "marketplace",
+    "seller",
+    "sellers",
+    "vendedor",
+    "vendedores",
+    "merchant",
+    "merchant success",
+    "growth",
+    "commercial",
+    "comercial",
+    "marketing",
+    "sales",
+    "ventas",
+    "operations",
+    "operaciones",
+  ])
+  const localScope = hasAny(personScopeText, ["mexico", "mex", "mx", "latam", "latin america", "america latina", "hispanoamerica"])
+  const operatorSeniority = hasAny(text, ["head", "director", "lead", "lider", "manager", "gerente", "vp", "vice president", "country", "regional"])
+  const contactable = Boolean(person.email || person.linkedin_url || person.phone)
+  const evidenceBacked = person.evidence.some((item) => Boolean(item?.url))
+
+  let delta = 0
+  const notes: string[] = []
+
+  if (relevantOperator) {
+    delta += partnershipMotion ? 18 : 10
+    notes.push("sube por rol operativo relevante")
+  }
+  if (operatorSeniority && !executive) {
+    delta += 8
+    notes.push("sube por seniority accionable")
+  }
+  if (localScope) {
+    delta += 8
+    notes.push("sube por alcance local/regional")
+  }
+  if (contactable) {
+    delta += 4
+    notes.push("sube por canal encontrado")
+  }
+  if (!evidenceBacked) {
+    delta -= 12
+    notes.push("baja por evidencia debil")
+  }
+  if (largeCompany && executive && !explicitExecutiveAsk && !relevantOperator) {
+    delta -= 24
+    notes.push("baja por ejecutivo demasiado alto para empresa grande")
+  } else if (largeCompany && globalExecutive && !explicitExecutiveAsk) {
+    delta -= 14
+    notes.push("baja por alcance global")
+  }
+  if (partnershipMotion && !relevantOperator && executive && largeCompany) {
+    delta -= 10
+    notes.push("baja porque no muestra ownership de partnerships/canal")
+  }
+
+  const score = clampScore(person.score + delta)
+  return {
+    ...person,
+    score,
+    rationale: appendFitNote(person.rationale, notes),
+  }
+}
+
+function appendFitNote(rationale: string, notes: string[]) {
+  const uniqueNotes = Array.from(new Set(notes)).slice(0, 3)
+  if (uniqueNotes.length === 0) return rationale
+  const fitNote = `Ajuste Clo: ${uniqueNotes.join("; ")}.`
+  return rationale ? `${rationale} ${fitNote}` : fitNote
+}
+
+function isLargeCompanyRange(value: string) {
+  const normalized = normalizeName(value)
+  if (!normalized) return false
+  const numbers = normalized.match(/\d+/g)?.map((item) => Number(item)).filter(Number.isFinite) ?? []
+  if (numbers.some((item) => item > 200)) return true
+  return hasAny(normalized, ["enterprise", "corporativo", "large", "grande", "1000", "5000", "10000"])
+}
+
+function hasAny(text: string, terms: string[]) {
+  return terms.some((term) => {
+    const normalizedTerm = normalizeName(term)
+    if (!normalizedTerm) return false
+    return new RegExp(`(?:^| )${escapeRegExp(normalizedTerm)}(?: |$)`).test(text)
+  })
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function clampScore(value: number) {
+  return Math.max(Math.min(Math.round(value), 100), 0)
 }
 
 function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unknown>) {
@@ -2066,19 +2256,20 @@ function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unkno
 }
 
 function persistFoundPeople(job: OpenClawJobRow, output: Record<string, unknown>) {
-  const people = Array.isArray(output.people) ? output.people : []
-  const input = parseJson<{ targetCompany?: { companyId?: string; name?: string; domain?: string; country?: string } }>(
-    job.input_json,
-    {},
-  )
+  const input = parseJson<
+    PeopleScoringInput & { targetCompany?: { companyId?: string; name?: string; domain?: string; country?: string } }
+  >(job.input_json, {})
+  const people = (Array.isArray(output.people) ? output.people : [])
+    .filter((person): person is NormalizedPersonOutput => Boolean(person && typeof person === "object" && !Array.isArray(person)))
+    .map((person) => scorePersonCandidateForCampaign(person, input))
+    .sort((left, right) => right.score - left.score)
   const targetCompanyId = input.targetCompany?.companyId || ""
   const targetCompanyName = input.targetCompany?.name || ""
   const targetCompanyDomain = input.targetCompany?.domain || ""
   const targetCountry = input.targetCompany?.country || ""
 
   for (const person of people) {
-    if (!person || typeof person !== "object" || Array.isArray(person)) continue
-    const candidate = person as ReturnType<typeof normalizePersonOutput>
+    const candidate = person
     if (!candidate.name) continue
 
     const companyId =

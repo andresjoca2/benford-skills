@@ -1,0 +1,3 @@
+display_name: Find People
+short_description: Find actionable people candidates at an approved company.
+default_prompt: Use this skill to find real people candidates for a campaign-company pair and return strict JSON.
