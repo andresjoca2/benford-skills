@@ -892,6 +892,13 @@ const peopleRunProgress = (run, now) => {
   return Math.min(max, Math.max(base, Math.round((elapsed / timeout) * 100)));
 };
 
+const COMPANY_PERSON_TABS = [
+  { id: "pendiente", label: "Pendientes" },
+  { id: "aceptada", label: "Aceptadas" },
+  { id: "rechazada", label: "Rechazadas" },
+  { id: "enrich", label: "Enrich" },
+];
+
 const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], onRefresh }) => {
   const companiesKey = (companies || []).map(c => `${c.id}:${c.candidateId}:${c.review}:${c.prospects || 0}`).join("|");
   const peopleKey = (people || []).map(p => `${p.id}:${p.candidateId}:${p.review}:${p.score}:${p.email}:${p.phone}`).join("|");
@@ -902,6 +909,7 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
   const seedPeople = React.useMemo(() => Array.isArray(people) ? people : [], [peopleKey]);
   const [rows, setRows] = React.useState(seedPeople);
   const [tab, setTab] = React.useState("todas");
+  const [companyPersonTab, setCompanyPersonTab] = React.useState("pendiente");
   const [selectedCompanyId, setSelectedCompanyId] = React.useState(approvedCompanies[0]?.id || "");
   const [selectedPersonId, setSelectedPersonId] = React.useState("");
   const [feedbackByPerson, setFeedbackByPerson] = React.useState({});
@@ -922,12 +930,21 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
       setSelectedCompanyId(approvedCompanies[0].id);
     }
   }, [companiesKey]);
+  React.useEffect(() => setSelectedPersonId(""), [selectedCompanyId, companyPersonTab]);
 
   const peopleForCompany = rows.filter(p => p.companyId === selectedCompanyId);
   const filteredPeople = tab === "todas" ? rows : rows.filter(p => p.review === tab);
   const selectedCompany = approvedCompanies.find(c => c.id === selectedCompanyId) || approvedCompanies[0];
   const selectedPeople = selectedCompany ? rows.filter(p => p.companyId === selectedCompany.id) : [];
-  const selectedPerson = selectedPeople.find(p => p.id === selectedPersonId);
+  const selectedCompanyCounts = {
+    pendiente: selectedPeople.filter(p => p.review === "pendiente").length,
+    aceptada: selectedPeople.filter(p => p.review === "aceptada").length,
+    rechazada: selectedPeople.filter(p => p.review === "rechazada").length,
+    enrich: selectedPeople.filter(p => p.review === "enrich").length,
+  };
+  const selectedFilteredPeople = selectedPeople.filter(p => p.review === companyPersonTab);
+  const selectedPerson = selectedFilteredPeople.find(p => p.id === selectedPersonId);
+  const activeCompanyPersonTab = COMPANY_PERSON_TABS.find(item => item.id === companyPersonTab) || COMPANY_PERSON_TABS[0];
   const activePeopleRuns = (activeRuns || []).filter(run => run.mission === "find_people" && ["queued", "running"].includes(run.status));
   const selectedCompanyRun = selectedCompany?.candidateId
     ? activePeopleRuns.find(run => run.limits?.target_company_candidate_id === selectedCompany.candidateId)
@@ -1070,6 +1087,18 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
           </div>
 
           <div style={{padding:"12px 20px 16px", display:"grid", gap:10}}>
+            <div className="tabs" style={{borderBottom:"1px solid var(--border)", padding:0}}>
+              {COMPANY_PERSON_TABS.map(item => (
+                <div
+                  key={item.id}
+                  className={`tab ${companyPersonTab===item.id?"active":""}`}
+                  onClick={()=>setCompanyPersonTab(item.id)}
+                >
+                  {item.label} <span className="tab-count">{selectedCompanyCounts[item.id]}</span>
+                </div>
+              ))}
+            </div>
+
             {companyRunActive && (
               <div className="card" style={{padding:"12px 14px", borderRadius:8}}>
                 <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8}}>
@@ -1096,9 +1125,15 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
               </div>
             )}
 
-            {selectedPeople.length > 0 && (
+            {selectedPeople.length > 0 && selectedFilteredPeople.length === 0 && (
+              <div style={{padding:"20px", border:"1px solid var(--border)", borderRadius:8, color:"var(--fg-3)", fontSize:13, textAlign:"center"}}>
+                No hay personas en {activeCompanyPersonTab.label.toLowerCase()} para esta empresa.
+              </div>
+            )}
+
+            {selectedFilteredPeople.length > 0 && (
               <div style={{border:"1px solid var(--border)", borderRadius:8, overflow:"hidden", display:"grid"}}>
-                {selectedPeople.map(person => {
+                {selectedFilteredPeople.map(person => {
                   const expanded = selectedPerson?.id === person.id;
                   const personFeedback = feedbackByPerson[person.id] ?? person.userFeedback ?? "";
                   return (
