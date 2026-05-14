@@ -82,6 +82,16 @@ const BackofficeAPI = {
     return data.campaign;
   },
 
+  async createProspectingPlan(campaignId, query) {
+    const data = await this.postJson("/api/prospecting/plan", { campaignId, query });
+    return data.plan;
+  },
+
+  async giveProspectingPlanFeedback(planId, campaignId, feedback) {
+    const data = await this.postJson(`/api/prospecting/plans/${encodeURIComponent(planId)}/feedback`, { campaignId, feedback });
+    return data.plan;
+  },
+
   async reviewCompanyCandidate(candidateId, status, feedback) {
     const data = await this.postJson(`/api/candidates/company/${encodeURIComponent(candidateId)}/review`, { status, feedback });
     return data.candidate;
@@ -90,6 +100,10 @@ const BackofficeAPI = {
   async reviewPersonCandidate(candidateId, status, feedback) {
     const data = await this.postJson(`/api/candidates/person/${encodeURIComponent(candidateId)}/review`, { status, feedback });
     return data.candidate;
+  },
+
+  async createPeopleRunForCompanyCandidate(candidateId, options = {}) {
+    return this.postJson(`/api/company-candidates/${encodeURIComponent(candidateId)}/people-runs`, options);
   },
 
   async updateCompanyCandidateStatus(candidateId, status) {

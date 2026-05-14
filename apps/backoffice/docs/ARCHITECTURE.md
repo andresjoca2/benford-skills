@@ -53,6 +53,8 @@ The OpenClaw skill source of truth lives in this repo:
 
 ```text
 apps/backoffice/openclaw-skills/find-companies/
+apps/backoffice/openclaw-skills/find-people/
+apps/backoffice/openclaw-skills/prospecting-strategist/
 ```
 
 Sync it to the `prospecting-agent` workspace with:
@@ -60,6 +62,10 @@ Sync it to the `prospecting-agent` workspace with:
 ```bash
 bun run backoffice:sync-openclaw-skills
 ```
+
+`prospecting-strategist` is the meta-skill for heterogeneous ICPs. It plans the
+waterfall, chooses source/skill order, defines quality gates, and carries budget
+guards. Execution still goes through backend-owned jobs and validated writes.
 
 ## Environment Split
 

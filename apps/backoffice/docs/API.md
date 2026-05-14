@@ -68,6 +68,7 @@ Body fields:
   "niche": "...",
   "countryRegion": "...",
   "companySize": "...",
+  "peopleContext": "Roles objetivo, seniority, areas, excluir roles...",
   "positiveSignals": "...",
   "negativeSignals": "...",
   "searchMode": "companies",
@@ -166,12 +167,42 @@ Writes candidate status and an `agent_events` record. Non-empty `feedback` also
 writes a `feedback` row. `do_not_contact` also writes `suppression_list`;
 `needs_more_research` is exposed in the UI as `Enrich`: it keeps the candidate
 available as enrichment context for the next run and enqueues a research job.
+Approving a company queues a scoped `find_people` run for that company so the
+Personas tab can start filling from approved companies.
 Non-empty feedback text is memory for the next run and is sent in
 `openclaw_jobs.input_json.memory.feedback`.
+
+### `POST /api/company-candidates/:id/people-runs`
+
+Queues a `find_people` run scoped to one approved company candidate. This is the
+Personas tab refresh/enrich action.
+
+Body:
+
+```json
+{
+  "replaceQueuedRun": true,
+  "enrich": true,
+  "feedback": "Buscar partnerships y marketing; evitar ventas junior.",
+  "maxPeople": 5
+}
+```
+
+Rules:
+
+- candidate must be an approved company candidate
+- run input includes the target company, campaign brief, `peopleContext`,
+  campaign memory, previous people feedback for that company, and refresh
+  feedback from the operator
+- `replaceQueuedRun` can cancel a queued people run for the same company, but
+  does not cancel a running one
+- `enrich` asks the agent to spend more effort and use higher-cost providers
+  such as Hunter/Apollo when available
 
 ### `POST /api/candidates/person/:id/review`
 
 Same contract as company candidate review, scoped to `person_candidates`.
+`do_not_contact` suppresses only that person/email/linkedin, not the company.
 
 ### `POST /api/runs/:id/cancel`
 
@@ -261,7 +292,21 @@ The next endpoints to add are:
 
 ```text
 GET  /api/runs/:id/events/stream
+POST /api/prospecting/plan
+POST /api/prospecting/plans/:id/feedback
+POST /api/prospecting/plans/:id/execute
+GET  /api/prospecting/queries/:id/report
 ```
 
 Worker integration for `find_companies` is operational. The remaining API work is
-the realtime SSE stream and clearer run retry/timeout controls.
+the realtime SSE stream, clearer run retry/timeout controls, and strategist plan
+execution with budget-aware cost ledger writes.
+
+`POST /api/prospecting/plan` is the first strategist endpoint. It asks OpenClaw
+for a strategy JSON plus Markdown, then the backend persists the plan and writes
+the Markdown strategy file under `.data/prospecting-strategies/`.
+
+`POST /api/prospecting/plans/:id/feedback` sends operator feedback back to
+OpenClaw. OpenClaw returns a revised JSON/Markdown plan; the backend updates
+SQLite and rewrites the Markdown file. The revised plan is what future strategy
+execution should use.

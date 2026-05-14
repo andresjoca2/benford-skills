@@ -4,8 +4,10 @@ The current schema is defined in:
 
 ```text
 apps/backoffice/db/migrations/0001_core.sql
-apps/backoffice/db/migrations/0002_brain_snapshot.sql
+apps/backoffice/db/migrations/0002_campaign_min_score_threshold.sql
 apps/backoffice/db/migrations/0003_company_candidate_review_queue.sql
+apps/backoffice/db/migrations/0004_people_discovery.sql
+apps/backoffice/db/migrations/0005_prospecting_strategy_memory.sql
 ```
 
 Development seed data is defined in:
@@ -40,6 +42,9 @@ Fields include:
 - `niche`
 - `country_region`
 - `company_size`
+- `people_context` - free-text guidance for the people search stage, e.g. target
+  roles, seniority, areas, and roles to exclude. This should guide the agent
+  without hard-biasing it away from inferring the right buying committee.
 - `positive_signals`
 - `negative_signals`
 - `search_mode`
@@ -206,6 +211,8 @@ Operational meaning:
 - `maybe`: human deferred decision; does not automatically schedule more research.
 - `needs_more_research`: should create or queue a future `research_company` job.
 - `do_not_contact`: should insert a matching row into `suppression_list`.
+- `approved`: for companies, approving a company can queue a scoped
+  `find_people` run for that company so Personas can start filling immediately.
 
 Review queue fields:
 
@@ -228,9 +235,29 @@ Dedupe priority:
 3. `normalized_name + company_id`
 4. `normalized_name + company_name + country`
 
+Contact enrichment fields:
+
+- `email`
+- `phone`
+- `linkedin_url`
+- `source_provider` - where the best person data came from, such as
+  `public_web`, `linkedin`, `hunter`, or `apollo`.
+
 ### `person_candidates`
 
 Campaign-specific candidate state for a person. Uses the same status set as company candidates.
+
+Additional fields:
+
+- `angle_hint` - short agent-suggested outreach angle for this person. The
+  formal angle/outreach workflow can build from accepted people later.
+
+The Personas screen is company-scoped: the left side lists approved companies;
+the right side lists people proposed for the selected company. Reviewing a
+person writes feedback just like company review. Non-empty feedback becomes
+campaign memory and should guide later person searches across the campaign,
+while company-specific refresh feedback is also included in the next scoped
+`find_people` run for that company.
 
 ### `feedback`
 
@@ -286,6 +313,59 @@ V1 rule: no automatic sending.
 
 Automatic search is allowed only for discovery work after implementation. It must
 not create or send outreach automatically.
+
+### `prospecting_queries`
+
+Top-level record for a strategist search request. Stores original query,
+characterized ICP signature, status, quality score, total spend, and the budget
+limit used by the run.
+
+Statuses:
+
+- `planned`
+- `running`
+- `succeeded`
+- `failed`
+- `cancelled`
+- `stopped_for_budget`
+
+### `prospecting_plans`
+
+Stores the strategist's JSON plan and budget guard for a query. This is the
+auditable bridge between a broad operator request and concrete worker steps.
+
+The current visible strategy is also stored as `strategy_markdown` and mirrored
+to `markdown_path` under `.data/prospecting-strategies/`. Operator feedback
+increments `revision`, appends to `feedback_json`, and rewrites the Markdown
+file through the backend.
+
+### `prospecting_steps`
+
+Concrete planned/executed steps under a plan. A step can point at a skill,
+source adapter, `agent_run`, or `openclaw_job`. It stores quality score,
+estimated cost, actual cost, stop reason, and errors.
+
+### `source_attempts`
+
+Per-source execution metrics. Use this for waterfall learning: result count,
+useful count, duplicates, suppressed rows, contact fields, latency, quality, and
+cost.
+
+### `learned_patterns`
+
+Structured persistent memory for recurring ICP/source patterns. This is the
+source of truth for learned source order; markdown snapshots can be generated
+from it, but agents should not directly edit operational learned-pattern files.
+
+### `prospecting_cost_ledger`
+
+Append-only cost events for estimates, reservations, actual spend, refunds, and
+budget stops.
+
+Rule: before launching a paid or unknown-cost source, the worker must compare
+the estimated cumulative run spend against the run budget. If the next step would
+exceed the limit, it should write `budget_stop` and stop rather than enqueueing
+more work.
 
 ## Migration Rules
 

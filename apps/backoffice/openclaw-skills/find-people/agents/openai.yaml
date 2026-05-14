@@ -1,0 +1,3 @@
+display_name: Find People
+short_description: Find evidence-backed, actionable people candidates at an approved company.
+default_prompt: Read the campaign brief, target company, peopleContext, memory feedback, and sourceData. Use the find-people skill playbook to identify real people with role ownership, evidence, contactability, geography fit, and a campaign-specific outreach angle. Return only strict JSON matching references/output-contract.json.

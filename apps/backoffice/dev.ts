@@ -7,11 +7,14 @@ import {
   cancelCampaignRun,
   createCampaign,
   createCampaignRun,
+  createPeopleRunForCompanyCandidate,
   createCompany,
   createProspect,
+  buildProspectingStrategyInput,
   dbPath,
   getCampaignDetail,
   getDatabaseTable,
+  getProspectingPlan,
   hiddenCompanyCandidateCount,
   listCampaignCompanyCandidates,
   listCampaigns,
@@ -23,10 +26,13 @@ import {
   reviewCompanyCandidate,
   reviewPersonCandidate,
   revealCachedCompanyCandidates,
+  reviseProspectingStrategyPlan,
+  saveProspectingStrategyPlan,
   setupDatabase,
   updateCampaignBrief,
   updateCompanyCandidateStatus,
 } from "./src/server/db.ts"
+import { runProspectingStrategist } from "./src/server/openclaw-adapter.ts"
 
 const appRoot = path.resolve(import.meta.dir)
 const port = Number(Bun.env.PORT ?? 3000)
@@ -266,11 +272,13 @@ async function serveApi(request: Request, url: URL) {
       companySize: typeof body.companySize === "string" ? body.companySize : undefined,
       positiveSignals: typeof body.positiveSignals === "string" ? body.positiveSignals : undefined,
       negativeSignals: typeof body.negativeSignals === "string" ? body.negativeSignals : undefined,
+      peopleContext: typeof body.peopleContext === "string" ? body.peopleContext : undefined,
       searchMode: typeof body.searchMode === "string" ? body.searchMode : undefined,
       runBudgetCents: typeof body.runBudgetCents === "number" ? body.runBudgetCents : undefined,
       maxCompanies: typeof body.maxCompanies === "number" ? body.maxCompanies : undefined,
       maxPeople: typeof body.maxPeople === "number" ? body.maxPeople : undefined,
       maxRuntimeSeconds: typeof body.maxRuntimeSeconds === "number" ? body.maxRuntimeSeconds : undefined,
+      minScoreThreshold: typeof body.minScoreThreshold === "number" ? body.minScoreThreshold : undefined,
     })
     if (!campaign) return json({ error: "Campaign not found" }, { status: 404 })
     return json({ campaign })
@@ -293,6 +301,56 @@ async function serveApi(request: Request, url: URL) {
   if (url.pathname === "/api/events") {
     const campaignId = url.searchParams.get("campaignId") ?? undefined
     return json({ events: listEvents({ campaignId }) })
+  }
+
+  if (url.pathname === "/api/prospecting/plan") {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const body = await readJson(request)
+    const campaignId = typeof body.campaignId === "string" ? body.campaignId : ""
+    if (!campaignId) return json({ error: "campaignId required" }, { status: 400 })
+    const strategyInput = buildProspectingStrategyInput(campaignId, {
+      query: typeof body.query === "string" ? body.query : undefined,
+    })
+    if (!strategyInput) return json({ error: "Campaign not found" }, { status: 404 })
+    try {
+      const result = await runProspectingStrategist(strategyInput)
+      const plan = saveProspectingStrategyPlan(campaignId, strategyInput.query_original, result.output as never)
+      return json({ plan }, { status: 201 })
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
+    }
+  }
+
+  const prospectingPlanMatch = url.pathname.match(/^\/api\/prospecting\/plans\/([^/]+)$/)
+  if (prospectingPlanMatch) {
+    const plan = getProspectingPlan(prospectingPlanMatch[1] ?? "")
+    if (!plan) return json({ error: "Plan not found" }, { status: 404 })
+    return json({ plan })
+  }
+
+  const prospectingPlanFeedbackMatch = url.pathname.match(/^\/api\/prospecting\/plans\/([^/]+)\/feedback$/)
+  if (prospectingPlanFeedbackMatch) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const planId = prospectingPlanFeedbackMatch[1] ?? ""
+    const currentPlan = getProspectingPlan(planId)
+    if (!currentPlan) return json({ error: "Plan not found" }, { status: 404 })
+    const body = await readJson(request)
+    const feedback = typeof body.feedback === "string" ? body.feedback.trim() : ""
+    if (!feedback) return json({ error: "feedback required" }, { status: 400 })
+    const resolvedCampaignId = typeof body.campaignId === "string" ? body.campaignId : ""
+    if (!resolvedCampaignId) return json({ error: "campaignId required" }, { status: 400 })
+    const strategyInput = buildProspectingStrategyInput(resolvedCampaignId, {
+      feedback,
+      currentPlanId: planId,
+    })
+    if (!strategyInput) return json({ error: "Campaign not found" }, { status: 404 })
+    try {
+      const result = await runProspectingStrategist(strategyInput)
+      const plan = reviseProspectingStrategyPlan(planId, feedback, result.output as never)
+      return json({ plan })
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
+    }
   }
 
   const companyReviewMatch = url.pathname.match(/^\/api\/candidates\/company\/([^/]+)\/review$/)
@@ -335,6 +393,22 @@ async function serveApi(request: Request, url: URL) {
     return json({ candidate })
   }
 
+  const companyPeopleRunMatch = url.pathname.match(/^\/api\/company-candidates\/([^/]+)\/people-runs$/)
+  if (companyPeopleRunMatch) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const body = await readJson(request)
+    const result = createPeopleRunForCompanyCandidate(companyPeopleRunMatch[1] ?? "", {
+      replaceQueuedRun: body.replaceQueuedRun === true,
+      enrich: body.enrich === true,
+      feedback: typeof body.feedback === "string" ? body.feedback : undefined,
+      maxPeople: numberBodyValue(body, "maxPeople"),
+    })
+    if (!result) return json({ error: "Company candidate not found" }, { status: 404 })
+    if ("error" in result) return json(result, { status: 409 })
+    startDevOpenClawWorkerOnce()
+    return json(result, { status: 201 })
+  }
+
   if (url.pathname === "/api/campaigns") {
     if (request.method === "POST") {
       const body = await readJson(request)
@@ -350,11 +424,13 @@ async function serveApi(request: Request, url: URL) {
             companySize: typeof body.companySize === "string" ? body.companySize : undefined,
             positiveSignals: typeof body.positiveSignals === "string" ? body.positiveSignals : undefined,
             negativeSignals: typeof body.negativeSignals === "string" ? body.negativeSignals : undefined,
+            peopleContext: typeof body.peopleContext === "string" ? body.peopleContext : undefined,
             searchMode: typeof body.searchMode === "string" ? body.searchMode : undefined,
             runBudgetCents: numberBodyValue(body, "runBudgetCents"),
             maxCompanies: numberBodyValue(body, "maxCompanies"),
             maxPeople: numberBodyValue(body, "maxPeople"),
             maxRuntimeSeconds: numberBodyValue(body, "maxRuntimeSeconds"),
+            minScoreThreshold: numberBodyValue(body, "minScoreThreshold"),
           }),
         },
         { status: 201 },

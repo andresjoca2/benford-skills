@@ -15,6 +15,7 @@ laptop browser over SSH tunnel
   -> company candidates
   -> human review + feedback
   -> next run memory
+  -> approved companies queue scoped people discovery
 ```
 
 Known active issue: initial load and some runs feel slow. A separate performance
@@ -59,6 +60,8 @@ Implemented:
 - feedback writes
 - `do_not_contact` suppression writes
 - `needs_more_research` research job enqueue
+- approving a company queues a scoped `find_people` run
+- company-scoped Personas refresh/enrich endpoint
 
 Rules:
 
@@ -79,6 +82,7 @@ Implemented:
 - job timeout handling
 - output validation
 - persistence of proposed companies
+- persistence of proposed people from `find_people`
 - event writes for each step
 - SSH transport to `openclaw` host
 - `research-agent` execution for current `find_companies` discovery
@@ -90,13 +94,21 @@ Implemented:
 - remote loop verified: search companies, review with feedback, search again
 - cached review batches: reveal next visible lot before calling OpenClaw again
 - idempotent migration for `review_visible` / `review_revealed_at`
+- Personas UI over approved companies with per-person review, feedback, contact
+  icons, source provider, and suggested angle hints
+- `prospecting-strategist` meta-skill skeleton with planning/report contracts,
+  source catalog, waterfall rules, quality evaluation, and budget guardrails
+- SQLite strategy memory and cost ledger migration for planned waterfall search
+- first strategist planning endpoint and UI surface in the Búsqueda tab, including
+  operator feedback that revises the Markdown strategy file
 
 Remaining:
 
 - deploy worker as a long-running service on the OpenClaw host
 - improve timeout/retry visibility for failed runs
 - reduce latency of initial load and agent runs
-- persist `find_people` outputs later, after the companies loop works
+- wire real Hunter/Apollo credentials/tools in the OpenClaw runtime and verify
+  provider-specific enrichment behavior
 
 ### Phase 4.5 - Discovery Quality Controls
 
@@ -105,10 +117,14 @@ Implemented:
 - campaign-level minimum score threshold, initially defaulting to 75
 - UI filtering by score without deleting lower-score candidates from SQLite
 - frontend-only automatic search modal with compute, company, people, and score limits
+- persistent tables for strategist plans, source attempts, learned patterns, and
+  run cost tracking
 
 Remaining:
 
-- source escalation policy: primary/public sources first, paid or bulk sources only when needed
+- backend execution of strategist plans against the source allowlist
+- actual cost accounting in provider adapters and OpenClaw metadata when available
+- source escalation policy wired into worker execution, not only documented in skills
 - make fast vs deep discovery explicit in campaign/run controls
 
 ### Phase 5 - Mission Panel Realtime

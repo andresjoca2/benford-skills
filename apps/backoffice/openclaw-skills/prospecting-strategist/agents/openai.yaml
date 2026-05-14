@@ -1,0 +1,3 @@
+display_name: Prospecting Strategist
+short_description: Plan, evaluate, escalate, and learn from heterogeneous prospecting searches.
+default_prompt: Read the operator request, campaign brief, limits, allowed sources, past queries, learned patterns, and suppression memory. Use the prospecting-strategist skill to characterize the ICP, generate a ranked strategy plan with budget guards, define stop/escalation conditions, and return strict JSON matching references/strategy-plan-contract.json.

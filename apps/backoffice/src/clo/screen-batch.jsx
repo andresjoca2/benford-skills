@@ -68,7 +68,9 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
   }, [batchId]);
 
   const runStateKey = campaignRuns.map((run) => `${run.id}:${run.status}:${run.companyCandidates ?? 0}`).join("|");
-  const activeRun = campaignRuns.find((run) => ["queued", "running"].includes(run.status));
+  const activeRuns = campaignRuns.filter((run) => ["queued", "running"].includes(run.status));
+  const activeRun = activeRuns[0];
+  const activeCompanyRun = activeRuns.find((run) => run.mission === "find_companies") || null;
 
   useEffectBd(() => {
     if (!batchId) return () => {};
@@ -179,24 +181,25 @@ const BatchDetailScreen = ({ batchId, onBack }) => {
         <div className="batch-tab-body">
           {tab==="busqueda" && <BatchBusqueda b={b} onSaved={(campaign)=>setDetail(campaign)}/>}
           {tab==="empresas" && (
-            <>
-              <BatchEmpresas
-                companies={companies}
-                brief={b.brief}
-                activeRun={activeRun}
-                hiddenCount={companies?.hiddenCount || 0}
-                onRerun={()=>launchRun({ replaceQueuedRun: true, revealCachedCompanies: true, reviewBatchSize: 10, prefetchCompanies: companyPrefetchSize(b.brief) })}
-                rerunBusy={runBusy}
-                onOpenAutoSearch={()=>setAutoSearchOpen(true)}
-              />
-              <ProcessLogs runs={campaignRuns} process="companies"/>
-            </>
+            <BatchEmpresas
+              companies={companies}
+              brief={b.brief}
+              activeRun={activeCompanyRun}
+              hiddenCount={companies?.hiddenCount || 0}
+              onRerun={()=>launchRun({ replaceQueuedRun: true, revealCachedCompanies: true, reviewBatchSize: 10, prefetchCompanies: companyPrefetchSize(b.brief) })}
+              rerunBusy={runBusy}
+              onOpenAutoSearch={()=>setAutoSearchOpen(true)}
+            />
           )}
           {tab==="personas" && (
-            <>
-              <BatchPersonas people={people}/>
-              <ProcessLogs runs={campaignRuns} process="people"/>
-            </>
+            <BatchPersonas
+              companies={companies}
+              people={people}
+              brief={b.brief}
+              activeRun={activeRun}
+              activeRuns={activeRuns}
+              onRefresh={fetchDetail}
+            />
           )}
           {tab==="angulo"   && <BatchAngulo/>}
           {tab==="contenido"&& <BatchContenido/>}
@@ -237,6 +240,7 @@ const emptyBrief = {
   companySize: "",
   positiveSignals: "",
   negativeSignals: "",
+  peopleContext: "",
   searchMode: "companies",
   runBudgetCents: 0,
   maxCompanies: 10,
@@ -351,11 +355,21 @@ const BatchBusqueda = ({ b, onSaved }) => {
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [canceling, setCanceling] = React.useState("");
+  const [strategy, setStrategy] = React.useState(b.latestStrategy || null);
+  const [strategyBusy, setStrategyBusy] = React.useState(false);
+  const [strategyFeedback, setStrategyFeedback] = React.useState("");
+  const [strategyNotice, setStrategyNotice] = React.useState("");
 
   React.useEffect(() => {
     setEditing(false);
     setSaving(false);
+    setStrategy(b.latestStrategy || null);
+    setStrategyFeedback("");
+    setStrategyNotice("");
   }, [b.id]);
+  React.useEffect(() => {
+    setStrategy(b.latestStrategy || null);
+  }, [b.latestStrategy?.id, b.latestStrategy?.revision]);
 
   const asNumber = (value) => {
     const parsed = Number(value);
@@ -376,6 +390,7 @@ const BatchBusqueda = ({ b, onSaved }) => {
       companySize: formText(data, "companySize"),
       positiveSignals: formText(data, "positiveSignals"),
       negativeSignals: formText(data, "negativeSignals"),
+      peopleContext: formText(data, "peopleContext"),
       searchMode: formText(data, "searchMode") || emptyBrief.searchMode,
       runBudgetCents: Math.round(asNumber(data.get("runBudgetDollars")) * 100),
       maxCompanies: Math.floor(asNumber(data.get("maxCompanies"))),
@@ -404,6 +419,38 @@ const BatchBusqueda = ({ b, onSaved }) => {
       })
       .catch((error) => console.warn("No se pudo cancelar corrida", error))
       .finally(() => setCanceling(""));
+  };
+  const generateStrategy = () => {
+    if (strategyBusy) return;
+    setStrategyBusy(true);
+    setStrategyNotice("");
+    window.BackofficeAPI?.createProspectingPlan(b.id, brief.objective || b.criteria || b.name)
+      .then((plan) => {
+        if (plan) setStrategy(plan);
+        setStrategyNotice("Estrategia generada por OpenClaw.");
+      })
+      .catch((error) => {
+        console.warn("No se pudo generar estrategia", error);
+        setStrategyNotice("No se pudo generar la estrategia. Revisa OpenClaw o el worker.");
+      })
+      .finally(() => setStrategyBusy(false));
+  };
+  const submitStrategyFeedback = () => {
+    const feedback = strategyFeedback.trim();
+    if (!strategy?.id || !feedback || strategyBusy) return;
+    setStrategyBusy(true);
+    setStrategyNotice("");
+    window.BackofficeAPI?.giveProspectingPlanFeedback(strategy.id, b.id, feedback)
+      .then((plan) => {
+        if (plan) setStrategy(plan);
+        setStrategyFeedback("");
+        setStrategyNotice("Feedback aplicado al plan.");
+      })
+      .catch((error) => {
+        console.warn("No se pudo revisar estrategia", error);
+        setStrategyNotice("No se pudo aplicar feedback al plan.");
+      })
+      .finally(() => setStrategyBusy(false));
   };
 
   if (editing) {
@@ -477,6 +524,16 @@ const BatchBusqueda = ({ b, onSaved }) => {
             <textarea className="ang-textarea" name="positiveSignals" rows={3} defaultValue={draft.positiveSignals}/>
           </label>
           <label className="form-row" style={{gridColumn:"1 / -1"}}>
+            <span className="form-label">Contexto para personas</span>
+            <textarea
+              className="ang-textarea"
+              name="peopleContext"
+              rows={3}
+              defaultValue={draft.peopleContext}
+              placeholder="Roles objetivo, seniority, áreas, excluir roles. Deja libre si quieres que Clo infiera el buying committee."
+            />
+          </label>
+          <label className="form-row" style={{gridColumn:"1 / -1"}}>
             <span className="form-label">Señales negativas</span>
             <textarea className="ang-textarea" name="negativeSignals" rows={3} defaultValue={draft.negativeSignals}/>
           </label>
@@ -513,8 +570,85 @@ const BatchBusqueda = ({ b, onSaved }) => {
             <span className="entity"><Icons.Filter size={11}/>{brief.minScoreThreshold ?? 75}+ score</span>
           </div>
           <div className="k">Señales positivas</div><div className="v">{brief.positiveSignals || "-"}</div>
+          <div className="k">Contexto para personas</div><div className="v">{brief.peopleContext || "-"}</div>
           <div className="k">Señales negativas</div><div className="v" style={{color:"var(--fg-3)"}}>{brief.negativeSignals || "-"}</div>
         </div>
+      </div>
+    </div>
+    <div className="card" style={{marginTop:14}}>
+      <div className="card-head" style={{alignItems:"flex-start"}}>
+        <div>
+          <div className="card-title">Estrategia del agente</div>
+          <div style={{fontSize:12, color:"var(--fg-3)", marginTop:3}}>
+            Plan editable por feedback. El backend guarda el Markdown y lo usa como estrategia visible para los runs.
+          </div>
+        </div>
+        <div className="card-actions">
+          {strategy && (
+            <span className="entity"><Icons.Hash size={11}/> rev {strategy.revision || 1}</span>
+          )}
+          <button className="primary-btn" onClick={generateStrategy} disabled={strategyBusy}>
+            <Icons.Bot size={13}/> {strategyBusy && !strategy ? "Generando" : "Generar estrategia"}
+          </button>
+        </div>
+      </div>
+      <div style={{padding:"0 20px 18px", display:"grid", gap:12}}>
+        {strategyNotice && <div className="inline-alert">{strategyNotice}</div>}
+        {!strategy && (
+          <div style={{padding:"18px", border:"1px solid var(--border)", borderRadius:8, color:"var(--fg-3)", fontSize:13}}>
+            Todavía no hay estrategia para esta campaña. Genera una para que OpenClaw caracterice el ICP, proponga fuentes y estime gasto antes de ejecutar.
+          </div>
+        )}
+        {strategy && (
+          <>
+            <div style={{display:"grid", gridTemplateColumns:"repeat(3, minmax(0, 1fr))", gap:10}}>
+              <div className="kpi" style={{minHeight:68}}>
+                <div className="kpi-lbl">Costo estimado</div>
+                <div className="kpi-val num">${((strategy.estimatedCostCents || 0) / 100).toFixed(2)}</div>
+              </div>
+              <div className="kpi" style={{minHeight:68}}>
+                <div className="kpi-lbl">Límite</div>
+                <div className="kpi-val num">${((strategy.maxCostCents || 0) / 100).toFixed(2)}</div>
+              </div>
+              <div className="kpi" style={{minHeight:68}}>
+                <div className="kpi-lbl">Archivo</div>
+                <div style={{fontSize:11.5, color:"var(--fg-3)", marginTop:8, overflowWrap:"anywhere"}}>{strategy.markdownPath || "-"}</div>
+              </div>
+            </div>
+            {(strategy.warnings || []).length > 0 && (
+              <div className="inline-alert">
+                {(strategy.warnings || []).join(" ")}
+              </div>
+            )}
+            <pre style={{
+              margin:0,
+              padding:"14px 16px",
+              border:"1px solid var(--border)",
+              borderRadius:8,
+              background:"var(--bg-1)",
+              whiteSpace:"pre-wrap",
+              fontFamily:"var(--sans)",
+              fontSize:13,
+              lineHeight:1.55,
+              color:"var(--fg)"
+            }}>{strategy.strategyMarkdown}</pre>
+            <div style={{display:"grid", gridTemplateColumns:"minmax(260px, 1fr) auto", gap:10, alignItems:"end"}}>
+              <label className="form-row" style={{margin:0}}>
+                <span className="form-label">Darle feedback al plan</span>
+                <textarea
+                  className="ang-textarea"
+                  rows={2}
+                  value={strategyFeedback}
+                  onChange={(event)=>setStrategyFeedback(event.target.value)}
+                  placeholder="Ej. no uses Apollo para negocios pequeños; empieza por DENUE y Google Maps."
+                />
+              </label>
+              <button className="ghost-btn lg" onClick={submitStrategyFeedback} disabled={strategyBusy || !strategyFeedback.trim()}>
+                <Icons.Refresh size={13}/> {strategyBusy ? "Revisando" : "Actualizar plan"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
     <div className="card" style={{marginTop:14}}>
@@ -948,79 +1082,372 @@ const AutoSearchModal = ({ brief, onClose, onSave }) => {
   );
 };
 
-const BatchPersonas = ({ people }) => {
-  const peopleKey = (people || []).map(p => `${p.id}:${p.candidateId}:${p.review}:${p.score}`).join("|");
-  const seed = React.useMemo(() => Array.isArray(people) ? people : [], [peopleKey]);
-  const [rows, setRows] = React.useState(seed);
+const parseRunTime = (value) => {
+  if (!value) return 0;
+  const parsed = Date.parse(String(value).replace(" ", "T") + "Z");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
+const elapsedRunSeconds = (run, now) => {
+  const started = parseRunTime(run?.startedAt) || parseRunTime(run?.createdAt);
+  return started ? Math.max(0, Math.floor((now - started) / 1000)) : 0;
+};
+
+const formatRunSeconds = (seconds) => {
+  const safe = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutes = Math.floor(safe / 60);
+  const remainder = String(safe % 60).padStart(2, "0");
+  return `${minutes}:${remainder}`;
+};
+
+const peopleRunProgress = (run, now) => {
+  const timeout = Math.max(Number(run?.limits?.max_runtime_seconds || 300), 30);
+  const elapsed = elapsedRunSeconds(run, now);
+  const base = run?.status === "queued" ? 8 : 16;
+  const max = run?.status === "queued" ? 18 : 94;
+  return Math.min(max, Math.max(base, Math.round((elapsed / timeout) * 100)));
+};
+
+const COMPANY_PERSON_TABS = [
+  { id: "pendiente", label: "Pendientes" },
+  { id: "aceptada", label: "Aceptadas" },
+  { id: "rechazada", label: "Rechazadas" },
+  { id: "enrich", label: "Enrich" },
+];
+
+const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], onRefresh }) => {
+  const companiesKey = (companies || []).map(c => `${c.id}:${c.candidateId}:${c.review}:${c.prospects || 0}`).join("|");
+  const peopleKey = (people || []).map(p => `${p.id}:${p.candidateId}:${p.review}:${p.score}:${p.email}:${p.phone}`).join("|");
+  const approvedCompanies = React.useMemo(
+    () => (Array.isArray(companies) ? companies : []).filter(c => c.review === "aceptada"),
+    [companiesKey],
+  );
+  const seedPeople = React.useMemo(() => Array.isArray(people) ? people : [], [peopleKey]);
+  const [rows, setRows] = React.useState(seedPeople);
+  const [companyPersonTab, setCompanyPersonTab] = React.useState("pendiente");
+  const [selectedCompanyId, setSelectedCompanyId] = React.useState(approvedCompanies[0]?.id || "");
+  const [selectedPersonId, setSelectedPersonId] = React.useState("");
+  const [feedbackByPerson, setFeedbackByPerson] = React.useState({});
+  const [companyFeedback, setCompanyFeedback] = React.useState("");
+  const [busyCompanyId, setBusyCompanyId] = React.useState("");
+  const [notice, setNotice] = React.useState("");
+  const [now, setNow] = React.useState(Date.now());
+
+  React.useEffect(() => setRows(seedPeople), [peopleKey]);
   React.useEffect(() => {
-    setRows(seed);
-  }, [peopleKey]);
+    const hasPeopleRun = (activeRuns || []).some(run => run.mission === "find_people");
+    if (!hasPeopleRun) return () => {};
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [(activeRuns || []).map(run => `${run.id}:${run.status}`).join("|")]);
+  React.useEffect(() => {
+    if (approvedCompanies.length && !approvedCompanies.find(c => c.id === selectedCompanyId)) {
+      setSelectedCompanyId(approvedCompanies[0].id);
+    }
+  }, [companiesKey]);
+  React.useEffect(() => setSelectedPersonId(""), [selectedCompanyId, companyPersonTab]);
 
-  const setPersonReview = (person, status) => {
-    const review = status === "approved" ? "aceptada" : status === "rejected" ? "rechazada" : "pendiente";
-    setRows((items) => items.map((item) => item.id === person.id ? {...item, review} : item));
+  const selectedCompany = approvedCompanies.find(c => c.id === selectedCompanyId) || approvedCompanies[0];
+  const selectedPeople = selectedCompany ? rows.filter(p => p.companyId === selectedCompany.id) : [];
+  const selectedCompanyCounts = {
+    pendiente: selectedPeople.filter(p => p.review === "pendiente").length,
+    aceptada: selectedPeople.filter(p => p.review === "aceptada").length,
+    rechazada: selectedPeople.filter(p => p.review === "rechazada").length,
+    enrich: selectedPeople.filter(p => p.review === "enrich").length,
+  };
+  const selectedFilteredPeople = selectedPeople.filter(p => p.review === companyPersonTab);
+  const selectedPerson = selectedFilteredPeople.find(p => p.id === selectedPersonId);
+  const activeCompanyPersonTab = COMPANY_PERSON_TABS.find(item => item.id === companyPersonTab) || COMPANY_PERSON_TABS[0];
+  const activePeopleRuns = (activeRuns || []).filter(run => run.mission === "find_people" && ["queued", "running"].includes(run.status));
+  const selectedCompanyRun = selectedCompany?.candidateId
+    ? activePeopleRuns.find(run => run.limits?.target_company_candidate_id === selectedCompany.candidateId)
+    : null;
+  const companyRunActive = Boolean(
+    selectedCompany?.candidateId && selectedCompanyRun,
+  );
+  const maxPeople = Math.min(Math.max(Number(brief?.maxPeople || 5), 1), 8);
+  const runPeopleSearch = (company, enrich = false) => {
+    if (!company?.candidateId || busyCompanyId) return;
+    setBusyCompanyId(company.id);
+    setNotice("");
+    window.BackofficeAPI?.createPeopleRunForCompanyCandidate(company.candidateId, {
+      replaceQueuedRun: true,
+      enrich,
+      feedback: companyFeedback || undefined,
+      maxPeople,
+    })
+      .then(() => {
+        setNotice(enrich ? "Enrichment de personas encolado." : "Búsqueda de personas encolada.");
+        return onRefresh && onRefresh();
+      })
+      .catch((error) => {
+        console.warn("No se pudo lanzar búsqueda de personas", error);
+        setNotice("No se pudo lanzar la búsqueda de personas para esta empresa.");
+      })
+      .finally(() => setBusyCompanyId(""));
+  };
+
+  const setPersonReview = (person, status, feedbackText) => {
+    const nextReview = status === "approved" ? "aceptada" : status === "rejected" || status === "do_not_contact" ? "rechazada" : status === "needs_more_research" ? "enrich" : "pendiente";
+    const text = (feedbackText ?? feedbackByPerson[person.id] ?? person.userFeedback ?? "").trim();
+    setRows((items) => items.map((item) => item.id === person.id ? {...item, review: nextReview, userFeedback: text} : item));
     if (!person.candidateId) return;
 
-    window.BackofficeAPI?.reviewPersonCandidate(person.candidateId, status)
+    window.BackofficeAPI?.reviewPersonCandidate(person.candidateId, status, text || undefined)
       .then((updated) => {
         if (updated) setRows((items) => items.map((item) => item.id === person.id ? {...item, ...updated} : item));
+        onRefresh && onRefresh();
       })
       .catch((error) => console.warn("No se pudo guardar revisión de persona", error));
   };
 
+  if (approvedCompanies.length === 0) {
+    return (
+      <div className="card" style={{padding:"28px"}}>
+        <div className="card-title" style={{fontSize:16, marginBottom:8}}>Personas</div>
+        <div style={{fontSize:13, color:"var(--fg-3)", lineHeight:1.6}}>
+          Acepta empresas en la pestaña Empresas para que Clo empiece a buscar personas dentro de cada una.
+        </div>
+      </div>
+    );
+  }
+
   return (
-  <div className="card">
-    <div className="card-head">
-      <div><div className="card-title">Personas calificadas</div></div>
-      <div className="card-actions">
-        <button className="ghost-btn"><Icons.Refresh size={13}/> Re-calificar</button>
-        <button className="primary-btn"><Icons.Send size={13}/> Enviar a campaña</button>
+    <div>
+      {notice && <div className="inline-alert" style={{marginBottom:12}}>{notice}</div>}
+
+      <div className="empresas-split">
+        <div className="card emp-list">
+          <div className="card-head" style={{padding:"12px 14px"}}>
+            <div>
+              <div className="card-title" style={{fontSize:13}}>Empresas aprobadas · {approvedCompanies.length}</div>
+              <div style={{fontSize:11.5, color:"var(--fg-3)", marginTop:3}}>{rows.length} personas en campaña</div>
+            </div>
+          </div>
+          <div style={{maxHeight:"calc(100vh - 340px)", overflowY:"auto"}}>
+            {approvedCompanies.map(company => {
+              const companyPeople = rows.filter(p => p.companyId === company.id);
+              const approved = companyPeople.filter(p => p.review === "aceptada").length;
+              const pending = companyPeople.filter(p => p.review === "pendiente").length;
+              const activeCompanyRun = activePeopleRuns.find(run => run.limits?.target_company_candidate_id === company.candidateId);
+              const activeProgress = peopleRunProgress(activeCompanyRun, now);
+              return (
+                <button
+                  key={company.id}
+                  className={`emp-item ${selectedCompany?.id===company.id?"selected":""}`}
+                  onClick={()=>{ setSelectedCompanyId(company.id); setSelectedPersonId(""); }}
+                >
+                  <span className="logo-tile" style={{background:(window.DATA.COMPANIES_LOGO[company.name]||{c:"#71717A"}).c, width:32, height:32, fontSize:14, flexShrink:0}}>{company.name[0]}</span>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div className="row-title" style={{fontSize:13, fontWeight:500}}>{company.name}</div>
+                    <div style={{display:"flex", gap:8, marginTop:5, fontSize:11.5, color:"var(--fg-3)"}}>
+                      <span>{activeCompanyRun ? "buscando" : `${companyPeople.length} personas`}</span>
+                      <span>{pending} pendientes</span>
+                      <span>{approved} aceptadas</span>
+                    </div>
+                    {activeCompanyRun && (
+                      <div className="mini-bar info" style={{height:4, marginTop:7}}>
+                        <span style={{width:`${activeProgress}%`}}/>
+                      </div>
+                    )}
+                    <div style={{display:"flex", gap:5, marginTop:7}}>
+                      {companyPeople.some(p => p.email) && <span className="entity"><Icons.Mail size={10}/></span>}
+                      {companyPeople.some(p => p.linkedinUrl) && <span className="entity"><Icons.Linkedin size={10}/></span>}
+                      {companyPeople.some(p => p.phone) && <span className="entity"><Icons.Phone size={10}/></span>}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="card emp-detail">
+          <div className="card-head" style={{alignItems:"flex-start"}}>
+            <div style={{minWidth:0}}>
+              <div className="card-title" style={{fontSize:16, fontWeight:600}}>{selectedCompany?.name}</div>
+              <div style={{fontSize:12, color:"var(--fg-3)", marginTop:4}}>
+                {selectedCompany?.industry || "-"} · {selectedCompany?.domain || "sin dominio"}
+              </div>
+            </div>
+            <div className="card-actions">
+              <button className="ghost-btn" onClick={()=>runPeopleSearch(selectedCompany, true)} disabled={busyCompanyId===selectedCompany?.id || companyRunActive}>
+                <Icons.Zap size={13}/> Enrich
+              </button>
+              <button className="primary-btn" onClick={()=>runPeopleSearch(selectedCompany, false)} disabled={busyCompanyId===selectedCompany?.id || companyRunActive}>
+                <Icons.Refresh size={13}/> {busyCompanyId===selectedCompany?.id ? "Encolando" : "Ejecutar búsqueda"}
+              </button>
+            </div>
+          </div>
+
+          <div style={{padding:"12px 20px 16px", display:"grid", gap:10}}>
+            <div className="tabs" style={{borderBottom:"1px solid var(--border)", padding:0}}>
+              {COMPANY_PERSON_TABS.map(item => (
+                <div
+                  key={item.id}
+                  className={`tab ${companyPersonTab===item.id?"active":""}`}
+                  onClick={()=>setCompanyPersonTab(item.id)}
+                >
+                  {item.label} <span className="tab-count">{selectedCompanyCounts[item.id]}</span>
+                </div>
+              ))}
+            </div>
+
+            {companyRunActive && (
+              <div className="card" style={{padding:"12px 14px", borderRadius:8}}>
+                <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8}}>
+                  <div style={{display:"flex", alignItems:"center", gap:8, minWidth:0}}>
+                    <Icons.Activity size={13}/>
+                    <span style={{fontSize:12.5, fontWeight:600}}>
+                      {selectedCompanyRun.status === "running" ? "Buscando personas" : "Búsqueda en cola"}
+                    </span>
+                    <span className="mono" style={{fontSize:11, color:"var(--fg-3)"}}>{formatRunSeconds(elapsedRunSeconds(selectedCompanyRun, now))}</span>
+                  </div>
+                  <span style={{fontSize:11.5, color:"var(--fg-3)"}}>
+                    {selectedCompanyRun.status === "running" ? "Hunter/OpenClaw trabajando" : "Esperando worker"}
+                  </span>
+                </div>
+                <div className="mini-bar info" style={{height:5}}>
+                  <span style={{width:`${peopleRunProgress(selectedCompanyRun, now)}%`}}/>
+                </div>
+              </div>
+            )}
+
+            {selectedPeople.length === 0 && (
+              <div style={{padding:"24px", border:"1px solid var(--border)", borderRadius:8, color:"var(--fg-3)", fontSize:13, textAlign:"center"}}>
+                Todavía no hay personas para esta empresa. Ejecuta búsqueda para que Clo proponga contactos.
+              </div>
+            )}
+
+            {selectedPeople.length > 0 && selectedFilteredPeople.length === 0 && (
+              <div style={{padding:"20px", border:"1px solid var(--border)", borderRadius:8, color:"var(--fg-3)", fontSize:13, textAlign:"center"}}>
+                No hay personas en {activeCompanyPersonTab.label.toLowerCase()} para esta empresa.
+              </div>
+            )}
+
+            {selectedFilteredPeople.length > 0 && (
+              <div style={{border:"1px solid var(--border)", borderRadius:8, overflow:"hidden", display:"grid"}}>
+                {selectedFilteredPeople.map(person => {
+                  const expanded = selectedPerson?.id === person.id;
+                  const personFeedback = feedbackByPerson[person.id] ?? person.userFeedback ?? "";
+                  return (
+                    <div key={person.id} style={{borderBottom:"1px solid var(--border)", background:expanded ? "var(--bg)" : "var(--bg-1)"}}>
+                      <div style={{display:"grid", gridTemplateColumns:"minmax(280px, 3fr) minmax(260px, 2fr)", gap:12, padding:"8px 10px", alignItems:"stretch"}}>
+                        <button
+                          className={`emp-item ${expanded?"selected":""}`}
+                          onClick={()=>setSelectedPersonId(expanded ? "" : person.id)}
+                          style={{width:"100%", minHeight:82, padding:"10px 12px", border:"1px solid var(--border)", borderRadius:8, background:expanded ? "var(--hover)" : "var(--bg)", alignItems:"center"}}
+                        >
+                          <window.Avatar initials={person.name.split(" ").map(x=>x[0]).slice(0,2).join("")} color="#27272A"/>
+                          <div style={{flex:1, minWidth:0}}>
+                            <div style={{display:"flex", alignItems:"center", gap:8, minWidth:0}}>
+                              <span className="row-title" style={{fontSize:14, fontWeight:600}}>{person.name}</span>
+                              {person.review==="aceptada" && <span className="emp-dot" style={{background:"var(--ok)"}}/>}
+                              {person.review==="enrich" && <span className="emp-dot" style={{background:"var(--warn)"}}/>}
+                              {person.review==="rechazada" && <span className="emp-dot" style={{background:"var(--danger)"}}/>}
+                            </div>
+                            <div className="row-sub" style={{marginTop:4, whiteSpace:"normal", lineHeight:1.25, fontSize:12}}>{person.title || "Sin cargo"}</div>
+                          </div>
+                          <div style={{display:"grid", justifyItems:"end", alignSelf:"stretch", alignContent:"space-between", flexShrink:0, minWidth:58}}>
+                            <span className="mono" style={{fontSize:13, color:"var(--fg)"}}>{person.score}%</span>
+                            <div style={{display:"flex", gap:4, flexWrap:"wrap", justifyContent:"flex-end"}}>
+                              <span className={`entity ${person.country ? "" : "muted"}`} title={person.country || "Sin país"} style={{height:20, minWidth:28, padding:"0 6px"}}>
+                                {person.country || "-"}
+                              </span>
+                              <span className={`entity ${person.email ? "" : "muted"}`} title={person.email || "Sin email"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Mail size={10}/></span>
+                              <span className={`entity ${person.linkedinUrl ? "" : "muted"}`} title={person.linkedinUrl || "Sin LinkedIn"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Linkedin size={10}/></span>
+                              <span className={`entity ${person.phone ? "" : "muted"}`} title={person.phone || "Sin teléfono"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Phone size={10}/></span>
+                            </div>
+                          </div>
+                        </button>
+
+                        <div style={{display:"grid", gap:7, alignContent:"start"}}>
+                          <label className="form-row" style={{margin:0}}>
+                            <textarea
+                              className="ang-textarea"
+                              rows={2}
+                              value={personFeedback}
+                              onChange={(event)=>setFeedbackByPerson((items) => ({...items, [person.id]: event.target.value}))}
+                              placeholder="Por qué esta persona sí o no sirve."
+                              style={{minHeight:52, padding:"9px 10px"}}
+                            />
+                          </label>
+
+                          <div style={{display:"flex", gap:8, justifyContent:"flex-end", flexWrap:"wrap"}}>
+                            {person.review !== "aceptada" && (
+                              <button className="review-btn accept" style={{height:28, padding:"0 10px"}} onClick={()=>setPersonReview(person, "approved", personFeedback)}>
+                                <Icons.Check size={12} sw={2.4}/> Aceptar
+                              </button>
+                            )}
+                            {person.review !== "enrich" && (
+                              <button className="review-btn enrich" style={{height:28, padding:"0 10px"}} onClick={()=>setPersonReview(person, "needs_more_research", personFeedback)}>
+                                <Icons.Search size={12} sw={2.4}/> Enrich
+                              </button>
+                            )}
+                            {person.review !== "rechazada" && (
+                              <button className="review-btn reject" style={{height:28, padding:"0 10px"}} onClick={()=>setPersonReview(person, "rejected", personFeedback)}>
+                                <Icons.X size={12} sw={2.4}/> Rechazar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {expanded && (
+                        <div style={{padding:"0 14px 16px", display:"grid", gap:14}}>
+                          <div style={{display:"grid", gridTemplateColumns:"repeat(3, minmax(0, 1fr))", gap:10}}>
+                            <div className="kpi" style={{minHeight:66}}>
+                              <div className="kpi-lbl">Email</div>
+                              <div style={{fontSize:12.5, marginTop:8, overflowWrap:"anywhere"}}>{person.email || "-"}</div>
+                            </div>
+                            <div className="kpi" style={{minHeight:66}}>
+                              <div className="kpi-lbl">LinkedIn</div>
+                              <div style={{fontSize:12.5, marginTop:8, overflowWrap:"anywhere"}}>{person.linkedinUrl ? <a href={person.linkedinUrl} target="_blank" rel="noreferrer">Perfil</a> : "-"}</div>
+                            </div>
+                            <div className="kpi" style={{minHeight:66}}>
+                              <div className="kpi-lbl">Teléfono</div>
+                              <div style={{fontSize:12.5, marginTop:8}}>{person.phone || "-"}</div>
+                            </div>
+                          </div>
+
+                          <div className="kv kv-wide">
+                            <div className="k">Por qué aplica</div><div className="v">{person.rationale || "-"}</div>
+                            <div className="k">Ángulo sugerido</div><div className="v">{person.angleHint || "-"}</div>
+                            <div className="k">Proveedor</div><div className="v">{person.sourceProvider || "-"}</div>
+                          </div>
+
+                          <div>
+                            <div style={{fontSize:12, color:"var(--fg-3)", fontFamily:"var(--mono)", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:10}}>
+                              Evidencia
+                            </div>
+                            <div style={{display:"grid", gap:8}}>
+                              {(person.evidence || []).length === 0 && (
+                                <div style={{padding:"14px", border:"1px solid var(--border)", borderRadius:8, color:"var(--fg-3)", fontSize:13}}>
+                                  Sin evidencia guardada.
+                                </div>
+                              )}
+                              {(person.evidence || []).map((item, index) => (
+                                <div key={index} style={{padding:"12px 14px", border:"1px solid var(--border)", borderRadius:8, background:"var(--bg-1)"}}>
+                                  <div style={{display:"flex", gap:8, marginBottom:6, alignItems:"center"}}>
+                                    <span className="entity"><Icons.Globe size={11}/>{item.type || "fuente"}</span>
+                                    {item.url ? <a href={item.url} target="_blank" rel="noreferrer" style={{fontSize:12, overflowWrap:"anywhere"}}>{item.url}</a> : null}
+                                  </div>
+                                  <div style={{fontSize:13, lineHeight:1.5}}>{item.note || "Sin nota."}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
-    <table className="dt">
-      <thead>
-        <tr>
-          <th className="col-check"><window.Cbx/></th>
-          <th>Persona</th>
-          <th>Empresa</th>
-          <th>Score</th>
-          <th>Estado</th>
-          <th>Última actividad</th>
-          <th style={{width:160}}>Revisión</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(p => (
-          <tr key={p.id}>
-            <td className="col-check"><window.Cbx/></td>
-            <td><div className="row" style={{gap:10}}>
-              <window.Avatar initials={p.name.split(" ").map(x=>x[0]).slice(0,2).join("")} color="#27272A"/>
-              <div><div className="row-title">{p.name}</div><div className="row-sub">{p.title}</div></div>
-            </div></td>
-            <td style={{fontSize:12.5}}>{p.company}</td>
-            <td><window.ScoreBar value={p.score} band={p.scoreBand}/></td>
-            <td><window.StatusPill kind={p.status.kind} label={p.status.label}/></td>
-            <td style={{fontSize:12, color:"var(--fg-2)"}}>{p.lastTouch}</td>
-            <td>
-              <div style={{display:"flex", gap:4, justifyContent:"flex-end"}}>
-                {p.review!=="aceptada" && (
-                  <button className="review-btn accept" onClick={()=>setPersonReview(p, "approved")}>
-                    <Icons.Check size={12} sw={2.4}/>
-                  </button>
-                )}
-                {p.review!=="rechazada" && (
-                  <button className="review-btn reject" onClick={()=>setPersonReview(p, "rejected")}>
-                    <Icons.X size={12} sw={2.4}/>
-                  </button>
-                )}
-              </div>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
   );
 };
 

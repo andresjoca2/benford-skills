@@ -6,10 +6,12 @@ import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { migrateDatabase, resolveDbPath } from "../../apps/backoffice/src/server/migrate.ts"
 import {
+  buildProspectingStrategyInput,
   cancelCampaignRun,
   completeOpenClawJob,
   createCampaign,
   createCampaignRun,
+  createPeopleRunForCompanyCandidate,
   db,
   getCampaignDetail,
   getDatabaseTable,
@@ -23,10 +25,13 @@ import {
   reviewCompanyCandidate,
   reviewPersonCandidate,
   revealCachedCompanyCandidates,
+  reviseProspectingStrategyPlan,
+  saveProspectingStrategyPlan,
+  scorePersonCandidateForCampaign,
   setupDatabase,
   updateCampaignBrief,
 } from "../../apps/backoffice/src/server/db.ts"
-import { runOpenClawJob } from "../../apps/backoffice/src/server/openclaw-adapter.ts"
+import { enrichJobInputWithHunter, runOpenClawJob, runProspectingStrategist } from "../../apps/backoffice/src/server/openclaw-adapter.ts"
 
 const appRoot = path.resolve(import.meta.dir, "../../apps/backoffice")
 
@@ -115,6 +120,10 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("<span className=\"form-label\">Motivo</span>")
     expect(screen).toContain("data-review-feedback=\"company\"")
     expect(screen).toContain("document.activeElement?.closest?.(\"[data-review-feedback]\")")
+    expect(screen).toContain("Estrategia del agente")
+    expect(screen).toContain("Darle feedback al plan")
+    expect(screen).toContain("createProspectingPlan")
+    expect(screen).toContain("giveProspectingPlanFeedback")
     expect(screen).toContain("Enrich")
     expect(screen).toContain("needs_more_research")
     expect(screen).toContain("reviewCompanyCandidate(company.candidateId, status, feedback || undefined)")
@@ -143,6 +152,47 @@ describe("clo backoffice frontend", () => {
     expect(detail).toContain("<ProcessLogs runs={campaignRuns} process=\"companies\"/>")
     expect(detail).toContain("<ProcessLogs runs={campaignRuns} process=\"people\"/>")
   })
+
+  test("personas tab works by approved company with per-person review", async () => {
+    const screen = await readFile(path.join(appRoot, "src/clo/screen-batch.jsx"), "utf8")
+    const apiClient = await readFile(path.join(appRoot, "src/clo/api-client.jsx"), "utf8")
+
+    expect(screen).toContain("Empresas aprobadas")
+    expect(screen).toContain("Ejecutar búsqueda")
+    expect(screen).toContain("createPeopleRunForCompanyCandidate")
+    expect(screen).toContain("feedbackByPerson")
+    expect(screen).toContain("COMPANY_PERSON_TABS")
+    expect(screen).toContain("companyPersonTab")
+    expect(screen).toContain("selectedFilteredPeople")
+    expect(screen).toContain("No hay personas en")
+    expect(screen).toContain("Sin país")
+    expect(screen).toContain("Sin LinkedIn")
+    expect(screen).toContain("Aceptar")
+    expect(screen).toContain("Rechazar")
+    expect(screen).toContain("needs_more_research")
+    expect(screen).toContain("Buscando personas")
+    expect(screen).toContain("Hunter/OpenClaw trabajando")
+    expect(screen).toContain("formatRunSeconds")
+    expect(screen).toContain("Ángulo sugerido")
+    expect(screen).toContain("Contexto para personas")
+    expect(apiClient).toContain("/people-runs")
+  })
+
+  test("prospecting strategist skill defines planning contracts and budget guardrails", async () => {
+    const skillRoot = path.join(appRoot, "openclaw-skills/prospecting-strategist")
+    const skill = await readFile(path.join(skillRoot, "SKILL.md"), "utf8")
+    const planContract = await readFile(path.join(skillRoot, "references/strategy-plan-contract.json"), "utf8")
+    const reportContract = await readFile(path.join(skillRoot, "references/execution-report-contract.json"), "utf8")
+
+    expect(skill).toContain("Mandatory Budget Guard")
+    expect(skill).toContain("strategy-then-execute")
+    expect(skill).toContain("waterfall search")
+    expect(planContract).toContain("budget_guard")
+    expect(planContract).toContain("strategy_markdown")
+    expect(planContract).toContain("estimated_cost_cents")
+    expect(reportContract).toContain("actual_cost_cents")
+    expect(reportContract).toContain("stopped_for_budget")
+  })
 })
 
 describe("clo backoffice local database", () => {
@@ -168,11 +218,22 @@ describe("clo backoffice local database", () => {
 
       expect(migration).toContain("0001_core")
       expect(migration).toContain("0002_campaign_min_score_threshold")
-      expect(migration).toContain("0003_company_candidate_review_queue")
+    expect(migration).toContain("0003_company_candidate_review_queue")
+    expect(migration).toContain("0005_prospecting_strategy_memory")
+      expect(migration).toContain("0006_prospecting_strategy_markdown")
       expect(tables).toContain("campaigns")
       expect(tables).toContain("people")
       expect(tables).toContain("person_candidates")
       expect(tables).toContain("outreach_drafts")
+    expect(tables).toContain("prospecting_queries")
+    expect(tables).toContain("prospecting_cost_ledger")
+      const planColumns = database
+        .query<{ name: string }, []>('PRAGMA table_info("prospecting_plans")')
+        .all()
+        .map((row) => row.name)
+      expect(planColumns).toContain("strategy_markdown")
+      expect(planColumns).toContain("markdown_path")
+      expect(planColumns).toContain("revision")
       expect(briefColumns).toContain("run_budget_cents")
       expect(briefColumns).toContain("max_companies")
       expect(briefColumns).toContain("max_people")
@@ -976,71 +1037,117 @@ describe("clo backoffice local database", () => {
     }
   })
 
-  test("retries empty find_companies OpenClaw output once", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "backoffice-openclaw-retry-"))
-    const script = path.join(dir, "openclaw-stub.sh")
-    const state = path.join(dir, "state")
-    const previousMock = Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
-    const previousCommand = Bun.env.OPENCLAW_COMMAND
-    const previousState = Bun.env.OPENCLAW_STUB_STATE
-
-    writeFileSync(
-      script,
-      [
-        "#!/usr/bin/env bash",
-        "set -euo pipefail",
-        "if [ ! -f \"$OPENCLAW_STUB_STATE\" ]; then",
-        "  echo first > \"$OPENCLAW_STUB_STATE\"",
-        "  printf '{\"companies\":[]}'",
-        "else",
-        "  printf '{\"companies\":[{\"name\":\"Retry Demo\",\"domain\":\"retry-demo.mx\",\"linkedin_url\":\"\",\"country\":\"MX\",\"city\":\"CDMX\",\"industry\":\"SaaS\",\"employee_range\":\"\",\"description\":\"Demo\",\"score\":82,\"rationale\":\"Match\",\"evidence\":[{\"type\":\"website\",\"url\":\"https://retry-demo.mx\",\"note\":\"Sitio oficial.\"}]}]}'",
-        "fi",
-        "",
-      ].join("\n"),
-    )
-    chmodSync(script, 0o755)
-    delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
-    Bun.env.OPENCLAW_COMMAND = script
-    Bun.env.OPENCLAW_STUB_STATE = state
+  test("mock strategist creates and revises a persisted markdown plan", async () => {
+    setupDatabase()
+    const previous = Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+    Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = "1"
+    let campaignId = ""
+    let markdownPath = ""
 
     try {
-      const result = await runOpenClawJob({
-        id: "job_retry_empty",
-        runId: "run_retry_empty",
-        campaignId: "campaign_retry_empty",
-        skill: "find_companies",
+      const campaign = createCampaign({
+        name: "Campaign Test Strategist Markdown",
+        objective: "Encontrar negocios locales de servicios contables en Mexico.",
+        industry: "Servicios contables",
+        countryRegion: "Mexico",
+        searchMode: "companies_then_people",
+        runBudgetCents: 1200,
+        maxCompanies: 20,
+      })
+      campaignId = campaign?.id ?? ""
+      const input = campaignId ? buildProspectingStrategyInput(campaignId) : null
+      const result = input ? await runProspectingStrategist(input) : null
+      const plan = result ? saveProspectingStrategyPlan(campaignId, input?.query_original ?? "", result.output as never) : null
+
+      expect(plan?.strategyMarkdown).toContain("Estrategia del agente")
+      expect(plan?.markdownPath).toContain("prospecting-strategies")
+      markdownPath = plan?.markdownPath ?? ""
+      expect(markdownPath ? existsSync(markdownPath) : false).toBe(true)
+
+      const revisedInput = plan
+        ? buildProspectingStrategyInput(campaignId, { currentPlanId: plan.id, feedback: "Empieza por DENUE." })
+        : null
+      const revisedResult = revisedInput ? await runProspectingStrategist(revisedInput) : null
+      const revised = plan && revisedResult
+        ? reviseProspectingStrategyPlan(plan.id, "Empieza por DENUE.", revisedResult.output as never)
+        : null
+
+      expect(revised?.revision).toBe(2)
+      expect(revised?.strategyMarkdown).toContain("Feedback aplicado")
+    } finally {
+      if (markdownPath) rmSync(markdownPath, { force: true })
+      if (campaignId) {
+        db.prepare("DELETE FROM prospecting_queries WHERE campaign_id = ?").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      if (previous === undefined) delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+      else Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = previous
+    }
+  })
+
+  test("enriches people jobs with Hunter domain-search contacts when configured", async () => {
+    const previousKey = Bun.env.HUNTER_API_KEY
+    const previousLimit = Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT
+    const previousFetch = globalThis.fetch
+    Bun.env.HUNTER_API_KEY = "test-key"
+    Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT = "3"
+    ;(globalThis as unknown as { fetch: unknown }).fetch = async (input: RequestInfo | URL) => {
+      const url = String(input)
+      expect(url).toContain("domain=booksy.com")
+      expect(url).not.toContain("api_key=48")
+      return new Response(
+        JSON.stringify({
+          data: {
+            emails: [
+              {
+                first_name: "Ana",
+                last_name: "Alianzas",
+                value: "ana@booksy.com",
+                position: "Partnerships Manager Mexico",
+                department: "partnerships",
+                seniority: "manager",
+                confidence: 92,
+                linkedin: "https://linkedin.com/in/ana-alianzas",
+                sources: [{ uri: "https://booksy.com" }],
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      )
+    }
+
+    try {
+      const enriched = await enrichJobInputWithHunter({
+        id: "job_hunter_people",
+        runId: "run_hunter_people",
+        campaignId: "campaign_hunter_people",
+        skill: "find_people",
         status: "queued",
         input: {
-          brief: {
-            industry: "SaaS",
-            countryRegion: "MX",
-            maxCompanies: 10,
-            reviewBatchSize: 10,
-            discoveryMode: "fast_prefetch",
-          },
-          memory: { alreadySeenCompanies: ["Mercado Libre"] },
+          targetCompany: { name: "Booksy", domain: "booksy.com", country: "MX" },
+          brief: { maxPeople: 5 },
         },
         output: {},
         error: "",
         attempt: 0,
         maxAttempts: 1,
-        timeoutSeconds: 5,
+        timeoutSeconds: 120,
         startedAt: null,
         finishedAt: null,
         createdAt: "",
         updatedAt: "",
       })
-      const output = result.output as { companies?: Array<{ name?: string }> }
+      const hunter = (enriched.input as { sourceData?: { hunter?: { people?: Array<{ email?: string; title?: string }> } } }).sourceData?.hunter
 
-      expect(output.companies?.map((company) => company.name)).toContain("Retry Demo")
+      expect(hunter?.people?.[0]?.email).toBe("ana@booksy.com")
+      expect(hunter?.people?.[0]?.title).toBe("Partnerships Manager Mexico")
     } finally {
-      if (previousMock === undefined) delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
-      else Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = previousMock
-      if (previousCommand === undefined) delete Bun.env.OPENCLAW_COMMAND
-      else Bun.env.OPENCLAW_COMMAND = previousCommand
-      if (previousState === undefined) delete Bun.env.OPENCLAW_STUB_STATE
-      else Bun.env.OPENCLAW_STUB_STATE = previousState
-      rmSync(dir, { recursive: true, force: true })
+      ;(globalThis as unknown as { fetch: unknown }).fetch = previousFetch
+      if (previousKey === undefined) delete Bun.env.HUNTER_API_KEY
+      else Bun.env.HUNTER_API_KEY = previousKey
+      if (previousLimit === undefined) delete Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT
+      else Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT = previousLimit
     }
   })
 
@@ -1094,34 +1201,234 @@ describe("clo backoffice local database", () => {
     }
   })
 
-  test("marks empty find_companies output as failed instead of needs_review", () => {
+  test("approving a company queues and persists find_people candidates", () => {
     setupDatabase()
     let campaignId = ""
+    let companyId = ""
+    let personId = ""
 
     try {
       const campaign = createCampaign({
-        name: "Campaign Test Empty OpenClaw Output",
-        objective: "Encontrar empresas para probar salida vacia.",
-        industry: "Servicios",
+        name: "Campaign Test Personas",
+        objective: "Encontrar buyers para ecommerce SaaS.",
+        industry: "SaaS",
         countryRegion: "Mexico",
-        searchMode: "companies",
-        maxCompanies: 10,
+        searchMode: "companies_then_people",
+        maxCompanies: 1,
+        maxPeople: 5,
+        peopleContext: "Roles objetivo, seniority, areas, excluir roles: partnerships, marketing, CEO; evitar perfiles junior.",
       })
       campaignId = campaign?.id ?? ""
       const created = campaignId ? createCampaignRun(campaignId) : null
       const runId = created && "run" in created ? created.run?.id ?? "" : ""
-      const job = db
+      const companyJob = db
         .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
         .get(runId)
-      const completed = job ? completeOpenClawJob(job.id, { companies: [] }) : null
-      const run = db.query<{ status: string; error: string }, [string]>("SELECT status, error FROM agent_runs WHERE id = ?").get(runId)
 
-      expect(completed?.status).toBe("failed")
-      expect(run?.status).toBe("failed")
-      expect(run?.error).toContain("zero companies")
+      if (companyJob) {
+        completeOpenClawJob(companyJob.id, {
+          companies: [
+            {
+              name: "Nuvemshop Personas Test",
+              domain: "nuvemshop-personas-test.com",
+              linkedin_url: "",
+              country: "MX",
+              city: "CDMX",
+              industry: "SaaS",
+              employee_range: "51-200",
+              description: "SaaS ecommerce para tiendas.",
+              score: 91,
+              rationale: "Buen fit para probar personas por empresa.",
+              evidence: [{ type: "website", url: "https://nuvemshop-personas-test.com", note: "Sitio demo." }],
+            },
+          ],
+        })
+      }
+
+      const company = listCampaignCompanyCandidates(campaignId).find((candidate) => candidate.name === "Nuvemshop Personas Test")
+      companyId = company?.id ?? ""
+      if (company?.candidateId) reviewCompanyCandidate(company.candidateId, { status: "approved", feedback: "Buen fit para partnerships.", createdBy: "Test" })
+
+      const peopleJob = db
+        .query<{ id: string; input_json: string }, [string]>(
+          "SELECT id, input_json FROM openclaw_jobs WHERE campaign_id = ? AND skill = 'find_people' ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(campaignId)
+      const peopleInput = peopleJob ? JSON.parse(peopleJob.input_json) : {}
+
+      if (peopleJob) {
+        completeOpenClawJob(peopleJob.id, {
+          people: [
+            {
+              name: "Ana Partnerships Personas Test",
+              title: "Head of Partnerships",
+              company_name: "Nuvemshop Personas Test",
+              company_domain: "nuvemshop-personas-test.com",
+              linkedin_url: "https://linkedin.com/in/ana-partnerships-personas-test",
+              email: "ana@nuvemshop-personas-test.com",
+              phone: "+52 55 0000 0000",
+              country: "MX",
+              city: "CDMX",
+              seniority: "Head",
+              function: "Partnerships",
+              description: "Lidera alianzas para ecommerce.",
+              score: 94,
+              rationale: "Partnerships es un buen camino comercial para esta empresa.",
+              angle_hint: "Hablar de alianzas y canal indirecto.",
+              source_provider: "apollo",
+              evidence: [{ type: "apollo", url: "https://apollo.io", note: "Perfil demo." }],
+            },
+          ],
+        })
+      }
+
+      const person = listCampaignPeople(campaignId).find((candidate) => candidate.name === "Ana Partnerships Personas Test")
+      personId = person?.id ?? ""
+      const reviewed = person?.candidateId
+        ? reviewPersonCandidate(person.candidateId, { status: "approved", feedback: "Esta es la persona correcta para partnerships.", createdBy: "Test" })
+        : null
+      const refreshed = company?.candidateId
+        ? createPeopleRunForCompanyCandidate(company.candidateId, {
+            replaceQueuedRun: true,
+            enrich: true,
+            feedback: "Buscar tambien marketing, no solo partnerships.",
+          })
+        : null
+      const refreshedRunId = refreshed && "run" in refreshed ? refreshed.run?.id ?? "" : ""
+      const refreshedJob = refreshedRunId
+        ? db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_people'").get(refreshedRunId)
+        : null
+      if (refreshedJob) {
+        completeOpenClawJob(refreshedJob.id, {
+          people: [
+            {
+              name: "Ana Partnerships Personas Test",
+              title: "Head of Partnerships",
+              company_name: "Nuvemshop Personas Test",
+              company_domain: "nuvemshop-personas-test.com",
+              linkedin_url: "https://linkedin.com/in/ana-partnerships-personas-test",
+              email: "ana@nuvemshop-personas-test.com",
+              phone: "+52 55 0000 0000",
+              country: "MX",
+              city: "CDMX",
+              seniority: "Head",
+              function: "Partnerships",
+              description: "Lidera alianzas para ecommerce.",
+              score: 76,
+              rationale: "Actualizada por rerun con mejor evidencia.",
+              angle_hint: "Actualizar ángulo de alianzas.",
+              source_provider: "apollo",
+              evidence: [{ type: "apollo", url: "https://apollo.io", note: "Perfil demo actualizado." }],
+            },
+            {
+              name: "Wrong Company Personas Test",
+              title: "Head of Partnerships",
+              company_name: "Otra Empresa",
+              company_domain: "otra-empresa.test",
+              linkedin_url: "https://linkedin.com/in/wrong-company-personas-test",
+              email: "",
+              phone: "",
+              country: "MX",
+              city: "CDMX",
+              seniority: "Head",
+              function: "Partnerships",
+              description: "No pertenece a la empresa target.",
+              score: 99,
+              rationale: "Debe omitirse por mismatch de empresa.",
+              angle_hint: "",
+              source_provider: "linkedin",
+              evidence: [{ type: "linkedin", url: "https://linkedin.com/in/wrong-company-personas-test", note: "Perfil de otra empresa." }],
+            },
+          ],
+        })
+      }
+      const updatedPerson = listCampaignPeople(campaignId).find((candidate) => candidate.name === "Ana Partnerships Personas Test")
+      const wrongCompanyPerson = listCampaignPeople(campaignId).find((candidate) => candidate.name === "Wrong Company Personas Test")
+
+      expect(peopleInput.brief?.peopleContext).toContain("partnerships")
+      expect(peopleInput.targetCompany?.name).toBe("Nuvemshop Personas Test")
+      expect(person?.email).toBe("ana@nuvemshop-personas-test.com")
+      expect(person?.phone).toBe("+52 55 0000 0000")
+      expect(person?.sourceProvider).toBe("apollo")
+      expect(person?.angleHint).toContain("alianzas")
+      expect(updatedPerson?.rationale).toContain("Actualizada por rerun")
+      expect(wrongCompanyPerson).toBeUndefined()
+      expect(reviewed && "review" in reviewed ? reviewed.review : "").toBe("aceptada")
+      expect(refreshed && "run" in refreshed ? refreshed.run?.mission : "").toBe("find_people")
     } finally {
       if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      if (companyId) db.prepare("DELETE FROM companies WHERE id = ?").run(companyId)
+      if (personId) db.prepare("DELETE FROM people WHERE id = ?").run(personId)
+      db.prepare("DELETE FROM companies WHERE domain = 'nuvemshop-personas-test.com'").run()
+      db.prepare("DELETE FROM people WHERE email = 'ana@nuvemshop-personas-test.com'").run()
+      db.prepare("DELETE FROM feedback WHERE created_by = 'Test'").run()
     }
+  })
+
+  test("people scoring favors actionable operators over global executives for large companies", () => {
+    const input = {
+      brief: {
+        objective: "Encontrar partnerships para una campaña con marketplaces y sellers en Mexico.",
+        peopleContext: "",
+        positiveSignals: "Alianzas, marketplace, vendedores, canal.",
+        negativeSignals: "",
+      },
+      targetCompany: {
+        name: "Marketplace Grande Test",
+        country: "MX",
+        industry: "Marketplace",
+        employeeRange: "1001-5000",
+        description: "Marketplace con operación regional.",
+      },
+    }
+    const globalExecutive = scorePersonCandidateForCampaign(
+      {
+        name: "Ejecutiva Global Test",
+        title: "Chief Executive Officer",
+        company_name: "Marketplace Grande Test",
+        company_domain: "marketplace-grande-test.com",
+        linkedin_url: "https://linkedin.com/in/ejecutiva-global-test",
+        email: "",
+        phone: "",
+        country: "US",
+        city: "",
+        seniority: "C-Level",
+        function: "Executive",
+        description: "Global executive profile that mentions partner ecosystem.",
+        score: 96,
+        rationale: "Es la persona más senior y podría destrabar partnerships estratégicos.",
+        angle_hint: "Hablar de alianza para sellers.",
+        source_provider: "linkedin",
+        evidence: [{ type: "linkedin", url: "https://linkedin.com/in/ejecutiva-global-test", note: "Perfil público." }],
+      },
+      input,
+    )
+    const mexicoOperator = scorePersonCandidateForCampaign(
+      {
+        name: "Operadora Partnerships Test",
+        title: "Head of Partnerships Mexico",
+        company_name: "Marketplace Grande Test",
+        company_domain: "marketplace-grande-test.com",
+        linkedin_url: "https://linkedin.com/in/operadora-partnerships-test",
+        email: "operadora@marketplace-grande-test.com",
+        phone: "",
+        country: "MX",
+        city: "CDMX",
+        seniority: "Head",
+        function: "Partnerships",
+        description: "Lidera alianzas con sellers y canales en Mexico.",
+        score: 82,
+        rationale: "Tiene ownership operativo de alianzas.",
+        angle_hint: "Proponer alianza para sellers.",
+        source_provider: "apollo",
+        evidence: [{ type: "apollo", url: "https://apollo.io", note: "Perfil con rol de partnerships en Mexico." }],
+      },
+      input,
+    )
+
+    expect(mexicoOperator.score).toBeGreaterThan(globalExecutive.score)
+    expect(mexicoOperator.rationale).toContain("rol operativo relevante")
+    expect(globalExecutive.rationale).toContain("ejecutivo demasiado alto")
   })
 
   test("reviews candidates with feedback, suppression, and research jobs", () => {
@@ -1159,6 +1466,18 @@ describe("clo backoffice local database", () => {
           "SELECT COUNT(*) AS count FROM openclaw_jobs WHERE run_id = 'run_fintech_001' AND skill IN ('research_person', 'research_company')",
         )
         .get()
+      db.prepare(`
+        DELETE FROM openclaw_jobs
+        WHERE campaign_id = 'campaign_fintech_latam'
+          AND run_id <> 'run_fintech_001'
+          AND status IN ('queued', 'running')
+      `).run()
+      db.prepare(`
+        DELETE FROM agent_runs
+        WHERE campaign_id = 'campaign_fintech_latam'
+          AND id <> 'run_fintech_001'
+          AND status IN ('queued', 'running')
+      `).run()
       const nextRun = createCampaignRun("campaign_fintech_latam", { prefetchCompanies: 10, reviewBatchSize: 10 })
       const nextRunId = nextRun && "run" in nextRun ? nextRun.run?.id ?? "" : ""
       const nextJob = db
@@ -1366,11 +1685,17 @@ describe("clo backoffice local database", () => {
 
     const tables = listDatabaseTables()
     const briefs = getDatabaseTable("campaign_briefs")
+    const costLedger = getDatabaseTable("prospecting_cost_ledger")
 
     expect(tables.map((table) => table.name)).toContain("campaign_briefs")
     expect(tables.map((table) => table.name)).toContain("person_candidates")
+    expect(tables.map((table) => table.name)).toContain("prospecting_queries")
+    expect(tables.map((table) => table.name)).toContain("learned_patterns")
+    expect(tables.map((table) => table.name)).toContain("prospecting_cost_ledger")
     expect(briefs?.columns.map((column) => column.name)).toContain("run_budget_cents")
     expect(briefs?.columns.map((column) => column.name)).toContain("min_score_threshold")
+    expect(costLedger?.columns.map((column) => column.name)).toContain("cumulative_run_cents")
+    expect(costLedger?.columns.map((column) => column.name)).toContain("budget_limit_cents")
     expect(briefs?.rows.length).toBeGreaterThan(0)
   })
 })

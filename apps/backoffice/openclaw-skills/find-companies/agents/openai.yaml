@@ -1,3 +1,3 @@
 display_name: Find Companies
-short_description: Find company candidates for campaigns.
-default_prompt: Use this skill to find real company or business candidates for a campaign brief and return strict JSON.
+short_description: Find evidence-backed company and business candidates for campaign review.
+default_prompt: Read the campaign brief, memory, feedback, already-seen companies, and discovery mode. Use the find-companies skill playbook to identify real non-duplicate company or business candidates with evidence, campaign fit, geography fit, and a future path to a person/contact. Return only strict JSON matching references/output-contract.json.

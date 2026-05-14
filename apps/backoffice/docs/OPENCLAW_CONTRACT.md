@@ -115,6 +115,7 @@ Minimum shape:
     "niche": "Seed/Series A B2B",
     "countryRegion": "LATAM",
     "companySize": "11-200 empleados",
+    "peopleContext": "Roles objetivo, seniority, areas, excluir roles...",
     "positiveSignals": "Founder visible...",
     "negativeSignals": "Banca tradicional...",
     "searchMode": "companies",
@@ -135,6 +136,39 @@ Minimum shape:
     "feedback": []
   },
   "outputContract": "Return only JSON matching the requested schema."
+}
+```
+
+For company-scoped `find_people` jobs, input also includes:
+
+```json
+{
+  "mission": "find_people",
+  "targetCompany": {
+    "companyCandidateId": "company_candidate_mendel_fintech",
+    "companyId": "company_mendel",
+    "name": "Mendel",
+    "domain": "mendel.com",
+    "industry": "Fintech",
+    "rationale": "Calza por industria...",
+    "evidence": []
+  },
+  "brief": {
+    "peopleContext": "Roles objetivo, seniority, areas, excluir roles...",
+    "maxPeople": 5,
+    "discoveryMode": "company_people",
+    "sourcePolicy": ["public_web", "linkedin", "hunter", "apollo"]
+  },
+  "memory": {
+    "feedback": [],
+    "companyPeople": {
+      "alreadySeenPeople": [],
+      "approvedPeople": [],
+      "rejectedPeople": [],
+      "feedback": []
+    },
+    "refreshFeedback": ""
+  }
 }
 ```
 
@@ -189,6 +223,7 @@ Candidates can be formal companies, local businesses, professional practices, cl
       "company_domain": "mendel.com",
       "linkedin_url": "https://linkedin.com/in/example",
       "email": "",
+      "phone": "",
       "country": "MX",
       "city": "Ciudad de Mexico",
       "seniority": "Founder",
@@ -196,6 +231,8 @@ Candidates can be formal companies, local businesses, professional practices, cl
       "description": "Founder ejecutivo en fintech B2B.",
       "score": 92,
       "rationale": "Decision maker con alta afinidad.",
+      "angle_hint": "Hablar de partnership financiero para acelerar cierres.",
+      "source_provider": "linkedin",
       "evidence": [
         {
           "type": "linkedin",
@@ -272,9 +309,17 @@ When added:
 
 ## Cost
 
-Cost tracking is deferred until OpenClaw can reliably return cost metadata.
+OpenClaw model/tool cost is advisory until OpenClaw can reliably return cost
+metadata. Provider/source adapter cost must be tracked when the adapter can
+estimate or report it.
 
-Future output/event field:
+Cost events are stored in:
+
+```text
+prospecting_cost_ledger
+```
+
+Expected output/event field when available:
 
 ```json
 {
@@ -282,7 +327,14 @@ Future output/event field:
 }
 ```
 
-Do not enforce `run_budget_cents` as a hard stop until cost reporting exists. Treat it as an advisory budget in V1.
+Budget enforcement rule:
+
+- enforce `run_budget_cents` as a hard stop for steps with known estimated or
+  actual source costs,
+- write `budget_stop` before launching a step that would exceed the run limit,
+- treat unknown-cost OpenClaw/model work as advisory in V1 unless the run is
+  unattended, in which case unknown-cost escalation should stop or require
+  operator approval.
 
 ## Security
 
