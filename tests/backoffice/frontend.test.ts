@@ -772,6 +772,73 @@ describe("clo backoffice local database", () => {
     }
   })
 
+  test("skips company candidates with unavailable official websites", () => {
+    setupDatabase()
+    let campaignId = ""
+    const deadDomain = "dead-official-site.example"
+    const liveDomain = "live-official-site.example"
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Website Availability",
+        objective: "Encontrar empresas activas para partnerships.",
+        industry: "SaaS",
+        countryRegion: "Mexico",
+        searchMode: "companies",
+        maxCompanies: 10,
+      })
+      campaignId = campaign?.id ?? ""
+      const run = campaignId ? createCampaignRun(campaignId) : null
+      const runId = run && "run" in run ? run.run?.id ?? "" : ""
+      const job = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'").get(runId)
+
+      if (job) {
+        completeOpenClawJob(job.id, {
+          companies: [
+            {
+              name: "Dead Official Site Company",
+              domain: deadDomain,
+              linkedin_url: "",
+              country: "Mexico",
+              city: "CDMX",
+              industry: "SaaS",
+              employee_range: "",
+              description: "Empresa con sitio oficial caído.",
+              score: 86,
+              rationale: "El sitio oficial devuelve HTTP 522 de Cloudflare.",
+              evidence: [{ type: "website", url: `https://${deadDomain}`, note: "Sitio oficial no carga; HTTP 522." }],
+            },
+            {
+              name: "Live Official Site Company",
+              domain: liveDomain,
+              linkedin_url: "",
+              country: "Mexico",
+              city: "CDMX",
+              industry: "SaaS",
+              employee_range: "",
+              description: "Empresa activa para partnership.",
+              score: 88,
+              rationale: "Sitio oficial activo y fit claro.",
+              evidence: [{ type: "website", url: `https://${liveDomain}`, note: "Sitio oficial activo." }],
+            },
+          ],
+        })
+      }
+
+      const candidates = listCampaignCompanyCandidates(campaignId)
+      const events = db
+        .query<{ event_type: string }, [string]>("SELECT event_type FROM agent_events WHERE campaign_id = ?")
+        .all(campaignId)
+
+      expect(candidates.map((item) => item.domain)).not.toContain(deadDomain)
+      expect(candidates.map((item) => item.domain)).toContain(liveDomain)
+      expect(events.map((event) => event.event_type)).toContain("company.website_unavailable_skipped")
+    } finally {
+      if (campaignId) db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      db.prepare("DELETE FROM companies WHERE domain IN (?, ?)").run(deadDomain, liveDomain)
+    }
+  })
+
   test("does not inject empty review text into next run feedback memory", () => {
     setupDatabase()
     let campaignId = ""
@@ -1198,6 +1265,93 @@ describe("clo backoffice local database", () => {
       expect(updated?.review).toBe("pendiente")
       expect(updated?.match).toBe(92)
       expect(updated?.rationale).toContain("Evidencia enriquecida")
+    } finally {
+      if (campaignId) {
+        db.prepare("DELETE FROM feedback WHERE campaign_id = ? OR created_by = 'Test'").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      db.prepare("DELETE FROM companies WHERE domain = ?").run(domain)
+    }
+  })
+
+  test("keeps enriched companies in enrich when the official website is unavailable", () => {
+    setupDatabase()
+    let campaignId = ""
+    const domain = "enrich-review-company.mx"
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Enrich Dead Website",
+        objective: "Encontrar empresas activas para partnership.",
+        industry: "Servicios",
+        countryRegion: "Mexico",
+        searchMode: "companies",
+        maxCompanies: 10,
+      })
+      campaignId = campaign?.id ?? ""
+      const first = campaignId ? createCampaignRun(campaignId) : null
+      const firstRunId = first && "run" in first ? first.run?.id ?? "" : ""
+      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'").get(firstRunId)
+
+      if (firstJob) {
+        completeOpenClawJob(firstJob.id, {
+          companies: [
+            {
+              name: "Enrich Dead Site Company",
+              domain,
+              linkedin_url: "",
+              country: "Mexico",
+              city: "CDMX",
+              industry: "Servicios",
+              employee_range: "",
+              description: "Empresa para probar enrich.",
+              score: 79,
+              rationale: "Falta evidencia del sitio.",
+              evidence: [{ type: "website", url: `https://${domain}`, note: "Sitio inicial." }],
+            },
+          ],
+        })
+      }
+
+      const candidate = listCampaignCompanyCandidates(campaignId).find((item) => item.domain === domain)
+      if (candidate?.candidateId) {
+        reviewCompanyCandidate(candidate.candidateId, {
+          status: "needs_more_research",
+          feedback: "No estoy seguro porque hay que verificar si su página funciona.",
+          createdBy: "Test",
+        })
+      }
+
+      const second = campaignId ? createCampaignRun(campaignId) : null
+      const secondRunId = second && "run" in second ? second.run?.id ?? "" : ""
+      const researchJob = db
+        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'research_company'")
+        .get(secondRunId)
+
+      if (researchJob) {
+        completeOpenClawJob(researchJob.id, {
+          company: {
+            name: "Enrich Dead Site Company",
+            domain,
+            linkedin_url: "https://linkedin.com/company/enrich-dead-site-company",
+            country: "Mexico",
+            city: "CDMX",
+            industry: "Servicios",
+            employee_range: "",
+            description: "Empresa con evidencia secundaria, pero sitio oficial caído.",
+            score: 84,
+            rationale: "El sitio oficial devuelve HTTP 522 de Cloudflare; no se pudo confirmar que esté activo.",
+            evidence: [{ type: "website", url: `https://${domain}`, note: "Sitio oficial no carga; HTTP 522." }],
+          },
+          notes: "No lista para revisión normal.",
+        })
+      }
+
+      const updated = listCampaignCompanyCandidates(campaignId).find((item) => item.domain === domain)
+
+      expect(updated?.review).toBe("enrich")
+      expect(updated?.match).toBe(60)
+      expect(updated?.rationale).toContain("HTTP 522")
     } finally {
       if (campaignId) {
         db.prepare("DELETE FROM feedback WHERE campaign_id = ? OR created_by = 'Test'").run(campaignId)

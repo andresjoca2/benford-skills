@@ -1953,6 +1953,20 @@ function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unkno
       })
       continue
     }
+    if (hasUnavailableOfficialWebsite(candidate)) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "company_candidate",
+        subjectId: "",
+        level: "warning",
+        eventType: "company.website_unavailable_skipped",
+        message: `${candidate.name} omitida porque el sitio oficial no carga.`,
+        payload: { domain: candidate.domain, score: candidate.score },
+      })
+      continue
+    }
     if (isSuppressedCompanyCandidate(candidate)) {
       insertEvent({
         campaignId: job.campaign_id,
@@ -2045,11 +2059,14 @@ function persistResearchedCompany(job: OpenClawJobRow, output: Record<string, un
       : null
   if (!candidate) return
 
+  const websiteUnavailable = hasUnavailableOfficialWebsite(company)
+  const nextStatus = websiteUnavailable ? "needs_more_research" : "new"
+  const nextScore = websiteUnavailable ? Math.min(company.score || 0, 60) : company.score
   db.prepare(`
     UPDATE company_candidates
     SET
       company_id = ?,
-      status = 'new',
+      status = ?,
       score = CASE WHEN ? > 0 THEN ? ELSE score END,
       rationale = CASE WHEN ? <> '' THEN ? ELSE rationale END,
       evidence_json = CASE WHEN ? <> '[]' THEN ? ELSE evidence_json END,
@@ -2059,8 +2076,9 @@ function persistResearchedCompany(job: OpenClawJobRow, output: Record<string, un
     WHERE id = ?
   `).run(
     companyId,
-    company.score,
-    company.score,
+    nextStatus,
+    nextScore,
+    nextScore,
     company.rationale,
     company.rationale,
     JSON.stringify(company.evidence),
@@ -2073,11 +2091,26 @@ function persistResearchedCompany(job: OpenClawJobRow, output: Record<string, un
     jobId: job.id,
     subjectType: "company_candidate",
     subjectId: candidate.id,
-    level: "success",
-    eventType: "company.enriched",
-    message: `${company.name} enriquecida y lista para revisión.`,
-    payload: { companyId, score: company.score },
+    level: websiteUnavailable ? "warning" : "success",
+    eventType: websiteUnavailable ? "company.enrichment_needs_more_research" : "company.enriched",
+    message: websiteUnavailable
+      ? `${company.name} sigue en Enrich porque el sitio oficial no carga.`
+      : `${company.name} enriquecida y lista para revisión.`,
+    payload: { companyId, score: nextScore, websiteUnavailable },
   })
+}
+
+function hasUnavailableOfficialWebsite(company: ReturnType<typeof normalizeCompanyOutput>) {
+  const text = [
+    company.domain,
+    company.rationale,
+    company.description,
+    ...company.evidence.flatMap((item) => [item?.url || "", item?.note || ""]),
+  ]
+    .join(" ")
+    .toLowerCase()
+  if (!text) return false
+  return /(?:\bhttp\s*)?\b(?:5\d\d|521|522|523|524)\b|cloudflare.{0,80}(?:error|timeout|time-out|521|522|523|524)|(?:site|sitio|website|web|domain|dominio|url|official|oficial).{0,100}(?:unavailable|unreachable|inaccessible|dead|down|ca[ií]d[ao]?|no carga|no disponible|timeout|timed out|time-out|parked|expirad[ao]?|suspendid[ao]?)|(?:unavailable|unreachable|inaccessible|dead|down|ca[ií]d[ao]?|no carga|no disponible|timeout|timed out|time-out|parked|expirad[ao]?|suspendid[ao]?).{0,100}(?:site|sitio|website|web|domain|dominio|url|official|oficial)/i.test(text)
 }
 
 function violatesNegativeRules(company: ReturnType<typeof normalizeCompanyOutput>, rules: Array<Record<string, unknown>>) {
