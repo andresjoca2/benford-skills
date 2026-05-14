@@ -271,6 +271,7 @@ function buildPrompt(job: OpenClawQueuedJob) {
   const alreadySeenCompanies = input.memory?.alreadySeenCompanies
   const seenCompanies = Array.isArray(alreadySeenCompanies) ? alreadySeenCompanies.length : 0
   const usefulFollowUpBatch = fastPrefetch && seenCompanies > 0
+  const negativeRules = Array.isArray(input.memory?.negativeRules) ? input.memory.negativeRules : []
   const schema =
     job.skill === "find_companies"
       ? {
@@ -290,6 +291,23 @@ function buildPrompt(job: OpenClawQueuedJob) {
             },
           ],
         }
+      : job.skill === "research_company"
+        ? {
+            company: {
+              name: "string",
+              domain: "string",
+              linkedin_url: "string",
+              country: "string",
+              city: "string",
+              industry: "string",
+              employee_range: "string",
+              description: "string",
+              score: 0,
+              rationale: "string",
+              evidence: [{ type: "website", url: "https://example.com", note: "string" }],
+            },
+            notes: "string",
+          }
       : job.skill === "find_people"
         ? {
             people: [
@@ -319,6 +337,26 @@ function buildPrompt(job: OpenClawQueuedJob) {
             ],
           }
         : {}
+
+  if (job.skill === "research_company") {
+    return [
+      "You are running a Benford Backoffice company enrichment job.",
+      "Research exactly the existing company candidate in Input.subject. Do not discover unrelated new companies.",
+      "Use the campaign brief and reviewFeedback to resolve the operator's uncertainty.",
+      "If reviewFeedback says the operator is unsure about website, geography, fit, or evidence, verify that point directly.",
+      "Return updated company evidence, description, score, and rationale for the same company.",
+      "Verify whether the official website currently loads. If it times out, is parked, or returns 5xx/Cloudflare errors, say that explicitly in rationale/evidence and do not score it above 60 unless another current official source proves the business is active.",
+      "Return only valid JSON. Do not include markdown, prose, or code fences.",
+      "",
+      `Skill: ${job.skill}`,
+      "",
+      "Input:",
+      JSON.stringify(job.input, null, 2),
+      "",
+      "Required output schema:",
+      JSON.stringify(schema, null, 2),
+    ].join("\n")
+  }
 
   if (job.skill === "find_people") {
     return [
@@ -383,6 +421,12 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "For broad first-pass markets such as LATAM fintech, assume enough qualified candidates exist and return maxCompanies unless every remaining result is duplicated or conflicts with the brief.",
     "Do not return companies, domains, LinkedIn URLs, or suppressed values already present in memory.",
     "Treat approved, rejected, do_not_contact, and free-text feedback in memory as product signal for the next batch.",
+    ...(negativeRules.length > 0
+      ? [
+          "The input memory includes negativeRules derived from operator feedback. These are hard exclusion rules, not suggestions.",
+          "Never return candidates that match negativeRules. For exclude_spanish_entities, exclude Spain/Spanish companies, companies headquartered in Spain, candidates with Spain as the main market, and candidates whose official/evidence domain is .es.",
+        ]
+      : []),
     "If memory.needsMoreResearchCompanies is present, use it as an enrichment queue: verify those companies, look for stronger evidence, and use what you learn to bias the next candidates. Do not return the same company as a duplicate unless the job is explicitly a research_company job.",
     "Lean into patterns from approved companies and avoid patterns explicitly rejected by the operator.",
     "Respect maxCompanies, maxPeople, country/region, positive signals, and negative signals from the input.",
@@ -390,6 +434,7 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "Every returned company must include evidence with a URL and a note explaining what was found.",
     "Each candidate must be an actual company, business, firm, clinic, practice, or person-owned business. Do not return directories, generic categories, search result pages, or lead-list vendors as final candidates.",
     "Set domain only when it is the candidate's official website domain. If evidence is a directory, marketplace, maps page, or listing site, leave domain empty and put that URL only in evidence.",
+    "Before returning a domain, verify the official website is reachable. Do not return companies whose official site is dead, parked, timed out, or returning 5xx/Cloudflare errors unless there is strong current alternate official evidence and the rationale explicitly says why it is still active.",
     `Return up to ${maxCompanies} companies when the market is broad enough. Never pad with duplicates, directories, or entities that conflict with the brief.`,
     "Return only valid JSON. Do not include markdown, prose, or code fences.",
     "",

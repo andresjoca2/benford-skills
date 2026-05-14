@@ -1159,11 +1159,18 @@ describe("clo backoffice local database", () => {
         .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
         .get(nextRunId)
       const nextInput = nextJob ? JSON.parse(nextJob.input_json) : {}
+      const nextResearchJob = db
+        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'research_company'")
+        .get(nextRunId)
+      const nextResearchInput = nextResearchJob ? JSON.parse(nextResearchJob.input_json) : {}
 
       expect(company && "review" in company ? company.review : "").toBe("rechazada")
       expect(person && "review" in person ? person.review : "").toBe("enrich")
       expect(enrichCompany && "review" in enrichCompany ? enrichCompany.review : "").toBe("enrich")
       expect(nextInput.memory?.needsMoreResearchCompanies?.map((row: { name: string }) => row.name)).toContain("Clip")
+      expect(nextResearchInput.mission).toBe("research_company")
+      expect(nextResearchInput.subject?.name).toBe("Clip")
+      expect(nextResearchInput.reviewFeedback).toContain("revisar evidencia")
       expect(feedback?.count).toBeGreaterThanOrEqual(3)
       expect(suppression?.count).toBeGreaterThanOrEqual(1)
       expect(researchJob?.count).toBeGreaterThanOrEqual(2)
