@@ -1135,6 +1135,9 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
                           <div style={{display:"grid", justifyItems:"end", alignSelf:"stretch", alignContent:"space-between", flexShrink:0, minWidth:58}}>
                             <span className="mono" style={{fontSize:13, color:"var(--fg)"}}>{person.score}%</span>
                             <div style={{display:"flex", gap:4, flexWrap:"wrap", justifyContent:"flex-end"}}>
+                              <span className={`entity ${person.country ? "" : "muted"}`} title={person.country || "Sin país"} style={{height:20, minWidth:28, padding:"0 6px"}}>
+                                {person.country || "-"}
+                              </span>
                               <span className={`entity ${person.email ? "" : "muted"}`} title={person.email || "Sin email"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Mail size={10}/></span>
                               <span className={`entity ${person.linkedinUrl ? "" : "muted"}`} title={person.linkedinUrl || "Sin LinkedIn"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Linkedin size={10}/></span>
                               <span className={`entity ${person.phone ? "" : "muted"}`} title={person.phone || "Sin teléfono"} style={{height:20, minWidth:22, padding:"0 5px"}}><Icons.Phone size={10}/></span>

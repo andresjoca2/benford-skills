@@ -144,6 +144,7 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("companyPersonTab")
     expect(screen).toContain("selectedFilteredPeople")
     expect(screen).toContain("No hay personas en")
+    expect(screen).toContain("Sin país")
     expect(screen).toContain("Sin LinkedIn")
     expect(screen).toContain("Aceptar")
     expect(screen).toContain("Rechazar")
