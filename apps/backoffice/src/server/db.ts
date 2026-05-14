@@ -2574,7 +2574,10 @@ function hasUnavailableOfficialWebsite(company: ReturnType<typeof normalizeCompa
     .join(" ")
     .toLowerCase()
   if (!text) return false
-  return /(?:\bhttp\s*)?\b(?:5\d\d|521|522|523|524)\b|cloudflare.{0,80}(?:error|timeout|time-out|521|522|523|524)|(?:site|sitio|website|web|domain|dominio|url|official|oficial).{0,100}(?:unavailable|unreachable|inaccessible|dead|down|ca[ií]d[ao]?|no carga|no disponible|timeout|timed out|time-out|parked|expirad[ao]?|suspendid[ao]?)|(?:unavailable|unreachable|inaccessible|dead|down|ca[ií]d[ao]?|no carga|no disponible|timeout|timed out|time-out|parked|expirad[ao]?|suspendid[ao]?).{0,100}(?:site|sitio|website|web|domain|dominio|url|official|oficial)/i.test(text)
+  if (/(?:no hay|sin).{0,80}(?:señal|problema|error).{0,80}(?:ca[ií]da|5xx|cloudflare|parked|timeout)|(?:carga correctamente|respond[ií]o http 200|http 200|web est[aá] activa|sitio oficial activo)/i.test(text)) {
+    return false
+  }
+  return /(?:devuelve|responde|returned|responded|respond[ií]o|error).{0,40}(?:5\d\d|521|522|523|524)|(?:http\s*)(?:5\d\d|521|522|523|524)\b|cloudflare.{0,80}(?:error|timeout|time-out|521|522|523|524)|(?:site|sitio|website|web|domain|dominio|url|official|oficial).{0,100}(?:unavailable|unreachable|inaccessible|dead|down|no carga|no disponible|timeout|timed out|time-out|parked|expirad[ao]?|suspendid[ao]?)|(?:unavailable|unreachable|inaccessible|dead|down|no carga|no disponible|timeout|timed out|time-out|parked|expirad[ao]?|suspendid[ao]?).{0,100}(?:site|sitio|website|web|domain|dominio|url|official|oficial)|(?:sitio|site|website|web).{0,40}ca[ií]d[ao]?/i.test(text)
 }
 
 function violatesNegativeRules(company: ReturnType<typeof normalizeCompanyOutput>, rules: Array<Record<string, unknown>>) {
