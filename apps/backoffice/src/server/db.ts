@@ -891,12 +891,16 @@ export function createCampaignRun(
 
   const brief = campaign.brief
   const mission = brief.searchMode || "companies"
+  const memory = campaignMemory(campaign.id)
   const briefCompanyLimit = Math.max(10, positiveInteger(brief.maxCompanies, 10))
   const requestedCompanies = mission === "people"
     ? brief.maxCompanies
     : positiveInteger(options.prefetchCompanies, briefCompanyLimit)
+  const seenCompanyCount = Array.isArray(memory.alreadySeenCompanies) ? memory.alreadySeenCompanies.length : 0
   const runMaxCompanies = mission === "people"
     ? brief.maxCompanies
+    : seenCompanyCount > 0
+      ? Math.min(FIND_COMPANIES_INTERACTIVE_PREFETCH_CAP, Math.max(1, reviewBatchSize))
     : Math.min(FIND_COMPANIES_INTERACTIVE_PREFETCH_CAP, Math.max(10, requestedCompanies))
   const runMaxRuntimeSeconds = effectiveRunTimeoutSeconds(mission, brief.maxRuntimeSeconds)
   const runId = uniqueId("run", `${campaignId}_${mission}`)
@@ -943,7 +947,7 @@ export function createCampaignRun(
       reviewBatchSize,
       discoveryMode: jobSkill === "find_companies" ? "fast_prefetch" : "standard",
     },
-    memory: campaignMemory(campaign.id),
+    memory,
     outputContract: "Return only JSON matching the requested schema.",
   }
 
@@ -976,6 +980,8 @@ export function createCampaignRun(
       VALUES (?, ?, ?, 'queued', ?, ?, ?)
     `).run(runId, campaignId, mission, brief.objective || campaign.criteria || "", JSON.stringify(context), JSON.stringify(limits))
 
+    const enrichJobs = enqueueCampaignResearchJobs(campaignId, runId, memory)
+
     db.prepare(`
       INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json, timeout_seconds)
       VALUES (?, ?, ?, ?, 'queued', ?, ?)
@@ -990,7 +996,7 @@ export function createCampaignRun(
       level: "info",
       eventType: "run.queued",
       message: "Corrida encolada para OpenClaw.",
-      payload: { mission, jobSkill },
+      payload: { mission, jobSkill, enrichJobs },
     })
 
     db.prepare("UPDATE campaigns SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(campaignId)
@@ -1391,9 +1397,15 @@ export function completeOpenClawJob(jobId: string, output: unknown) {
       SET status = 'succeeded', output_json = ?, error = '', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(JSON.stringify(parsed.output), job.id)
+    const pendingJobs = db
+      .query<{ count: number }, [string, string]>(
+        "SELECT COUNT(*) AS count FROM openclaw_jobs WHERE run_id = ? AND id <> ? AND status IN ('queued', 'running')",
+      )
+      .get(job.run_id, job.id)?.count ?? 0
+    const nextRunStatus = pendingJobs > 0 ? "running" : job.skill === "find_companies" ? "needs_review" : "needs_review"
     db.prepare(`
       UPDATE agent_runs
-      SET status = ?, raw_output_json = ?, error = '', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      SET status = ?, raw_output_json = ?, error = '', finished_at = CASE WHEN ? = 0 THEN CURRENT_TIMESTAMP ELSE finished_at END, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(["find_companies", "find_people"].includes(job.skill) ? "needs_review" : "completed", JSON.stringify(parsed.output), job.run_id)
     insertEvent({
@@ -1984,10 +1996,40 @@ function getRunRow(runId: string) {
     .get(runId)
 }
 
+function listRunJobSummaries(runId: string) {
+  return db
+    .query<
+      Pick<
+        OpenClawJobRow,
+        "id" | "skill" | "status" | "error" | "attempt" | "max_attempts" | "timeout_seconds" | "started_at" | "finished_at" | "created_at"
+      >,
+      [string]
+    >(`
+      SELECT id, skill, status, error, attempt, max_attempts, timeout_seconds, started_at, finished_at, created_at
+      FROM openclaw_jobs
+      WHERE run_id = ?
+      ORDER BY created_at ASC
+    `)
+    .all(runId)
+    .map((row) => ({
+      id: row.id,
+      skill: row.skill,
+      status: row.status,
+      error: row.error,
+      attempt: row.attempt,
+      maxAttempts: row.max_attempts,
+      timeoutSeconds: row.timeout_seconds,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      created: formatDateLabel(row.created_at),
+    }))
+}
+
 function formatRun(row: RunRow) {
   const companyCandidates =
     db.query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM company_candidates WHERE run_id = ?").get(row.id)
       ?.count ?? 0
+  const jobs = listRunJobSummaries(row.id)
 
   return {
     id: row.id,
@@ -1996,6 +2038,8 @@ function formatRun(row: RunRow) {
     objective: row.objective,
     companyCandidates,
     limits: parseJson(row.limits_json, {}),
+    jobs,
+    skills: jobs.map((job) => job.skill),
     error: row.error,
     created: formatDateLabel(row.created_at),
     createdAt: row.created_at,
@@ -2026,6 +2070,14 @@ function reviewCandidate(
         domain?: string
         linkedin_url?: string
         email?: string
+        country?: string
+        city?: string
+        industry?: string
+        employee_range?: string
+        description?: string
+        score?: number
+        rationale?: string
+        evidence_json?: string
       },
       [string]
     >(
@@ -2160,17 +2212,148 @@ function insertSuppressionForCandidate(
 
 function enqueueResearchJob(
   subjectType: "company_candidate" | "person_candidate",
-  row: { campaign_id: string; run_id: string | null; company_id: string | null; person_id?: string },
+  row: {
+    id?: string
+    campaign_id: string
+    run_id: string | null
+    company_id: string | null
+    person_id?: string
+    name?: string
+    domain?: string
+    linkedin_url?: string
+    country?: string
+    city?: string
+    industry?: string
+    employee_range?: string
+    description?: string
+    score?: number
+    rationale?: string
+    evidence_json?: string
+    user_feedback?: string
+  },
+  runId = row.run_id,
+  reviewFeedback = row.user_feedback || "",
 ) {
-  if (!row.run_id) return
+  if (!runId) return
   const skill = subjectType === "company_candidate" ? "research_company" : "research_person"
   const subjectId = subjectType === "company_candidate" ? row.company_id : row.person_id
-  const jobId = uniqueId("job", `${row.run_id}_${skill}_${subjectId ?? "subject"}`)
+  const jobId = uniqueId("job", `${runId}_${skill}_${subjectId ?? "subject"}`)
+  const input = buildResearchJobInput(subjectType, row, reviewFeedback)
 
   db.prepare(`
     INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json)
     VALUES (?, ?, ?, ?, 'queued', ?)
-  `).run(jobId, row.run_id, row.campaign_id, skill, JSON.stringify({ subjectType, subjectId }))
+  `).run(jobId, runId, row.campaign_id, skill, JSON.stringify(input))
+}
+
+function enqueueCampaignResearchJobs(campaignId: string, runId: string, memory: Record<string, unknown>) {
+  const rows = db
+    .query<
+      {
+        id: string
+        campaign_id: string
+        run_id: string | null
+        company_id: string
+        name: string
+        domain: string
+        linkedin_url: string
+        country: string
+        city: string
+        industry: string
+        employee_range: string
+        description: string
+        score: number
+        rationale: string
+        evidence_json: string
+        user_feedback: string
+      },
+      [string]
+    >(`
+      SELECT
+        cc.id,
+        cc.campaign_id,
+        cc.run_id,
+        cc.company_id,
+        c.name,
+        c.domain,
+        c.linkedin_url,
+        c.country,
+        c.city,
+        c.industry,
+        c.employee_range,
+        c.description,
+        cc.score,
+        cc.rationale,
+        cc.evidence_json,
+        cc.user_feedback
+      FROM company_candidates cc
+      JOIN companies c ON c.id = cc.company_id
+      WHERE cc.campaign_id = ?
+        AND cc.status = 'needs_more_research'
+      ORDER BY cc.updated_at DESC, cc.created_at DESC
+      LIMIT 20
+    `)
+    .all(campaignId)
+
+  for (const row of rows) {
+    const jobId = uniqueId("job", `${runId}_research_company_${row.company_id}`)
+    db.prepare(`
+      INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json)
+      VALUES (?, ?, ?, 'research_company', 'queued', ?)
+    `).run(jobId, runId, campaignId, JSON.stringify(buildResearchJobInput("company_candidate", row, row.user_feedback, memory)))
+  }
+
+  return rows.length
+}
+
+function buildResearchJobInput(
+  subjectType: "company_candidate" | "person_candidate",
+  row: {
+    id?: string
+    campaign_id: string
+    company_id: string | null
+    person_id?: string
+    name?: string
+    domain?: string
+    linkedin_url?: string
+    country?: string
+    city?: string
+    industry?: string
+    employee_range?: string
+    description?: string
+    score?: number
+    rationale?: string
+    evidence_json?: string
+  },
+  reviewFeedback = "",
+  memory: Record<string, unknown> | null = null,
+) {
+  const campaign = getCampaignDetail(row.campaign_id)
+  const subjectId = subjectType === "company_candidate" ? row.company_id : row.person_id
+  return {
+    mission: subjectType === "company_candidate" ? "research_company" : "research_person",
+    subjectType,
+    subjectId,
+    candidateId: row.id,
+    campaign: campaign ? { id: campaign.id, name: campaign.name } : { id: row.campaign_id },
+    brief: campaign?.brief || {},
+    reviewFeedback,
+    subject: {
+      name: row.name || "",
+      domain: row.domain || "",
+      linkedinUrl: row.linkedin_url || "",
+      country: row.country || "",
+      city: row.city || "",
+      industry: row.industry || "",
+      employeeRange: row.employee_range || "",
+      description: row.description || "",
+      score: row.score ?? 0,
+      rationale: row.rationale || "",
+      evidence: parseJson(row.evidence_json || "[]", []),
+    },
+    memory: memory || campaignMemory(row.campaign_id),
+    outputContract: "Return only JSON matching the requested schema.",
+  }
 }
 
 function insertEvent(input: {
@@ -2277,6 +2460,7 @@ function campaignMemory(campaignId: string) {
         note: row.user_feedback,
       })),
     suppression: suppression.map((row) => row.value),
+    negativeRules: feedbackRules(feedback),
     feedback: feedback.map((row) => ({
       company: row.company_name || row.subject_id,
       type: row.feedback_type,
@@ -2393,6 +2577,7 @@ function validateOpenClawOutput(skill: string, output: unknown): { ok: true; out
 
   if (skill === "find_companies") {
     if (!Array.isArray(record.companies)) return { ok: false, error: "find_companies output must include companies array." }
+    if (record.companies.length === 0) return { ok: false, error: "find_companies returned zero companies." }
     return {
       ok: true,
       output: {
@@ -2658,7 +2843,7 @@ function clampScore(value: number) {
 
 function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unknown>) {
   const companies = Array.isArray(output.companies) ? output.companies : []
-  const input = parseJson<{ brief?: { reviewBatchSize?: number } }>(job.input_json, {})
+  const input = parseJson<{ brief?: { reviewBatchSize?: number }; memory?: { negativeRules?: Array<Record<string, unknown>> } }>(job.input_json, {})
   const reviewBatchSize = positiveInteger(input.brief?.reviewBatchSize, companies.length || 10)
   let visibleInserted = 0
   for (const company of companies) {
@@ -2677,6 +2862,34 @@ function persistFoundCompanies(job: OpenClawJobRow, output: Record<string, unkno
       message: `${candidate.name} propuesta por OpenClaw.`,
       payload: { domain: candidate.domain, linkedinUrl: candidate.linkedin_url, score: candidate.score },
     })
+    if (violatesNegativeRules(candidate, input.memory?.negativeRules || [])) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "company_candidate",
+        subjectId: "",
+        level: "warning",
+        eventType: "company.feedback_rule_skipped",
+        message: `${candidate.name} omitida por reglas de feedback.`,
+        payload: { domain: candidate.domain, country: candidate.country },
+      })
+      continue
+    }
+    if (hasUnavailableOfficialWebsite(candidate)) {
+      insertEvent({
+        campaignId: job.campaign_id,
+        runId: job.run_id,
+        jobId: job.id,
+        subjectType: "company_candidate",
+        subjectId: "",
+        level: "warning",
+        eventType: "company.website_unavailable_skipped",
+        message: `${candidate.name} omitida porque el sitio oficial no carga.`,
+        payload: { domain: candidate.domain, score: candidate.score },
+      })
+      continue
+    }
     if (isSuppressedCompanyCandidate(candidate)) {
       insertEvent({
         campaignId: job.campaign_id,

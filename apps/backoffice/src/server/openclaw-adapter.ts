@@ -24,6 +24,15 @@ export async function runOpenClawJob(job: OpenClawQueuedJob): Promise<RunOpenCla
   const sessionId = openClawSessionId(enrichedJob)
   const proc = spawnOpenClaw(command, agent, thinking, sessionId, timeoutSeconds, prompt)
 
+async function runOpenClawOnce(
+  command: string,
+  agent: string,
+  thinking: string,
+  sessionId: string,
+  timeoutSeconds: number,
+  prompt: string,
+) {
+  const proc = spawnOpenClaw(command, agent, thinking, sessionId, timeoutSeconds, prompt)
   let timer: ReturnType<typeof setTimeout> | undefined
   const killed = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -408,6 +417,7 @@ function buildPrompt(job: OpenClawQueuedJob) {
   const alreadySeenCompanies = input.memory?.alreadySeenCompanies
   const seenCompanies = Array.isArray(alreadySeenCompanies) ? alreadySeenCompanies.length : 0
   const usefulFollowUpBatch = fastPrefetch && seenCompanies > 0
+  const negativeRules = Array.isArray(input.memory?.negativeRules) ? input.memory.negativeRules : []
   const schema =
     job.skill === "find_companies"
       ? {
@@ -498,6 +508,14 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "You are running a Benford Backoffice prospecting job.",
     "Treat this as an independent fresh run. Ignore any previous conversation, prior test prompts, or earlier empty outputs.",
     "Use the find-companies skill if it is available at skills/find-companies/SKILL.md in the OpenClaw workspace.",
+    ...(options.emptyRetry
+      ? [
+          "The previous attempt returned zero companies. That is not useful for this backoffice workflow.",
+          "Run a broader recovery search now. Expand into adjacent but relevant channels: seller platforms, payment tools, appointment/booking platforms, industry-specific SaaS, professional marketplaces, business enablement tools, and Mexico/LATAM SMB platforms.",
+          "Use the prior memory only as a duplicate blocklist and taste signal. Do not treat the existing list as market exhaustion.",
+          `Return at least ${reviewBatchSize} new non-duplicate candidates if any credible public matches exist. Only return an empty array if every credible adjacent search angle is impossible or fully duplicated.`,
+        ]
+      : []),
     `Your task is to research the market and return up to ${maxCompanies} NEW real company/business candidates that match the campaign brief.`,
     "Use available research/browser/search tools when useful. Prefer primary company websites and credible public sources.",
     ...(fastPrefetch
@@ -520,6 +538,12 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "For broad first-pass markets such as LATAM fintech, assume enough qualified candidates exist and return maxCompanies unless every remaining result is duplicated or conflicts with the brief.",
     "Do not return companies, domains, LinkedIn URLs, or suppressed values already present in memory.",
     "Treat approved, rejected, do_not_contact, and free-text feedback in memory as product signal for the next batch.",
+    ...(negativeRules.length > 0
+      ? [
+          "The input memory includes negativeRules derived from operator feedback. These are hard exclusion rules, not suggestions.",
+          "Never return candidates that match negativeRules. For exclude_spanish_entities, exclude Spain/Spanish companies, companies headquartered in Spain, candidates with Spain as the main market, and candidates whose official/evidence domain is .es.",
+        ]
+      : []),
     "If memory.needsMoreResearchCompanies is present, use it as an enrichment queue: verify those companies, look for stronger evidence, and use what you learn to bias the next candidates. Do not return the same company as a duplicate unless the job is explicitly a research_company job.",
     "Lean into patterns from approved companies and avoid patterns explicitly rejected by the operator.",
     "Respect maxCompanies, maxPeople, country/region, positive signals, and negative signals from the input.",
@@ -527,6 +551,7 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "Every returned company must include evidence with a URL and a note explaining what was found.",
     "Each candidate must be an actual company, business, firm, clinic, practice, or person-owned business. Do not return directories, generic categories, search result pages, or lead-list vendors as final candidates.",
     "Set domain only when it is the candidate's official website domain. If evidence is a directory, marketplace, maps page, or listing site, leave domain empty and put that URL only in evidence.",
+    "Before returning a domain, verify the official website is reachable. Do not return companies whose official site is dead, parked, timed out, or returning 5xx/Cloudflare errors unless there is strong current alternate official evidence and the rationale explicitly says why it is still active.",
     `Return up to ${maxCompanies} companies when the market is broad enough. Never pad with duplicates, directories, or entities that conflict with the brief.`,
     "Return only valid JSON. Do not include markdown, prose, or code fences.",
     "",

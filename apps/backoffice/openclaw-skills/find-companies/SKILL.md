@@ -118,6 +118,8 @@ Before returning fewer than requested in a broad market, try at least:
 
 Return a smaller list only when the remaining candidates are weak, duplicated, directory-only, suppressed, or conflict with negative signals.
 
+For follow-up runs with many already-seen companies, use memory as a duplicate blocklist and taste signal, not as proof that the market is exhausted. If exact matches are thin, broaden into adjacent but relevant channels before returning: seller platforms, payment tools, appointment/booking platforms, industry-specific SaaS, professional marketplaces, business enablement tools, and Mexico/LATAM SMB platforms. Empty `companies: []` is a failure for interactive discovery unless every credible adjacent search angle is impossible or already duplicated.
+
 ## Feedback Memory
 
 Prior acceptance/rejection feedback is part of the brief memory. Use it to adjust the next search:
