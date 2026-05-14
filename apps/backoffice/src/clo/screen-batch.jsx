@@ -257,11 +257,21 @@ const BatchBusqueda = ({ b, onSaved }) => {
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [canceling, setCanceling] = React.useState("");
+  const [strategy, setStrategy] = React.useState(b.latestStrategy || null);
+  const [strategyBusy, setStrategyBusy] = React.useState(false);
+  const [strategyFeedback, setStrategyFeedback] = React.useState("");
+  const [strategyNotice, setStrategyNotice] = React.useState("");
 
   React.useEffect(() => {
     setEditing(false);
     setSaving(false);
+    setStrategy(b.latestStrategy || null);
+    setStrategyFeedback("");
+    setStrategyNotice("");
   }, [b.id]);
+  React.useEffect(() => {
+    setStrategy(b.latestStrategy || null);
+  }, [b.latestStrategy?.id, b.latestStrategy?.revision]);
 
   const asNumber = (value) => {
     const parsed = Number(value);
@@ -311,6 +321,38 @@ const BatchBusqueda = ({ b, onSaved }) => {
       })
       .catch((error) => console.warn("No se pudo cancelar corrida", error))
       .finally(() => setCanceling(""));
+  };
+  const generateStrategy = () => {
+    if (strategyBusy) return;
+    setStrategyBusy(true);
+    setStrategyNotice("");
+    window.BackofficeAPI?.createProspectingPlan(b.id, brief.objective || b.criteria || b.name)
+      .then((plan) => {
+        if (plan) setStrategy(plan);
+        setStrategyNotice("Estrategia generada por OpenClaw.");
+      })
+      .catch((error) => {
+        console.warn("No se pudo generar estrategia", error);
+        setStrategyNotice("No se pudo generar la estrategia. Revisa OpenClaw o el worker.");
+      })
+      .finally(() => setStrategyBusy(false));
+  };
+  const submitStrategyFeedback = () => {
+    const feedback = strategyFeedback.trim();
+    if (!strategy?.id || !feedback || strategyBusy) return;
+    setStrategyBusy(true);
+    setStrategyNotice("");
+    window.BackofficeAPI?.giveProspectingPlanFeedback(strategy.id, b.id, feedback)
+      .then((plan) => {
+        if (plan) setStrategy(plan);
+        setStrategyFeedback("");
+        setStrategyNotice("Feedback aplicado al plan.");
+      })
+      .catch((error) => {
+        console.warn("No se pudo revisar estrategia", error);
+        setStrategyNotice("No se pudo aplicar feedback al plan.");
+      })
+      .finally(() => setStrategyBusy(false));
   };
 
   if (editing) {
@@ -433,6 +475,82 @@ const BatchBusqueda = ({ b, onSaved }) => {
           <div className="k">Contexto para personas</div><div className="v">{brief.peopleContext || "-"}</div>
           <div className="k">Señales negativas</div><div className="v" style={{color:"var(--fg-3)"}}>{brief.negativeSignals || "-"}</div>
         </div>
+      </div>
+    </div>
+    <div className="card" style={{marginTop:14}}>
+      <div className="card-head" style={{alignItems:"flex-start"}}>
+        <div>
+          <div className="card-title">Estrategia del agente</div>
+          <div style={{fontSize:12, color:"var(--fg-3)", marginTop:3}}>
+            Plan editable por feedback. El backend guarda el Markdown y lo usa como estrategia visible para los runs.
+          </div>
+        </div>
+        <div className="card-actions">
+          {strategy && (
+            <span className="entity"><Icons.Hash size={11}/> rev {strategy.revision || 1}</span>
+          )}
+          <button className="primary-btn" onClick={generateStrategy} disabled={strategyBusy}>
+            <Icons.Bot size={13}/> {strategyBusy && !strategy ? "Generando" : "Generar estrategia"}
+          </button>
+        </div>
+      </div>
+      <div style={{padding:"0 20px 18px", display:"grid", gap:12}}>
+        {strategyNotice && <div className="inline-alert">{strategyNotice}</div>}
+        {!strategy && (
+          <div style={{padding:"18px", border:"1px solid var(--border)", borderRadius:8, color:"var(--fg-3)", fontSize:13}}>
+            Todavía no hay estrategia para esta campaña. Genera una para que OpenClaw caracterice el ICP, proponga fuentes y estime gasto antes de ejecutar.
+          </div>
+        )}
+        {strategy && (
+          <>
+            <div style={{display:"grid", gridTemplateColumns:"repeat(3, minmax(0, 1fr))", gap:10}}>
+              <div className="kpi" style={{minHeight:68}}>
+                <div className="kpi-lbl">Costo estimado</div>
+                <div className="kpi-val num">${((strategy.estimatedCostCents || 0) / 100).toFixed(2)}</div>
+              </div>
+              <div className="kpi" style={{minHeight:68}}>
+                <div className="kpi-lbl">Límite</div>
+                <div className="kpi-val num">${((strategy.maxCostCents || 0) / 100).toFixed(2)}</div>
+              </div>
+              <div className="kpi" style={{minHeight:68}}>
+                <div className="kpi-lbl">Archivo</div>
+                <div style={{fontSize:11.5, color:"var(--fg-3)", marginTop:8, overflowWrap:"anywhere"}}>{strategy.markdownPath || "-"}</div>
+              </div>
+            </div>
+            {(strategy.warnings || []).length > 0 && (
+              <div className="inline-alert">
+                {(strategy.warnings || []).join(" ")}
+              </div>
+            )}
+            <pre style={{
+              margin:0,
+              padding:"14px 16px",
+              border:"1px solid var(--border)",
+              borderRadius:8,
+              background:"var(--bg-1)",
+              whiteSpace:"pre-wrap",
+              fontFamily:"var(--sans)",
+              fontSize:13,
+              lineHeight:1.55,
+              color:"var(--fg)"
+            }}>{strategy.strategyMarkdown}</pre>
+            <div style={{display:"grid", gridTemplateColumns:"minmax(260px, 1fr) auto", gap:10, alignItems:"end"}}>
+              <label className="form-row" style={{margin:0}}>
+                <span className="form-label">Darle feedback al plan</span>
+                <textarea
+                  className="ang-textarea"
+                  rows={2}
+                  value={strategyFeedback}
+                  onChange={(event)=>setStrategyFeedback(event.target.value)}
+                  placeholder="Ej. no uses Apollo para negocios pequeños; empieza por DENUE y Google Maps."
+                />
+              </label>
+              <button className="ghost-btn lg" onClick={submitStrategyFeedback} disabled={strategyBusy || !strategyFeedback.trim()}>
+                <Icons.Refresh size={13}/> {strategyBusy ? "Revisando" : "Actualizar plan"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
     <div className="card" style={{marginTop:14}}>

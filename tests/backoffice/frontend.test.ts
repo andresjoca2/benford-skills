@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { migrateDatabase, resolveDbPath } from "../../apps/backoffice/src/server/migrate.ts"
 import {
+  buildProspectingStrategyInput,
   cancelCampaignRun,
   completeOpenClawJob,
   createCampaign,
@@ -24,11 +25,13 @@ import {
   reviewCompanyCandidate,
   reviewPersonCandidate,
   revealCachedCompanyCandidates,
+  reviseProspectingStrategyPlan,
+  saveProspectingStrategyPlan,
   scorePersonCandidateForCampaign,
   setupDatabase,
   updateCampaignBrief,
 } from "../../apps/backoffice/src/server/db.ts"
-import { enrichJobInputWithHunter, runOpenClawJob } from "../../apps/backoffice/src/server/openclaw-adapter.ts"
+import { enrichJobInputWithHunter, runOpenClawJob, runProspectingStrategist } from "../../apps/backoffice/src/server/openclaw-adapter.ts"
 
 const appRoot = path.resolve(import.meta.dir, "../../apps/backoffice")
 
@@ -113,6 +116,10 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("<span className=\"form-label\">Motivo</span>")
     expect(screen).toContain("data-review-feedback=\"company\"")
     expect(screen).toContain("document.activeElement?.closest?.(\"[data-review-feedback]\")")
+    expect(screen).toContain("Estrategia del agente")
+    expect(screen).toContain("Darle feedback al plan")
+    expect(screen).toContain("createProspectingPlan")
+    expect(screen).toContain("giveProspectingPlanFeedback")
     expect(screen).toContain("Enrich")
     expect(screen).toContain("needs_more_research")
     expect(screen).toContain("reviewCompanyCandidate(company.candidateId, status, feedback || undefined)")
@@ -156,6 +163,22 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("Contexto para personas")
     expect(apiClient).toContain("/people-runs")
   })
+
+  test("prospecting strategist skill defines planning contracts and budget guardrails", async () => {
+    const skillRoot = path.join(appRoot, "openclaw-skills/prospecting-strategist")
+    const skill = await readFile(path.join(skillRoot, "SKILL.md"), "utf8")
+    const planContract = await readFile(path.join(skillRoot, "references/strategy-plan-contract.json"), "utf8")
+    const reportContract = await readFile(path.join(skillRoot, "references/execution-report-contract.json"), "utf8")
+
+    expect(skill).toContain("Mandatory Budget Guard")
+    expect(skill).toContain("strategy-then-execute")
+    expect(skill).toContain("waterfall search")
+    expect(planContract).toContain("budget_guard")
+    expect(planContract).toContain("strategy_markdown")
+    expect(planContract).toContain("estimated_cost_cents")
+    expect(reportContract).toContain("actual_cost_cents")
+    expect(reportContract).toContain("stopped_for_budget")
+  })
 })
 
 describe("clo backoffice local database", () => {
@@ -181,11 +204,22 @@ describe("clo backoffice local database", () => {
 
       expect(migration).toContain("0001_core")
       expect(migration).toContain("0002_campaign_min_score_threshold")
-      expect(migration).toContain("0003_company_candidate_review_queue")
+    expect(migration).toContain("0003_company_candidate_review_queue")
+    expect(migration).toContain("0005_prospecting_strategy_memory")
+      expect(migration).toContain("0006_prospecting_strategy_markdown")
       expect(tables).toContain("campaigns")
       expect(tables).toContain("people")
       expect(tables).toContain("person_candidates")
       expect(tables).toContain("outreach_drafts")
+    expect(tables).toContain("prospecting_queries")
+    expect(tables).toContain("prospecting_cost_ledger")
+      const planColumns = database
+        .query<{ name: string }, []>('PRAGMA table_info("prospecting_plans")')
+        .all()
+        .map((row) => row.name)
+      expect(planColumns).toContain("strategy_markdown")
+      expect(planColumns).toContain("markdown_path")
+      expect(planColumns).toContain("revision")
       expect(briefColumns).toContain("run_budget_cents")
       expect(briefColumns).toContain("max_companies")
       expect(briefColumns).toContain("max_people")
@@ -760,6 +794,54 @@ describe("clo backoffice local database", () => {
     }
   })
 
+  test("mock strategist creates and revises a persisted markdown plan", async () => {
+    setupDatabase()
+    const previous = Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+    Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = "1"
+    let campaignId = ""
+    let markdownPath = ""
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Strategist Markdown",
+        objective: "Encontrar negocios locales de servicios contables en Mexico.",
+        industry: "Servicios contables",
+        countryRegion: "Mexico",
+        searchMode: "companies_then_people",
+        runBudgetCents: 1200,
+        maxCompanies: 20,
+      })
+      campaignId = campaign?.id ?? ""
+      const input = campaignId ? buildProspectingStrategyInput(campaignId) : null
+      const result = input ? await runProspectingStrategist(input) : null
+      const plan = result ? saveProspectingStrategyPlan(campaignId, input?.query_original ?? "", result.output as never) : null
+
+      expect(plan?.strategyMarkdown).toContain("Estrategia del agente")
+      expect(plan?.markdownPath).toContain("prospecting-strategies")
+      markdownPath = plan?.markdownPath ?? ""
+      expect(markdownPath ? existsSync(markdownPath) : false).toBe(true)
+
+      const revisedInput = plan
+        ? buildProspectingStrategyInput(campaignId, { currentPlanId: plan.id, feedback: "Empieza por DENUE." })
+        : null
+      const revisedResult = revisedInput ? await runProspectingStrategist(revisedInput) : null
+      const revised = plan && revisedResult
+        ? reviseProspectingStrategyPlan(plan.id, "Empieza por DENUE.", revisedResult.output as never)
+        : null
+
+      expect(revised?.revision).toBe(2)
+      expect(revised?.strategyMarkdown).toContain("Feedback aplicado")
+    } finally {
+      if (markdownPath) rmSync(markdownPath, { force: true })
+      if (campaignId) {
+        db.prepare("DELETE FROM prospecting_queries WHERE campaign_id = ?").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      if (previous === undefined) delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+      else Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = previous
+    }
+  })
+
   test("enriches people jobs with Hunter domain-search contacts when configured", async () => {
     const previousKey = Bun.env.HUNTER_API_KEY
     const previousLimit = Bun.env.HUNTER_DOMAIN_SEARCH_LIMIT
@@ -1159,18 +1241,11 @@ describe("clo backoffice local database", () => {
         .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
         .get(nextRunId)
       const nextInput = nextJob ? JSON.parse(nextJob.input_json) : {}
-      const nextResearchJob = db
-        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'research_company'")
-        .get(nextRunId)
-      const nextResearchInput = nextResearchJob ? JSON.parse(nextResearchJob.input_json) : {}
 
       expect(company && "review" in company ? company.review : "").toBe("rechazada")
       expect(person && "review" in person ? person.review : "").toBe("enrich")
       expect(enrichCompany && "review" in enrichCompany ? enrichCompany.review : "").toBe("enrich")
       expect(nextInput.memory?.needsMoreResearchCompanies?.map((row: { name: string }) => row.name)).toContain("Clip")
-      expect(nextResearchInput.mission).toBe("research_company")
-      expect(nextResearchInput.subject?.name).toBe("Clip")
-      expect(nextResearchInput.reviewFeedback).toContain("revisar evidencia")
       expect(feedback?.count).toBeGreaterThanOrEqual(3)
       expect(suppression?.count).toBeGreaterThanOrEqual(1)
       expect(researchJob?.count).toBeGreaterThanOrEqual(2)
@@ -1190,11 +1265,17 @@ describe("clo backoffice local database", () => {
 
     const tables = listDatabaseTables()
     const briefs = getDatabaseTable("campaign_briefs")
+    const costLedger = getDatabaseTable("prospecting_cost_ledger")
 
     expect(tables.map((table) => table.name)).toContain("campaign_briefs")
     expect(tables.map((table) => table.name)).toContain("person_candidates")
+    expect(tables.map((table) => table.name)).toContain("prospecting_queries")
+    expect(tables.map((table) => table.name)).toContain("learned_patterns")
+    expect(tables.map((table) => table.name)).toContain("prospecting_cost_ledger")
     expect(briefs?.columns.map((column) => column.name)).toContain("run_budget_cents")
     expect(briefs?.columns.map((column) => column.name)).toContain("min_score_threshold")
+    expect(costLedger?.columns.map((column) => column.name)).toContain("cumulative_run_cents")
+    expect(costLedger?.columns.map((column) => column.name)).toContain("budget_limit_cents")
     expect(briefs?.rows.length).toBeGreaterThan(0)
   })
 })

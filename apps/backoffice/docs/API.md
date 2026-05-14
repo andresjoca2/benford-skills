@@ -292,7 +292,21 @@ The next endpoints to add are:
 
 ```text
 GET  /api/runs/:id/events/stream
+POST /api/prospecting/plan
+POST /api/prospecting/plans/:id/feedback
+POST /api/prospecting/plans/:id/execute
+GET  /api/prospecting/queries/:id/report
 ```
 
 Worker integration for `find_companies` is operational. The remaining API work is
-the realtime SSE stream and clearer run retry/timeout controls.
+the realtime SSE stream, clearer run retry/timeout controls, and strategist plan
+execution with budget-aware cost ledger writes.
+
+`POST /api/prospecting/plan` is the first strategist endpoint. It asks OpenClaw
+for a strategy JSON plus Markdown, then the backend persists the plan and writes
+the Markdown strategy file under `.data/prospecting-strategies/`.
+
+`POST /api/prospecting/plans/:id/feedback` sends operator feedback back to
+OpenClaw. OpenClaw returns a revised JSON/Markdown plan; the backend updates
+SQLite and rewrites the Markdown file. The revised plan is what future strategy
+execution should use.

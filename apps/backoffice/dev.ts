@@ -10,9 +10,11 @@ import {
   createPeopleRunForCompanyCandidate,
   createCompany,
   createProspect,
+  buildProspectingStrategyInput,
   dbPath,
   getCampaignDetail,
   getDatabaseTable,
+  getProspectingPlan,
   hiddenCompanyCandidateCount,
   listCampaignCompanyCandidates,
   listCampaigns,
@@ -24,10 +26,13 @@ import {
   reviewCompanyCandidate,
   reviewPersonCandidate,
   revealCachedCompanyCandidates,
+  reviseProspectingStrategyPlan,
+  saveProspectingStrategyPlan,
   setupDatabase,
   updateCampaignBrief,
   updateCompanyCandidateStatus,
 } from "./src/server/db.ts"
+import { runProspectingStrategist } from "./src/server/openclaw-adapter.ts"
 
 const appRoot = path.resolve(import.meta.dir)
 const port = Number(Bun.env.PORT ?? 3000)
@@ -296,6 +301,56 @@ async function serveApi(request: Request, url: URL) {
   if (url.pathname === "/api/events") {
     const campaignId = url.searchParams.get("campaignId") ?? undefined
     return json({ events: listEvents({ campaignId }) })
+  }
+
+  if (url.pathname === "/api/prospecting/plan") {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const body = await readJson(request)
+    const campaignId = typeof body.campaignId === "string" ? body.campaignId : ""
+    if (!campaignId) return json({ error: "campaignId required" }, { status: 400 })
+    const strategyInput = buildProspectingStrategyInput(campaignId, {
+      query: typeof body.query === "string" ? body.query : undefined,
+    })
+    if (!strategyInput) return json({ error: "Campaign not found" }, { status: 404 })
+    try {
+      const result = await runProspectingStrategist(strategyInput)
+      const plan = saveProspectingStrategyPlan(campaignId, strategyInput.query_original, result.output as never)
+      return json({ plan }, { status: 201 })
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
+    }
+  }
+
+  const prospectingPlanMatch = url.pathname.match(/^\/api\/prospecting\/plans\/([^/]+)$/)
+  if (prospectingPlanMatch) {
+    const plan = getProspectingPlan(prospectingPlanMatch[1] ?? "")
+    if (!plan) return json({ error: "Plan not found" }, { status: 404 })
+    return json({ plan })
+  }
+
+  const prospectingPlanFeedbackMatch = url.pathname.match(/^\/api\/prospecting\/plans\/([^/]+)\/feedback$/)
+  if (prospectingPlanFeedbackMatch) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const planId = prospectingPlanFeedbackMatch[1] ?? ""
+    const currentPlan = getProspectingPlan(planId)
+    if (!currentPlan) return json({ error: "Plan not found" }, { status: 404 })
+    const body = await readJson(request)
+    const feedback = typeof body.feedback === "string" ? body.feedback.trim() : ""
+    if (!feedback) return json({ error: "feedback required" }, { status: 400 })
+    const resolvedCampaignId = typeof body.campaignId === "string" ? body.campaignId : ""
+    if (!resolvedCampaignId) return json({ error: "campaignId required" }, { status: 400 })
+    const strategyInput = buildProspectingStrategyInput(resolvedCampaignId, {
+      feedback,
+      currentPlanId: planId,
+    })
+    if (!strategyInput) return json({ error: "Campaign not found" }, { status: 404 })
+    try {
+      const result = await runProspectingStrategist(strategyInput)
+      const plan = reviseProspectingStrategyPlan(planId, feedback, result.output as never)
+      return json({ plan })
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
+    }
   }
 
   const companyReviewMatch = url.pathname.match(/^\/api\/candidates\/company\/([^/]+)\/review$/)

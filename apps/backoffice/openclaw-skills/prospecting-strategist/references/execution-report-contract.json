@@ -1,0 +1,49 @@
+{
+  "query_original": "string",
+  "icp_characterized": {},
+  "plan_executed": ["string"],
+  "results_summary": {
+    "result_count": 0,
+    "useful_count": 0,
+    "duplicate_count": 0,
+    "suppressed_count": 0,
+    "with_verified_email": 0,
+    "with_phone": 0,
+    "with_direct_evidence": 0
+  },
+  "quality_metrics": {
+    "estimated_match_quality": 0,
+    "evidence_quality": 0,
+    "contactability": 0,
+    "coverage": 0,
+    "budget_efficiency": 0,
+    "overall_quality_score": 0
+  },
+  "cost": {
+    "run_budget_cents": 0,
+    "estimated_cost_cents": 0,
+    "actual_cost_cents": 0,
+    "remaining_budget_cents": 0,
+    "stopped_for_budget": false
+  },
+  "source_attempts": [
+    {
+      "source_key": "string",
+      "status": "succeeded|failed|skipped|stopped_for_budget",
+      "result_count": 0,
+      "useful_count": 0,
+      "cost_cents": 0,
+      "quality_score": 0,
+      "what_happened": "string"
+    }
+  ],
+  "what_worked": "string",
+  "what_failed": "string",
+  "learned": {
+    "should_persist": false,
+    "signature_hash": "string",
+    "pattern": "string",
+    "preferred_source_order": ["string"],
+    "confidence": "low|medium|high"
+  }
+}

@@ -1,4 +1,4 @@
-import type { OpenClawQueuedJob } from "./db.ts"
+import type { OpenClawQueuedJob, ProspectingStrategyResult } from "./db.ts"
 
 type RunOpenClawResult = {
   output: unknown
@@ -41,6 +41,50 @@ export async function runOpenClawJob(job: OpenClawQueuedJob): Promise<RunOpenCla
       throw new Error(`OpenClaw exited ${exitCode}: ${stderr || stdout || "no output"}`)
     }
     return { stdout, stderr, output: withHunterFallback(enrichedJob, parseStrictJson(stdout)) }
+  })
+
+  try {
+    return await Promise.race([completed, killed])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+export async function runProspectingStrategist(input: Record<string, unknown>): Promise<RunOpenClawResult> {
+  if (Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK === "1") {
+    const output = mockProspectingStrategy(input)
+    return {
+      output,
+      stdout: JSON.stringify(output),
+      stderr: "",
+    }
+  }
+
+  const prompt = buildProspectingStrategistPrompt(input)
+  const command = Bun.env.OPENCLAW_COMMAND || "openclaw"
+  const agent = Bun.env.OPENCLAW_STRATEGIST_AGENT || Bun.env.OPENCLAW_AGENT || "prospecting-agent"
+  const thinking = Bun.env.OPENCLAW_STRATEGIST_THINKING || Bun.env.OPENCLAW_THINKING || "minimal"
+  const timeoutSeconds = Math.max(Number(Bun.env.OPENCLAW_STRATEGIST_TIMEOUT_SECONDS || 300), 30)
+  const sessionId = `backoffice-strategist-${Date.now()}`.slice(0, 160)
+  const proc = spawnOpenClaw(command, agent, thinking, sessionId, timeoutSeconds, prompt)
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const killed = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      proc.kill()
+      reject(new Error(`OpenClaw strategist timed out after ${timeoutSeconds}s`))
+    }, (timeoutSeconds + 15) * 1000)
+  })
+
+  const completed = Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]).then(([stdout, stderr, exitCode]) => {
+    if (exitCode !== 0) {
+      throw new Error(`OpenClaw strategist exited ${exitCode}: ${stderr || stdout || "no output"}`)
+    }
+    return { stdout, stderr, output: normalizeProspectingStrategyOutput(parseStrictJson(stdout)) }
   })
 
   try {
@@ -250,6 +294,99 @@ function spawnOpenClaw(command: string, agent: string, thinking: string, session
   })
 }
 
+function buildProspectingStrategistPrompt(input: Record<string, unknown>) {
+  const mode = typeof input.mode === "string" ? input.mode : "create_strategy"
+  return [
+    "You are running a Benford Backoffice prospecting strategy job.",
+    "Use the prospecting-strategist skill if it is available at skills/prospecting-strategist/SKILL.md in the OpenClaw workspace.",
+    "Treat this as a planning and strategy-revision task, not as candidate discovery.",
+    "Do not call paid sources or execute the plan. Only produce the strategy JSON and Markdown.",
+    "The backoffice backend will persist the result and enforce source allowlists, budget gates, dedupe, suppression, and execution.",
+    mode === "revise_strategy"
+      ? "The operator gave feedback on the current plan. Revise the plan and strategy_markdown to reflect that feedback while keeping executable JSON and visible Markdown aligned."
+      : "Create a new strategy plan for this campaign.",
+    "Every plan must include budget_guard and per-step estimated_cost_cents. Known-cost sources must stop before exceeding runBudgetCents.",
+    "Sources that are not configured yet may appear in the ideal plan, but add an operator warning saying configuration/API key is required before execution.",
+    "Return only valid JSON. Do not include Markdown outside the strategy_markdown string.",
+    "",
+    "Required output shape:",
+    JSON.stringify(
+      {
+        query_original: "string",
+        icp_characterized: {
+          entity_type: "corporate_b2b|local_business|traditional_business|professional_practice|recruiting_talent|person_as_business|mixed|unknown",
+          buyer_or_target: "string",
+          geography: "string",
+          digital_footprint_hypothesis: "string",
+          likely_source_universes: ["string"],
+          risk_notes: ["string"],
+        },
+        memory_used: {
+          similar_queries_found: 0,
+          strongest_pattern_id: "string",
+          summary: "string",
+        },
+        budget_guard: {
+          run_budget_cents: 0,
+          estimated_total_cents: 0,
+          stop_before_exceeding_budget: true,
+          unknown_cost_policy: "avoid_in_unattended_mode|allow_with_operator_approval|allowed",
+        },
+        strategy_markdown: "# Estrategia del agente\n...",
+        plans: [
+          {
+            id: "plan_a",
+            rank: 1,
+            strategy: "string",
+            expected_strength: "high|medium|low",
+            estimated_cost_cents: 0,
+            steps: [
+              {
+                order: 1,
+                skill: "find_companies|find_people|source_adapter|dedup_and_enrich",
+                source_key: "web_search|apollo|scrapio|explorium|inegi_denue|...",
+                reason: "string",
+                input_focus: "string",
+                expected_output: "companies|people|enrichment|deduped_results|crm_push",
+                estimated_cost_cents: 0,
+                quality_gate: {
+                  min_count: 0,
+                  min_quality_score: 0,
+                  required_fields: ["string"],
+                },
+                fallback_if: ["string"],
+                stop_if: ["string"],
+              },
+            ],
+          },
+        ],
+        recommended_first_plan_id: "plan_a",
+        operator_warnings: ["string"],
+      },
+      null,
+      2,
+    ),
+    "",
+    "Input:",
+    JSON.stringify(input, null, 2),
+  ].join("\n")
+}
+
+function normalizeProspectingStrategyOutput(output: unknown): ProspectingStrategyResult {
+  if (!output || typeof output !== "object" || Array.isArray(output)) {
+    throw new Error("prospecting strategist output must be an object")
+  }
+  const record = output as ProspectingStrategyResult
+  if (!Array.isArray(record.plans)) throw new Error("prospecting strategist output must include plans array")
+  if (!record.budget_guard || typeof record.budget_guard !== "object") {
+    throw new Error("prospecting strategist output must include budget_guard")
+  }
+  if (!record.strategy_markdown || typeof record.strategy_markdown !== "string") {
+    throw new Error("prospecting strategist output must include strategy_markdown")
+  }
+  return record
+}
+
 function buildPrompt(job: OpenClawQueuedJob) {
   const input = job.input as {
     brief?: {
@@ -271,7 +408,6 @@ function buildPrompt(job: OpenClawQueuedJob) {
   const alreadySeenCompanies = input.memory?.alreadySeenCompanies
   const seenCompanies = Array.isArray(alreadySeenCompanies) ? alreadySeenCompanies.length : 0
   const usefulFollowUpBatch = fastPrefetch && seenCompanies > 0
-  const negativeRules = Array.isArray(input.memory?.negativeRules) ? input.memory.negativeRules : []
   const schema =
     job.skill === "find_companies"
       ? {
@@ -291,23 +427,6 @@ function buildPrompt(job: OpenClawQueuedJob) {
             },
           ],
         }
-      : job.skill === "research_company"
-        ? {
-            company: {
-              name: "string",
-              domain: "string",
-              linkedin_url: "string",
-              country: "string",
-              city: "string",
-              industry: "string",
-              employee_range: "string",
-              description: "string",
-              score: 0,
-              rationale: "string",
-              evidence: [{ type: "website", url: "https://example.com", note: "string" }],
-            },
-            notes: "string",
-          }
       : job.skill === "find_people"
         ? {
             people: [
@@ -337,26 +456,6 @@ function buildPrompt(job: OpenClawQueuedJob) {
             ],
           }
         : {}
-
-  if (job.skill === "research_company") {
-    return [
-      "You are running a Benford Backoffice company enrichment job.",
-      "Research exactly the existing company candidate in Input.subject. Do not discover unrelated new companies.",
-      "Use the campaign brief and reviewFeedback to resolve the operator's uncertainty.",
-      "If reviewFeedback says the operator is unsure about website, geography, fit, or evidence, verify that point directly.",
-      "Return updated company evidence, description, score, and rationale for the same company.",
-      "Verify whether the official website currently loads. If it times out, is parked, or returns 5xx/Cloudflare errors, say that explicitly in rationale/evidence and do not score it above 60 unless another current official source proves the business is active.",
-      "Return only valid JSON. Do not include markdown, prose, or code fences.",
-      "",
-      `Skill: ${job.skill}`,
-      "",
-      "Input:",
-      JSON.stringify(job.input, null, 2),
-      "",
-      "Required output schema:",
-      JSON.stringify(schema, null, 2),
-    ].join("\n")
-  }
 
   if (job.skill === "find_people") {
     return [
@@ -421,12 +520,6 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "For broad first-pass markets such as LATAM fintech, assume enough qualified candidates exist and return maxCompanies unless every remaining result is duplicated or conflicts with the brief.",
     "Do not return companies, domains, LinkedIn URLs, or suppressed values already present in memory.",
     "Treat approved, rejected, do_not_contact, and free-text feedback in memory as product signal for the next batch.",
-    ...(negativeRules.length > 0
-      ? [
-          "The input memory includes negativeRules derived from operator feedback. These are hard exclusion rules, not suggestions.",
-          "Never return candidates that match negativeRules. For exclude_spanish_entities, exclude Spain/Spanish companies, companies headquartered in Spain, candidates with Spain as the main market, and candidates whose official/evidence domain is .es.",
-        ]
-      : []),
     "If memory.needsMoreResearchCompanies is present, use it as an enrichment queue: verify those companies, look for stronger evidence, and use what you learn to bias the next candidates. Do not return the same company as a duplicate unless the job is explicitly a research_company job.",
     "Lean into patterns from approved companies and avoid patterns explicitly rejected by the operator.",
     "Respect maxCompanies, maxPeople, country/region, positive signals, and negative signals from the input.",
@@ -434,7 +527,6 @@ function buildPrompt(job: OpenClawQueuedJob) {
     "Every returned company must include evidence with a URL and a note explaining what was found.",
     "Each candidate must be an actual company, business, firm, clinic, practice, or person-owned business. Do not return directories, generic categories, search result pages, or lead-list vendors as final candidates.",
     "Set domain only when it is the candidate's official website domain. If evidence is a directory, marketplace, maps page, or listing site, leave domain empty and put that URL only in evidence.",
-    "Before returning a domain, verify the official website is reachable. Do not return companies whose official site is dead, parked, timed out, or returning 5xx/Cloudflare errors unless there is strong current alternate official evidence and the rationale explicitly says why it is still active.",
     `Return up to ${maxCompanies} companies when the market is broad enough. Never pad with duplicates, directories, or entities that conflict with the brief.`,
     "Return only valid JSON. Do not include markdown, prose, or code fences.",
     "",
@@ -537,6 +629,109 @@ function hasAny(text: string, terms: string[]) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function mockProspectingStrategy(input: Record<string, unknown>): ProspectingStrategyResult {
+  const campaign = input.campaign && typeof input.campaign === "object" ? (input.campaign as Record<string, unknown>) : {}
+  const brief = campaign.brief && typeof campaign.brief === "object" ? (campaign.brief as Record<string, unknown>) : {}
+  const limits = input.limits && typeof input.limits === "object" ? (input.limits as Record<string, unknown>) : {}
+  const query = cleanText(input.query_original) || cleanText(brief.objective) || "Prospecting strategy"
+  const budget = nonNegativeNumber(limits.runBudgetCents)
+  const estimated = Math.min(budget || 500, 500)
+  const feedback = cleanText(input.feedback)
+  const markdown = [
+    "# Estrategia del agente",
+    "",
+    "## ICP interpretado",
+    "",
+    `- Query: ${query}`,
+    `- Entidad: ${cleanText(brief.searchMode) === "people" ? "personas" : "empresas/personas"}`,
+    `- Geografia: ${cleanText(brief.countryRegion) || "por definir"}`,
+    `- Hipotesis digital: empezar por web publica y escalar a fuentes pagadas solo si la calidad no alcanza.`,
+    "",
+    "## Plan A",
+    "",
+    "- Usar `web_search` con `find_companies` para un primer lote barato y verificable.",
+    "- Dedupe contra memoria y suppression antes de gastar en enrichment.",
+    "- Hard stop para fuentes con costo conocido antes de superar el presupuesto.",
+    "",
+    "## Plan B",
+    "",
+    "- Si el ICP es corporativo, escalar a Apollo/Explorium cuando haya API key configurada.",
+    "- Si el ICP es local o tradicional MX, escalar a Scrap.io, Google Maps o DENUE.",
+    "",
+    ...(feedback ? ["## Feedback aplicado", "", feedback, ""] : []),
+  ].join("\n")
+
+  return {
+    query_original: query,
+    icp_characterized: {
+      entity_type: "mixed",
+      buyer_or_target: cleanText(brief.peopleContext) || cleanText(brief.niche) || "por definir",
+      geography: cleanText(brief.countryRegion),
+      digital_footprint_hypothesis: "El ICP puede vivir en fuentes publicas, bases corporativas o listados locales segun el segmento final.",
+      likely_source_universes: ["web_search", "apollo", "explorium", "scrapio", "google_maps_places", "inegi_denue"],
+      risk_notes: ["Fuentes pagadas requieren API key y costo conocido antes de ejecucion."],
+    },
+    memory_used: {
+      similar_queries_found: 0,
+      strongest_pattern_id: "",
+      summary: "Mock local sin memoria historica fuerte.",
+    },
+    budget_guard: {
+      run_budget_cents: budget,
+      estimated_total_cents: estimated,
+      stop_before_exceeding_budget: true,
+      unknown_cost_policy: "avoid_in_unattended_mode",
+    },
+    strategy_markdown: markdown,
+    plans: [
+      {
+        id: "plan_a",
+        rank: 1,
+        strategy: "Public web first, then paid enrichment only if quality is insufficient.",
+        expected_strength: "medium",
+        estimated_cost_cents: estimated,
+        steps: [
+          {
+            order: 1,
+            skill: "find_companies",
+            source_key: "web_search",
+            reason: "Primera pasada barata para entender cobertura y evidencia.",
+            input_focus: query,
+            expected_output: "companies",
+            estimated_cost_cents: 0,
+            quality_gate: { min_count: 10, min_quality_score: 0.75, required_fields: ["name", "evidence"] },
+            fallback_if: ["useful_count_below_review_batch", "evidence_quality_below_threshold"],
+            stop_if: ["quality_gate_met", "budget_would_be_exceeded"],
+          },
+        ],
+      },
+      {
+        id: "plan_b",
+        rank: 2,
+        strategy: "Escalate to configured structured source based on ICP.",
+        expected_strength: "high",
+        estimated_cost_cents: estimated,
+        steps: [
+          {
+            order: 1,
+            skill: "source_adapter",
+            source_key: "apollo|scrapio|explorium|inegi_denue",
+            reason: "Elegir fuente estructurada segun ICP y cobertura observada.",
+            input_focus: query,
+            expected_output: "companies",
+            estimated_cost_cents: estimated,
+            quality_gate: { min_count: 20, min_quality_score: 0.8, required_fields: ["name", "source", "evidence"] },
+            fallback_if: ["source_not_configured", "budget_would_be_exceeded"],
+            stop_if: ["quality_gate_met", "budget_would_be_exceeded"],
+          },
+        ],
+      },
+    ],
+    recommended_first_plan_id: "plan_a",
+    operator_warnings: ["Apollo/Scrap.io/Explorium/PDL requieren API keys antes de ejecucion real."],
+  }
 }
 
 function mockOutput(job: OpenClawQueuedJob) {

@@ -309,9 +309,17 @@ When added:
 
 ## Cost
 
-Cost tracking is deferred until OpenClaw can reliably return cost metadata.
+OpenClaw model/tool cost is advisory until OpenClaw can reliably return cost
+metadata. Provider/source adapter cost must be tracked when the adapter can
+estimate or report it.
 
-Future output/event field:
+Cost events are stored in:
+
+```text
+prospecting_cost_ledger
+```
+
+Expected output/event field when available:
 
 ```json
 {
@@ -319,7 +327,14 @@ Future output/event field:
 }
 ```
 
-Do not enforce `run_budget_cents` as a hard stop until cost reporting exists. Treat it as an advisory budget in V1.
+Budget enforcement rule:
+
+- enforce `run_budget_cents` as a hard stop for steps with known estimated or
+  actual source costs,
+- write `budget_stop` before launching a step that would exceed the run limit,
+- treat unknown-cost OpenClaw/model work as advisory in V1 unless the run is
+  unattended, in which case unknown-cost escalation should stop or require
+  operator approval.
 
 ## Security
 

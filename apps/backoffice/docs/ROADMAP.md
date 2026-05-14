@@ -96,6 +96,11 @@ Implemented:
 - idempotent migration for `review_visible` / `review_revealed_at`
 - Personas UI over approved companies with per-person review, feedback, contact
   icons, source provider, and suggested angle hints
+- `prospecting-strategist` meta-skill skeleton with planning/report contracts,
+  source catalog, waterfall rules, quality evaluation, and budget guardrails
+- SQLite strategy memory and cost ledger migration for planned waterfall search
+- first strategist planning endpoint and UI surface in the Búsqueda tab, including
+  operator feedback that revises the Markdown strategy file
 
 Remaining:
 
@@ -112,10 +117,14 @@ Implemented:
 - campaign-level minimum score threshold, initially defaulting to 75
 - UI filtering by score without deleting lower-score candidates from SQLite
 - frontend-only automatic search modal with compute, company, people, and score limits
+- persistent tables for strategist plans, source attempts, learned patterns, and
+  run cost tracking
 
 Remaining:
 
-- source escalation policy: primary/public sources first, paid or bulk sources only when needed
+- backend execution of strategist plans against the source allowlist
+- actual cost accounting in provider adapters and OpenClaw metadata when available
+- source escalation policy wired into worker execution, not only documented in skills
 - make fast vs deep discovery explicit in campaign/run controls
 
 ### Phase 5 - Mission Panel Realtime
