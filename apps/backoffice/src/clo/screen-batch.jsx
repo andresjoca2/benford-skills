@@ -908,7 +908,6 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
   );
   const seedPeople = React.useMemo(() => Array.isArray(people) ? people : [], [peopleKey]);
   const [rows, setRows] = React.useState(seedPeople);
-  const [tab, setTab] = React.useState("todas");
   const [companyPersonTab, setCompanyPersonTab] = React.useState("pendiente");
   const [selectedCompanyId, setSelectedCompanyId] = React.useState(approvedCompanies[0]?.id || "");
   const [selectedPersonId, setSelectedPersonId] = React.useState("");
@@ -932,8 +931,6 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
   }, [companiesKey]);
   React.useEffect(() => setSelectedPersonId(""), [selectedCompanyId, companyPersonTab]);
 
-  const peopleForCompany = rows.filter(p => p.companyId === selectedCompanyId);
-  const filteredPeople = tab === "todas" ? rows : rows.filter(p => p.review === tab);
   const selectedCompany = approvedCompanies.find(c => c.id === selectedCompanyId) || approvedCompanies[0];
   const selectedPeople = selectedCompany ? rows.filter(p => p.companyId === selectedCompany.id) : [];
   const selectedCompanyCounts = {
@@ -953,14 +950,6 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
     selectedCompany?.candidateId && selectedCompanyRun,
   );
   const maxPeople = Math.min(Math.max(Number(brief?.maxPeople || 5), 1), 8);
-  const counts = {
-    todas: rows.length,
-    pendiente: rows.filter(p => p.review === "pendiente").length,
-    aceptada: rows.filter(p => p.review === "aceptada").length,
-    rechazada: rows.filter(p => p.review === "rechazada").length,
-  };
-  const companiesMissingAccepted = approvedCompanies.filter(company => !rows.some(p => p.companyId === company.id && p.review === "aceptada"));
-
   const runPeopleSearch = (company, enrich = false) => {
     if (!company?.candidateId || busyCompanyId) return;
     setBusyCompanyId(company.id);
@@ -1010,24 +999,13 @@ const BatchPersonas = ({ companies, people, brief, activeRun, activeRuns = [], o
   return (
     <div>
       {notice && <div className="inline-alert" style={{marginBottom:12}}>{notice}</div>}
-      <div className="card-head" style={{padding:"0 0 14px"}}>
-        <div className="tabs" style={{borderBottom:"none", padding:0}}>
-          <div className={`tab ${tab==="todas"?"active":""}`} onClick={()=>setTab("todas")}>Todas <span className="tab-count">{counts.todas}</span></div>
-          <div className={`tab ${tab==="pendiente"?"active":""}`} onClick={()=>setTab("pendiente")}>Pendientes <span className="tab-count">{counts.pendiente}</span></div>
-          <div className={`tab ${tab==="aceptada"?"active":""}`} onClick={()=>setTab("aceptada")}>Aceptadas <span className="tab-count">{counts.aceptada}</span></div>
-          <div className={`tab ${tab==="rechazada"?"active":""}`} onClick={()=>setTab("rechazada")}>Rechazadas <span className="tab-count">{counts.rechazada}</span></div>
-        </div>
-        <div className="card-actions">
-          <span className="entity"><Icons.Target size={11}/>{companiesMissingAccepted.length} empresas sin persona aceptada</span>
-        </div>
-      </div>
 
       <div className="empresas-split">
         <div className="card emp-list">
           <div className="card-head" style={{padding:"12px 14px"}}>
             <div>
               <div className="card-title" style={{fontSize:13}}>Empresas aprobadas · {approvedCompanies.length}</div>
-              <div style={{fontSize:11.5, color:"var(--fg-3)", marginTop:3}}>{filteredPeople.length} personas en campaña</div>
+              <div style={{fontSize:11.5, color:"var(--fg-3)", marginTop:3}}>{rows.length} personas en campaña</div>
             </div>
           </div>
           <div style={{maxHeight:"calc(100vh - 340px)", overflowY:"auto"}}>
