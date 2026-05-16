@@ -24,6 +24,49 @@ http://localhost:3000
 
 Se puede cambiar el puerto con `PORT=3001 bun run backoffice:dev`.
 
+## Demo remoto con OpenClaw
+
+Para ensenar avances desde otra computadora, la app debe correr en el host
+`openclaw` y la otra computadora solo abre un tunel SSH. El navegador es local,
+pero el servidor, API y SQLite operativo son los de OpenClaw.
+
+En la computadora que va a ver la demo:
+
+```bash
+git clone https://github.com/andresjoca2/benford-skills
+cd benford-skills
+bun install
+ssh -L 3000:127.0.0.1:3000 openclaw
+```
+
+Luego abrir:
+
+```text
+http://localhost:3000
+```
+
+En OpenClaw, el servidor debe estar corriendo desde el repo remoto:
+
+```bash
+ssh openclaw
+cd /root/benford/benford-skills
+git pull origin main
+bun install
+PORT=3000 BENFORD_BACKOFFICE_DB_PATH=apps/backoffice/.data/backoffice.sqlite bun run backoffice:dev
+```
+
+En otra terminal de OpenClaw, para procesar jobs:
+
+```bash
+cd /root/benford/benford-skills
+OPENCLAW_COMMAND=/usr/bin/openclaw \
+BENFORD_BACKOFFICE_DB_PATH=apps/backoffice/.data/backoffice.sqlite \
+bun run backoffice:worker
+```
+
+Secrets de proveedores viven en `apps/backoffice/.env.local` en OpenClaw. Ese
+archivo esta ignorado por Git.
+
 ## Estructura
 
 ```text

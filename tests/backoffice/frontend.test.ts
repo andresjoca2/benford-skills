@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -6,14 +6,18 @@ import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { migrateDatabase, resolveDbPath } from "../../apps/backoffice/src/server/migrate.ts"
 import {
+  buildProspectingStrategyInput,
   cancelCampaignRun,
   completeOpenClawJob,
   createCampaign,
   createCampaignRun,
   db,
+  executeProspectingPlan,
   getCampaignDetail,
   getDatabaseTable,
+  getProspectingPlan,
   hiddenCompanyCandidateCount,
+  latestProspectingPlanForCampaign,
   listDatabaseTables,
   listCampaignCompanyCandidates,
   listCampaigns,
@@ -23,12 +27,16 @@ import {
   reviewCompanyCandidate,
   reviewPersonCandidate,
   revealCachedCompanyCandidates,
+  reviseProspectingStrategyPlan,
+  saveProspectingStrategyPlan,
   setupDatabase,
   updateCampaignBrief,
 } from "../../apps/backoffice/src/server/db.ts"
-import { runOpenClawJob } from "../../apps/backoffice/src/server/openclaw-adapter.ts"
+import { runOpenClawJob, runProspectingStrategist } from "../../apps/backoffice/src/server/openclaw-adapter.ts"
+import { runSourceAdapterForJob } from "../../apps/backoffice/src/server/source-adapters.ts"
 
 const appRoot = path.resolve(import.meta.dir, "../../apps/backoffice")
+Bun.env.BENFORD_BACKOFFICE_FORCE_DEV_SEED = "1"
 
 function restoreFintechBrief() {
   updateCampaignBrief("campaign_fintech_latam", {
@@ -122,12 +130,20 @@ describe("clo backoffice frontend", () => {
     expect(screen).toContain("onMouseDown={(event)=>submitCompanyReview")
     expect(screen).toContain("const ProcessLogs")
     expect(screen).toContain("Logs")
-    expect(screen).toContain("find_companies")
+    expect(screen).toContain("company_discovery")
     expect(screen).toContain("research_company")
     expect(screen).toContain("find_people")
     expect(screen).toContain("research_person")
     expect(screen).toContain("Mostrar logs")
     expect(screen).toContain("Ocultar logs")
+    expect(screen).toContain("Estrategia del agente")
+    expect(screen).toContain("Darle feedback al plan")
+    expect(screen).toContain("createProspectingPlan")
+    expect(screen).toContain("giveProspectingPlanFeedback")
+    expect(screen).toContain("executeProspectingPlan")
+    expect(devServer).toContain("/api/prospecting/plan")
+    expect(devServer).toContain("prospectingFeedbackMatch")
+    expect(devServer).toContain("prospectingExecuteMatch")
     expect(devServer).toContain("startDevOpenClawWorkerOnce")
   })
 
@@ -142,6 +158,35 @@ describe("clo backoffice frontend", () => {
     expect(detail).toContain("Array.isArray(b.runs)")
     expect(detail).toContain("<ProcessLogs runs={campaignRuns} process=\"companies\"/>")
     expect(detail).toContain("<ProcessLogs runs={campaignRuns} process=\"people\"/>")
+  })
+
+  test("defines the prospecting strategist skill and OpenClaw operator profile", async () => {
+    const strategist = await readFile(path.join(appRoot, "openclaw-skills/prospecting-strategist/SKILL.md"), "utf8")
+    const contract = await readFile(path.join(appRoot, "openclaw-skills/prospecting-strategist/references/strategy-plan-contract.json"), "utf8")
+    const sourceCatalog = await readFile(path.join(appRoot, "openclaw-skills/prospecting-strategist/references/source-catalog.md"), "utf8")
+    const architecture = await readFile(path.join(appRoot, "openclaw-skills/SKILL_ARCHITECTURE.md"), "utf8")
+    const personDiscovery = await readFile(path.join(appRoot, "openclaw-skills/person-discovery/SKILL.md"), "utf8")
+    const corporateB2b = await readFile(path.join(appRoot, "openclaw-skills/corporate-b2b/SKILL.md"), "utf8")
+    const soul = await readFile(path.join(appRoot, "openclaw-agents/prospecting-agent/SOUL.md"), "utf8")
+    const tools = await readFile(path.join(appRoot, "openclaw-agents/prospecting-agent/TOOLS.md"), "utf8")
+
+    expect(() => JSON.parse(contract)).not.toThrow()
+    expect(strategist).toContain("strategy-then-execute")
+    expect(strategist).toContain("waterfall")
+    expect(strategist).toContain("budget")
+    expect(contract).toContain("strategy_markdown")
+    expect(contract).toContain("capability")
+    expect(contract).toContain("playbook")
+    expect(contract).toContain("person-discovery")
+    expect(architecture).toContain("capability")
+    expect(architecture).toContain("source adapters")
+    expect(personDiscovery).toContain("people_mapping_from_approved_companies")
+    expect(corporateB2b).toContain("people_direct_search")
+    expect(sourceCatalog).toContain("apollo")
+    expect(sourceCatalog).toContain("scrapio")
+    expect(soul).toContain("prospecting-agent")
+    expect(soul).toContain("Never scrape LinkedIn directly")
+    expect(tools).toContain("known-cost")
   })
 })
 
@@ -165,18 +210,32 @@ describe("clo backoffice local database", () => {
         .query<{ name: string }, []>('PRAGMA table_info("campaign_briefs")')
         .all()
         .map((row) => row.name)
+      const planColumns = database
+        .query<{ name: string }, []>('PRAGMA table_info("prospecting_plans")')
+        .all()
+        .map((row) => row.name)
 
       expect(migration).toContain("0001_core")
       expect(migration).toContain("0002_campaign_min_score_threshold")
       expect(migration).toContain("0003_company_candidate_review_queue")
+      expect(migration).toContain("0004_prospecting_strategy_memory")
+      expect(migration).toContain("0006_prospecting_step_executor")
       expect(tables).toContain("campaigns")
       expect(tables).toContain("people")
       expect(tables).toContain("person_candidates")
       expect(tables).toContain("outreach_drafts")
+      expect(tables).toContain("prospecting_queries")
+      expect(tables).toContain("prospecting_plans")
+      expect(tables).toContain("prospecting_steps")
+      expect(tables).toContain("learned_patterns")
+      expect(tables).toContain("prospecting_cost_ledger")
       expect(briefColumns).toContain("run_budget_cents")
       expect(briefColumns).toContain("max_companies")
       expect(briefColumns).toContain("max_people")
       expect(briefColumns).toContain("min_score_threshold")
+      expect(planColumns).toContain("strategy_markdown")
+      expect(planColumns).toContain("markdown_path")
+      expect(planColumns).toContain("revision")
       const candidateColumns = database
         .query<{ name: string }, []>('PRAGMA table_info("company_candidates")')
         .all()
@@ -375,6 +434,250 @@ describe("clo backoffice local database", () => {
     }
   })
 
+  test("creates, revises, writes, and executes prospecting strategy plans", async () => {
+    setupDatabase()
+    const previousMock = Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+    Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = "1"
+    let campaignId = ""
+    let strategyDir = ""
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Prospecting Strategy",
+        objective: "Encontrar despachos contables medianos en Mexico.",
+        industry: "Servicios profesionales",
+        niche: "Despachos contables",
+        countryRegion: "Mexico",
+        searchMode: "companies",
+        runBudgetCents: 700,
+        maxCompanies: 10,
+      })
+      campaignId = campaign?.id ?? ""
+      const input = buildProspectingStrategyInput(campaignId, { query: "Despachos contables medianos Mexico" })
+      const generated = input ? await runProspectingStrategist(input) : null
+      const plan = generated ? saveProspectingStrategyPlan(campaignId, input?.query_original || "", generated.output, "Test") : null
+      strategyDir = plan?.markdownPath ? path.dirname(plan.markdownPath) : ""
+      const latest = latestProspectingPlanForCampaign(campaignId)
+      const executed = plan ? executeProspectingPlan(plan.id, { replaceQueuedRun: true }) : null
+      const feedbackInput = buildProspectingStrategyInput(campaignId, {
+        feedback: "Para despachos contables mexicanos prueba DENUE antes de Apollo.",
+        currentPlanId: plan?.id,
+      })
+      const revisedResult = feedbackInput ? await runProspectingStrategist(feedbackInput) : null
+      const revised = plan && revisedResult
+        ? reviseProspectingStrategyPlan(plan.id, "Para despachos contables mexicanos prueba DENUE antes de Apollo.", revisedResult.output, "Test")
+        : null
+
+      expect(plan?.strategyMarkdown).toContain("Estrategia del agente")
+      expect(plan?.markdownPath).toContain("prospecting-strategies")
+      expect(plan?.markdownPath ? existsSync(plan.markdownPath) : false).toBe(true)
+      expect(readFileSync(plan?.markdownPath || "", "utf8")).toContain("Plan A")
+      expect(latest?.id).toBe(plan?.id)
+      expect(executed && "run" in executed ? executed.run?.status : "").toBe("queued")
+      expect(executed && "plan" in executed ? executed.plan?.status : "").toBe("running")
+      expect(revised?.revision).toBe(2)
+      expect(revised?.strategyMarkdown).toContain("Feedback aplicado")
+
+      const overBudget = saveProspectingStrategyPlan(campaignId, "Over budget", {
+        query_original: "Over budget",
+        budget_guard: {
+          run_budget_cents: 100,
+          estimated_total_cents: 500,
+          stop_before_exceeding_budget: true,
+        },
+        strategy_markdown: "# Estrategia del agente\n\nPlan caro.",
+        plans: [{ id: "plan_a", estimated_cost_cents: 500 }],
+        recommended_first_plan_id: "plan_a",
+      }, "Test")
+      const stopped = overBudget ? executeProspectingPlan(overBudget.id, { replaceQueuedRun: true }) : null
+
+      expect(stopped && "error" in stopped ? stopped.error : "").toBe("budget_limit_exceeded")
+      expect(stopped && "plan" in stopped ? stopped.plan?.status : "").toBe("stopped_for_budget")
+    } finally {
+      if (previousMock === undefined) delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+      else Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = previousMock
+      if (campaignId) {
+        db.prepare("DELETE FROM prospecting_queries WHERE campaign_id = ?").run(campaignId)
+        db.prepare("DELETE FROM agent_runs WHERE campaign_id = ?").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      if (strategyDir) rmSync(strategyDir, { recursive: true, force: true })
+    }
+  })
+
+  test("uses Apollo source adapter when a company discovery step requests apollo", async () => {
+    const previousApolloKey = Bun.env.APOLLO_API_KEY
+    const previousAdapters = Bun.env.BACKOFFICE_SOURCE_ADAPTERS_ENABLED
+    const previousFetch = globalThis.fetch
+    Bun.env.APOLLO_API_KEY = "test-key"
+    Bun.env.BACKOFFICE_SOURCE_ADAPTERS_ENABLED = "1"
+
+    try {
+      const calls: Array<{ url: string; body: Record<string, unknown> }> = []
+      globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), body: JSON.parse(String(init?.body || "{}")) })
+        return new Response(JSON.stringify({
+          organizations: [
+            {
+              name: "Adapter Fintech",
+              primary_domain: "adapter-fintech.com",
+              country: "Mexico",
+              city: "CDMX",
+              industry: "Fintech",
+              estimated_num_employees: 120,
+              short_description: "Fintech B2B.",
+            },
+          ],
+        }), { status: 200, headers: { "Content-Type": "application/json" } })
+      }) as typeof fetch
+
+      const result = await runSourceAdapterForJob({
+        id: "job_adapter_apollo",
+        runId: "run_adapter_apollo",
+        campaignId: "campaign_adapter_apollo",
+        skill: "company_discovery",
+        status: "queued",
+        input: {
+          brief: {
+            objective: "Encontrar fintechs B2B en Mexico",
+            industry: "Fintech",
+            niche: "B2B",
+            countryRegion: "Mexico",
+            companySize: "51-200",
+            maxCompanies: 5,
+          },
+          plan: {
+            step: {
+              source_plan: ["apollo"],
+            },
+          },
+        },
+        output: {},
+        error: "",
+        attempt: 0,
+        maxAttempts: 1,
+        timeoutSeconds: 900,
+        startedAt: null,
+        finishedAt: null,
+        createdAt: "",
+        updatedAt: "",
+      })
+
+      const companies = Array.isArray(result.output?.companies) ? result.output.companies : []
+      expect(result.handled).toBe(true)
+      expect(result.source).toBe("apollo")
+      expect(calls[0]?.url).toContain("/mixed_companies/search")
+      expect(calls[0]?.body.organization_locations).toEqual(["Mexico"])
+      expect(companies[0]?.name).toBe("Adapter Fintech")
+      expect(companies[0]?.domain).toBe("adapter-fintech.com")
+    } finally {
+      globalThis.fetch = previousFetch
+      if (previousApolloKey === undefined) delete Bun.env.APOLLO_API_KEY
+      else Bun.env.APOLLO_API_KEY = previousApolloKey
+      if (previousAdapters === undefined) delete Bun.env.BACKOFFICE_SOURCE_ADAPTERS_ENABLED
+      else Bun.env.BACKOFFICE_SOURCE_ADAPTERS_ENABLED = previousAdapters
+    }
+  })
+
+  test("executes prospecting plans manually, gates people on approved companies, then maps people", async () => {
+    setupDatabase()
+    const previousMock = Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+    Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = "1"
+    let campaignId = ""
+    let strategyDir = ""
+
+    try {
+      const campaign = createCampaign({
+        name: "Campaign Test Companies Then People Runner",
+        objective: "Encontrar fintechs B2B y luego decision makers financieros.",
+        industry: "Fintech",
+        niche: "B2B",
+        countryRegion: "Mexico",
+        searchMode: "companies_then_people",
+        runBudgetCents: 1000,
+        maxCompanies: 3,
+        maxPeople: 2,
+      })
+      campaignId = campaign?.id ?? ""
+      const input = buildProspectingStrategyInput(campaignId)
+      const generated = input ? await runProspectingStrategist(input) : null
+      const plan = generated ? saveProspectingStrategyPlan(campaignId, input?.query_original || "", generated.output, "Test") : null
+      strategyDir = plan?.markdownPath ? path.dirname(plan.markdownPath) : ""
+
+      const first = plan ? executeProspectingPlan(plan.id, { mode: "manual", replaceQueuedRun: true }) : null
+      const companyJob = db
+        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'")
+        .get(first && "run" in first ? first.run.id : "")
+      if (companyJob) {
+        completeOpenClawJob(companyJob.id, {
+          companies: [
+            {
+              name: "Runner Fintech One",
+              domain: "runner-fintech-one.com",
+              country: "Mexico",
+              industry: "Fintech",
+              score: 86,
+              rationale: "B2B fintech con senal financiera.",
+              evidence: [{ type: "website", url: "https://runner-fintech-one.com", note: "Sitio oficial." }],
+            },
+          ],
+        })
+      }
+
+      const gated = plan ? executeProspectingPlan(plan.id, { mode: "manual" }) : null
+      const candidate = db
+        .query<{ id: string }, [string]>("SELECT id FROM company_candidates WHERE campaign_id = ? AND status = 'new' LIMIT 1")
+        .get(campaignId)
+      if (candidate) reviewCompanyCandidate(candidate.id, { status: "approved", feedback: "Fit claro para mapear CFO/Ops." })
+
+      const peopleRun = plan ? executeProspectingPlan(plan.id, { mode: "autopilot" }) : null
+      const peopleJob = db
+        .query<{ id: string; input_json: string }, [string]>("SELECT id, input_json FROM openclaw_jobs WHERE campaign_id = ? AND skill = 'find_people' ORDER BY created_at DESC LIMIT 1")
+        .get(campaignId)
+      const peopleInput = peopleJob ? JSON.parse(peopleJob.input_json) : {}
+      if (peopleJob) {
+        completeOpenClawJob(peopleJob.id, {
+          people: [
+            {
+              name: "Ana Finanzas",
+              title: "Head of Finance",
+              company_name: "Runner Fintech One",
+              company_domain: "runner-fintech-one.com",
+              country: "Mexico",
+              seniority: "head",
+              function: "finance",
+              score: 88,
+              rationale: "Rol financiero senior en empresa aprobada.",
+              evidence: [{ type: "web", url: "https://runner-fintech-one.com/team", note: "Aparece en equipo." }],
+              source_keys: ["web_search"],
+              company_candidate_id: candidate?.id || "",
+            },
+          ],
+          quality_metrics: { count: 1, with_role_evidence: 1, with_email: 0, estimated_match_quality: 0.82 },
+        })
+      }
+      const finalPlan = plan ? getProspectingPlan(plan.id) : null
+      const people = listCampaignPeople(campaignId)
+
+      expect(plan?.plan.plans?.[0]?.steps).toHaveLength(3)
+      expect(first && "run" in first ? first.run?.jobs?.[0]?.skill : "").toBe("company_discovery")
+      expect(gated && "gate" in gated ? gated.gate : "").toBe("human_review_required")
+      expect(peopleRun && "run" in peopleRun ? peopleRun.run?.jobs?.[0]?.skill : "").toBe("find_people")
+      expect(Array.isArray(peopleInput.approvedCompanies) ? peopleInput.approvedCompanies.length : 0).toBe(1)
+      expect(people.map((person) => person.name)).toContain("Ana Finanzas")
+      expect(finalPlan?.steps?.map((step) => step.status)).toContain("succeeded")
+    } finally {
+      if (previousMock === undefined) delete Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK
+      else Bun.env.BENFORD_BACKOFFICE_OPENCLAW_MOCK = previousMock
+      if (campaignId) {
+        db.prepare("DELETE FROM prospecting_queries WHERE campaign_id = ?").run(campaignId)
+        db.prepare("DELETE FROM agent_runs WHERE campaign_id = ?").run(campaignId)
+        db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId)
+      }
+      if (strategyDir) rmSync(strategyDir, { recursive: true, force: true })
+    }
+  })
+
   test("creates and cancels queued campaign runs with one active run per campaign", () => {
     setupDatabase()
     let campaignId = ""
@@ -402,15 +705,15 @@ describe("clo backoffice local database", () => {
       const input = job ? JSON.parse(job.input_json) : {}
 
       expect(job?.status).toBe("queued")
-      expect(job?.skill).toBe("find_companies")
+      expect(job?.skill).toBe("company_discovery")
       expect(input.brief?.maxCompanies).toBe(10)
       expect(input.brief?.minScoreThreshold).toBe(75)
       expect(input.brief?.discoveryMode).toBe("fast_prefetch")
       const detail = campaignId ? getCampaignDetail(campaignId) : null
       const detailRun = detail?.runs.find((run) => run.id === runId)
 
-      expect(detailRun?.jobs?.map((item) => item.skill)).toContain("find_companies")
-      expect(detailRun?.skills).toContain("find_companies")
+      expect(detailRun?.jobs?.map((item) => item.skill)).toContain("company_discovery")
+      expect(detailRun?.skills).toContain("company_discovery")
 
       const cancelled = cancelCampaignRun(runId)
       expect(cancelled && "run" in cancelled ? cancelled.run?.status : "").toBe("cancelled")
@@ -552,7 +855,7 @@ describe("clo backoffice local database", () => {
       const second = campaignId ? createCampaignRun(campaignId, { prefetchCompanies: 30, reviewBatchSize: 10 }) : null
       const secondRunId = second && "run" in second ? second.run?.id ?? "" : ""
       const secondJob = db
-        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
+        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'")
         .get(secondRunId)
       const input = secondJob ? JSON.parse(secondJob.input_json) : {}
 
@@ -605,7 +908,7 @@ describe("clo backoffice local database", () => {
     }
   })
 
-  test("injects company review feedback into the next find_companies run memory", () => {
+  test("injects company review feedback into the next company_discovery run memory", () => {
     setupDatabase()
     let campaignId = ""
     const domain = "feedback-loop-company.example"
@@ -722,7 +1025,7 @@ describe("clo backoffice local database", () => {
 
       const second = campaignId ? createCampaignRun(campaignId) : null
       const secondRunId = second && "run" in second ? second.run?.id ?? "" : ""
-      const secondJob = db.query<{ id: string; input_json: string }, [string]>("SELECT id, input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'").get(secondRunId)
+      const secondJob = db.query<{ id: string; input_json: string }, [string]>("SELECT id, input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'").get(secondRunId)
       const input = secondJob ? JSON.parse(secondJob.input_json) : {}
 
       if (secondJob) {
@@ -790,7 +1093,7 @@ describe("clo backoffice local database", () => {
       campaignId = campaign?.id ?? ""
       const run = campaignId ? createCampaignRun(campaignId) : null
       const runId = run && "run" in run ? run.run?.id ?? "" : ""
-      const job = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'").get(runId)
+      const job = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'").get(runId)
 
       if (job) {
         completeOpenClawJob(job.id, {
@@ -948,7 +1251,7 @@ describe("clo backoffice local database", () => {
         id: "job_mock_ten",
         runId: "run_mock_ten",
         campaignId: "campaign_mock_ten",
-        skill: "find_companies",
+        skill: "company_discovery",
         status: "queued",
         input: {
           brief: {
@@ -976,7 +1279,7 @@ describe("clo backoffice local database", () => {
     }
   })
 
-  test("retries empty find_companies OpenClaw output once", async () => {
+  test("retries empty company_discovery OpenClaw output once", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "backoffice-openclaw-retry-"))
     const script = path.join(dir, "openclaw-stub.sh")
     const state = path.join(dir, "state")
@@ -1008,7 +1311,7 @@ describe("clo backoffice local database", () => {
         id: "job_retry_empty",
         runId: "run_retry_empty",
         campaignId: "campaign_retry_empty",
-        skill: "find_companies",
+        skill: "company_discovery",
         status: "queued",
         input: {
           brief: {
@@ -1044,7 +1347,7 @@ describe("clo backoffice local database", () => {
     }
   })
 
-  test("persists find_companies OpenClaw output into company candidates", () => {
+  test("persists company_discovery OpenClaw output into company candidates", () => {
     setupDatabase()
     let campaignId = ""
 
@@ -1061,7 +1364,7 @@ describe("clo backoffice local database", () => {
       const created = campaignId ? createCampaignRun(campaignId) : null
       const runId = created && "run" in created ? created.run?.id ?? "" : ""
       const job = db
-        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
+        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'")
         .get(runId)
 
       const completed = job
@@ -1094,7 +1397,7 @@ describe("clo backoffice local database", () => {
     }
   })
 
-  test("marks empty find_companies output as failed instead of needs_review", () => {
+  test("marks empty company_discovery output as failed instead of needs_review", () => {
     setupDatabase()
     let campaignId = ""
 
@@ -1111,7 +1414,7 @@ describe("clo backoffice local database", () => {
       const created = campaignId ? createCampaignRun(campaignId) : null
       const runId = created && "run" in created ? created.run?.id ?? "" : ""
       const job = db
-        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
+        .query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'")
         .get(runId)
       const completed = job ? completeOpenClawJob(job.id, { companies: [] }) : null
       const run = db.query<{ status: string; error: string }, [string]>("SELECT status, error FROM agent_runs WHERE id = ?").get(runId)
@@ -1162,7 +1465,7 @@ describe("clo backoffice local database", () => {
       const nextRun = createCampaignRun("campaign_fintech_latam", { prefetchCompanies: 10, reviewBatchSize: 10 })
       const nextRunId = nextRun && "run" in nextRun ? nextRun.run?.id ?? "" : ""
       const nextJob = db
-        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'")
+        .query<{ input_json: string }, [string]>("SELECT input_json FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'")
         .get(nextRunId)
       const nextInput = nextJob ? JSON.parse(nextJob.input_json) : {}
 
@@ -1201,7 +1504,7 @@ describe("clo backoffice local database", () => {
       campaignId = campaign?.id ?? ""
       const first = campaignId ? createCampaignRun(campaignId) : null
       const firstRunId = first && "run" in first ? first.run?.id ?? "" : ""
-      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'").get(firstRunId)
+      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'").get(firstRunId)
 
       if (firstJob) {
         completeOpenClawJob(firstJob.id, {
@@ -1291,7 +1594,7 @@ describe("clo backoffice local database", () => {
       campaignId = campaign?.id ?? ""
       const first = campaignId ? createCampaignRun(campaignId) : null
       const firstRunId = first && "run" in first ? first.run?.id ?? "" : ""
-      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'find_companies'").get(firstRunId)
+      const firstJob = db.query<{ id: string }, [string]>("SELECT id FROM openclaw_jobs WHERE run_id = ? AND skill = 'company_discovery'").get(firstRunId)
 
       if (firstJob) {
         completeOpenClawJob(firstJob.id, {

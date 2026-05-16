@@ -1,0 +1,58 @@
+{
+  "query_original": "string",
+  "icp_characterized": {
+    "entity_type": "corporate_b2b|local_business|traditional_business|professional_practice|recruiting_talent|person_as_business|mixed|unknown",
+    "buyer_or_target": "string",
+    "geography": "string",
+    "digital_footprint_hypothesis": "string",
+    "likely_source_universes": ["string"],
+    "risk_notes": ["string"]
+  },
+  "memory_used": {
+    "similar_queries_found": 0,
+    "strongest_pattern_id": "string",
+    "summary": "string"
+  },
+  "budget_guard": {
+    "run_budget_cents": 0,
+    "estimated_total_cents": 0,
+    "stop_before_exceeding_budget": true,
+    "unknown_cost_policy": "avoid_in_unattended_mode|allow_with_operator_approval|allowed"
+  },
+  "strategy_markdown": "string",
+  "plans": [
+    {
+      "id": "plan_a",
+      "rank": 1,
+      "strategy": "string",
+      "expected_strength": "high|medium|low",
+      "estimated_cost_cents": 0,
+      "steps": [
+        {
+          "order": 1,
+          "phase": "company_training|company_autopilot|people_mapping|people_direct_search|dedup_enrich|review",
+          "capability": "company-discovery|person-discovery|dedup-and-enrich|internal-crm-review",
+          "playbook": "corporate-b2b",
+          "mode": "company_sourcing|people_mapping_from_approved_companies|people_direct_search|merge_verify_score|human_review",
+          "legacy_skill": "company_discovery|find_people|research_company|research_person",
+          "source_key": "string",
+          "source_plan": ["string"],
+          "requires_review_state": "none|approved_companies|approved_people",
+          "reason": "string",
+          "input_focus": "string",
+          "expected_output": "companies|people|enrichment|deduped_results|internal_crm_state",
+          "estimated_cost_cents": 0,
+          "quality_gate": {
+            "min_count": 0,
+            "min_quality_score": 0,
+            "required_fields": ["string"]
+          },
+          "fallback_if": ["string"],
+          "stop_if": ["string"]
+        }
+      ]
+    }
+  ],
+  "recommended_first_plan_id": "plan_a",
+  "operator_warnings": ["string"]
+}

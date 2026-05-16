@@ -4,8 +4,9 @@ The current schema is defined in:
 
 ```text
 apps/backoffice/db/migrations/0001_core.sql
-apps/backoffice/db/migrations/0002_brain_snapshot.sql
+apps/backoffice/db/migrations/0002_campaign_min_score_threshold.sql
 apps/backoffice/db/migrations/0003_company_candidate_review_queue.sql
+apps/backoffice/db/migrations/0004_prospecting_strategy_memory.sql
 ```
 
 Development seed data is defined in:
@@ -67,7 +68,7 @@ Search modes:
 - `people`
 - `companies_then_people`
 
-`companies_then_people` is conceptually a multi-stage workflow: find companies, wait for human review, then find people for approved companies. Do not treat it as a single autonomous outreach flow.
+`companies_then_people` is conceptually a multi-stage workflow: company discovery, wait for human review, then find people for approved companies. Do not treat it as a single autonomous outreach flow.
 
 ### `agent_runs`
 
@@ -90,7 +91,7 @@ A job is one concrete OpenClaw task under a run.
 
 Skills:
 
-- `find_companies`
+- `company_discovery`
 - `find_people`
 - `research_company`
 - `research_person`
@@ -115,6 +116,52 @@ Recommended key:
 ```text
 hash(campaign_id + run_id + skill + input_json)
 ```
+
+### `prospecting_queries`
+
+One strategy/research intent for a campaign. It stores the original query,
+fingerprint, interpreted ICP signature, status, total cost, and budget limit.
+
+Statuses:
+
+- `planned`
+- `running`
+- `succeeded`
+- `failed`
+- `cancelled`
+- `stopped_for_budget`
+
+### `prospecting_plans`
+
+The versioned agent strategy visible in the Búsqueda tab. The same row stores:
+
+- `plan_json`: full strategy contract returned by OpenClaw
+- `strategy_markdown`: operator-readable strategy
+- `markdown_path`: generated `.md` file path under `.data/prospecting-strategies`
+- `revision`: increments when the operator gives plan feedback
+- `estimated_cost_cents`
+- `max_cost_cents`
+- `feedback_json`
+
+Known-cost execution must stop before creating a run when `estimated_cost_cents`
+is higher than `max_cost_cents`.
+
+### `prospecting_steps`
+
+Concrete planned/executed steps under a strategy plan. This is where future
+Apollo, Scrap.io, Explorium, PDL, DENUE, Apify, and Google Maps source steps should
+attach costs, quality scores, job ids, and stop reasons.
+
+### `learned_patterns`
+
+Persistent memory for repeated ICP/source patterns: signature hash, preferred
+source order, success rate, average quality, average cost, and notes.
+
+### `prospecting_cost_ledger`
+
+Audit ledger for estimates, reserves, actual cost, refunds, and budget stops.
+Use this before every known-cost provider call. Unknown-cost providers should
+remain opt-in during unattended runs.
 
 ### `agent_events`
 
@@ -172,6 +219,10 @@ outreach.draft_created
 outreach.approved
 system.warning
 system.error
+strategy.plan_created
+strategy.plan_revised
+strategy.execution_started
+strategy.budget_stop
 ```
 
 Seed data currently uses `run.completed` and `people.found`. New code should prefer the catalog above. If a new type is needed, add it here first.
@@ -213,7 +264,7 @@ Review queue fields:
   in SQLite but hidden until the next cached reveal.
 - `review_revealed_at`: timestamp when the candidate became visible.
 
-The current `find_companies` loop can prefetch more candidates than it reveals.
+The current `company_discovery` loop can prefetch more candidates than it reveals.
 The UI reviews visible candidates in lots of 10; `POST /api/campaigns/:id/runs`
 can reveal the next hidden lot without calling OpenClaw.
 

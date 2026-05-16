@@ -34,7 +34,7 @@ VALUES
 
 INSERT OR IGNORE INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json, output_json, attempt, max_attempts)
 VALUES
-  ('job_fintech_find_companies_001', 'run_fintech_001', 'campaign_fintech_latam', 'find_companies', 'succeeded', '{}', '{}', 1, 1),
+  ('job_fintech_company_discovery_001', 'run_fintech_001', 'campaign_fintech_latam', 'company_discovery', 'succeeded', '{}', '{}', 1, 1),
   ('job_fintech_find_people_001', 'run_fintech_001', 'campaign_fintech_latam', 'find_people', 'succeeded', '{}', '{}', 1, 1),
   ('job_saas_find_people_001', 'run_saas_001', 'campaign_saas_cfos_mx', 'find_people', 'succeeded', '{}', '{}', 1, 1);
 
@@ -79,6 +79,6 @@ VALUES
 
 INSERT OR IGNORE INTO agent_events (campaign_id, run_id, job_id, subject_type, subject_id, level, event_type, message, payload_json)
 VALUES
-  ('campaign_fintech_latam', 'run_fintech_001', 'job_fintech_find_companies_001', 'run', 'run_fintech_001', 'success', 'run.completed', 'OpenClaw encontro empresas candidatas para revision.', '{}'),
+  ('campaign_fintech_latam', 'run_fintech_001', 'job_fintech_company_discovery_001', 'run', 'run_fintech_001', 'success', 'run.completed', 'OpenClaw encontro empresas candidatas para revision.', '{}'),
   ('campaign_fintech_latam', 'run_fintech_001', 'job_fintech_find_people_001', 'run', 'run_fintech_001', 'success', 'people.found', 'OpenClaw encontro personas candidatas relacionadas.', '{}'),
   ('campaign_saas_cfos_mx', 'run_saas_001', 'job_saas_find_people_001', 'run', 'run_saas_001', 'success', 'people.found', 'OpenClaw encontro finance leaders para revision.', '{}');

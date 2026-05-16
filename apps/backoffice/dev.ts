@@ -4,6 +4,7 @@ import path from "node:path"
 import { spawnSync } from "node:child_process"
 import {
   companyLogoMap,
+  buildProspectingStrategyInput,
   cancelCampaignRun,
   createCampaign,
   createCampaignRun,
@@ -13,6 +14,8 @@ import {
   getCampaignDetail,
   getDatabaseTable,
   hiddenCompanyCandidateCount,
+  executeProspectingPlan,
+  getProspectingPlan,
   listCampaignCompanyCandidates,
   listCampaigns,
   listCompanies,
@@ -23,12 +26,17 @@ import {
   reviewCompanyCandidate,
   reviewPersonCandidate,
   revealCachedCompanyCandidates,
+  reviseProspectingStrategyPlan,
+  saveProspectingStrategyPlan,
   setupDatabase,
   updateCampaignBrief,
   updateCompanyCandidateStatus,
 } from "./src/server/db.ts"
+import { loadBackofficeEnv } from "./src/server/env.ts"
+import { runProspectingStrategist } from "./src/server/openclaw-adapter.ts"
 
 const appRoot = path.resolve(import.meta.dir)
+loadBackofficeEnv()
 const port = Number(Bun.env.PORT ?? 3000)
 const tsTranspiler = new Bun.Transpiler({ loader: "ts" })
 const jsxTranspiler = new Bun.Transpiler({ loader: "jsx" })
@@ -238,6 +246,65 @@ async function serveApi(request: Request, url: URL) {
       prefetchCompanies: numberBodyValue(body, "prefetchCompanies"),
     })
     if (!result) return json({ error: "Campaign not found" }, { status: 404 })
+    if ("error" in result) return json(result, { status: 409 })
+    if ("run" in result) startDevOpenClawWorkerOnce()
+    return json(result, { status: 201 })
+  }
+
+  if (url.pathname === "/api/prospecting/plan") {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const body = await readJson(request)
+    const campaignId = typeof body.campaignId === "string" ? body.campaignId : ""
+    if (!campaignId) return json({ error: "Campaign not found" }, { status: 404 })
+
+    const input = buildProspectingStrategyInput(campaignId, {
+      query: typeof body.query === "string" ? body.query : undefined,
+    })
+    if (!input) return json({ error: "Campaign not found" }, { status: 404 })
+
+    const result = await runProspectingStrategist(input)
+    const plan = saveProspectingStrategyPlan(campaignId, input.query_original, result.output, "OpenClaw")
+    if (!plan) return json({ error: "Campaign not found" }, { status: 404 })
+    return json({ plan, stdout: result.stdout, stderr: result.stderr }, { status: 201 })
+  }
+
+  const prospectingPlanMatch = url.pathname.match(/^\/api\/prospecting\/plans\/([^/]+)$/)
+  if (prospectingPlanMatch) {
+    const plan = getProspectingPlan(prospectingPlanMatch[1] ?? "")
+    if (!plan) return json({ error: "Plan not found" }, { status: 404 })
+    return json({ plan })
+  }
+
+  const prospectingFeedbackMatch = url.pathname.match(/^\/api\/prospecting\/plans\/([^/]+)\/feedback$/)
+  if (prospectingFeedbackMatch) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const body = await readJson(request)
+    const planId = prospectingFeedbackMatch[1] ?? ""
+    const currentPlan = getProspectingPlan(planId)
+    if (!currentPlan) return json({ error: "Plan not found" }, { status: 404 })
+    const campaignId = typeof body.campaignId === "string" ? body.campaignId : ""
+    const feedback = typeof body.feedback === "string" ? body.feedback.trim() : ""
+    if (!campaignId) return json({ error: "Campaign not found" }, { status: 404 })
+    if (!feedback) return json({ error: "Feedback is required" }, { status: 400 })
+
+    const input = buildProspectingStrategyInput(campaignId, { feedback, currentPlanId: planId })
+    if (!input) return json({ error: "Campaign not found" }, { status: 404 })
+    const result = await runProspectingStrategist(input)
+    const plan = reviseProspectingStrategyPlan(planId, feedback, result.output, "OpenClaw")
+    if (!plan) return json({ error: "Plan not found" }, { status: 404 })
+    return json({ plan, stdout: result.stdout, stderr: result.stderr })
+  }
+
+  const prospectingExecuteMatch = url.pathname.match(/^\/api\/prospecting\/plans\/([^/]+)\/execute$/)
+  if (prospectingExecuteMatch) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const body = await readJson(request)
+    const result = executeProspectingPlan(prospectingExecuteMatch[1] ?? "", {
+      replaceQueuedRun: body.replaceQueuedRun === true,
+      mode: body.mode === "autopilot" ? "autopilot" : "manual",
+      stepId: typeof body.stepId === "string" ? body.stepId : undefined,
+    })
+    if (!result) return json({ error: "Plan not found" }, { status: 404 })
     if ("error" in result) return json(result, { status: 409 })
     if ("run" in result) startDevOpenClawWorkerOnce()
     return json(result, { status: 201 })

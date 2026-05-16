@@ -52,7 +52,7 @@ OpenClaw output
 The OpenClaw skill source of truth lives in this repo:
 
 ```text
-apps/backoffice/openclaw-skills/find-companies/
+apps/backoffice/openclaw-skills/company-discovery/
 ```
 
 Sync it to the `prospecting-agent` workspace with:

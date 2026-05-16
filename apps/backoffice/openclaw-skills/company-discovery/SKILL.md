@@ -1,9 +1,9 @@
 ---
-name: find-companies
-description: Research real company, business, practice, or person-as-business candidates for Benford Backoffice campaign runs. Use when OpenClaw receives a find_companies job, a campaign discovery brief, or a request to return strict JSON company_candidates for outbound prospecting.
+name: company-discovery
+description: Research real company, business, practice, or person-as-business candidates for Benford Backoffice campaign runs. Use when OpenClaw receives a company_discovery job, a campaign discovery brief, or a request to return strict JSON company_candidates for outbound prospecting.
 ---
 
-# Find Companies
+# Company Discovery
 
 ## Purpose
 

@@ -1,0 +1,3 @@
+display_name: Prospecting Strategist
+short_description: Plans and revises source strategy, waterfall, quality gates, and budget guards for prospecting.
+default_prompt: Read the campaign, query, memory, learned patterns, allowed sources, and budget. Return strict JSON with ICP characterization, budget guard, ranked plans, source steps, warnings, and strategy_markdown.

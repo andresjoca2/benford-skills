@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The first `find_companies` milestone is operational on the OpenClaw host.
+The first `company_discovery` milestone is operational on the OpenClaw host.
 
 Current production-like loop:
 
@@ -81,15 +81,17 @@ Implemented:
 - persistence of proposed companies
 - event writes for each step
 - SSH transport to `openclaw` host
-- `research-agent` execution for current `find_companies` discovery
-- versioned `find-companies` skill source
-- review feedback memory for the next `find_companies` run
-- stronger `find_companies` prompt for 10 new non-duplicate companies
+- `prospecting-agent` execution for current `company_discovery` discovery
+- versioned `company-discovery` skill source
+- review feedback memory for the next `company_discovery` run
+- stronger `company_discovery` prompt for 10 new non-duplicate companies
 - OpenClaw request/response event writes
 - server and worker running against the real OpenClaw SQLite path
 - remote loop verified: search companies, review with feedback, search again
 - cached review batches: reveal next visible lot before calling OpenClaw again
 - idempotent migration for `review_visible` / `review_revealed_at`
+- tuned `prospecting-agent` soul/tools replacing generic `research-agent` defaults
+- versioned `prospecting-strategist` meta-skill source
 
 Remaining:
 
@@ -105,11 +107,15 @@ Implemented:
 - campaign-level minimum score threshold, initially defaulting to 75
 - UI filtering by score without deleting lower-score candidates from SQLite
 - frontend-only automatic search modal with compute, company, people, and score limits
+- strategy memory schema for prospecting plans, steps, learned patterns, and cost ledger
+- Búsqueda tab strategy panel with generated Markdown, feedback loop, and execution button
+- budget hard stop before executing known-cost strategy plans
 
 Remaining:
 
-- source escalation policy: primary/public sources first, paid or bulk sources only when needed
-- make fast vs deep discovery explicit in campaign/run controls
+- connect real provider wrappers: Apollo, Scrap.io, Explorium, PDL, DENUE, Apify, Google Maps
+- write actual per-provider costs into `prospecting_cost_ledger`
+- make fast vs deep discovery explicit in campaign/run controls after provider execution exists
 
 ### Phase 5 - Mission Panel Realtime
 
@@ -164,7 +170,7 @@ Automatic search behavior:
 Keep the product centered on:
 
 ```text
-find companies/businesses -> review -> feedback -> next run -> find people
+company discovery/businesses -> review -> feedback -> next run -> find people
 ```
 
 People search and outreach build on top of approved companies or person-owned businesses. Do not expand into a full CRM before the discovery/review loop works.

@@ -29,7 +29,7 @@ CREATE TABLE campaign_briefs (
 CREATE TABLE agent_runs (
   id TEXT PRIMARY KEY,
   campaign_id TEXT NOT NULL,
-  mission TEXT NOT NULL DEFAULT 'find_companies',
+  mission TEXT NOT NULL DEFAULT 'company_discovery',
   status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'needs_review', 'completed', 'failed', 'cancelled')),
   objective TEXT NOT NULL DEFAULT '',
   context_json TEXT NOT NULL DEFAULT '{}',
@@ -47,7 +47,7 @@ CREATE TABLE openclaw_jobs (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
   campaign_id TEXT NOT NULL,
-  skill TEXT NOT NULL CHECK (skill IN ('find_companies', 'find_people', 'research_company', 'research_person', 'score_company', 'score_person', 'draft_outreach')),
+  skill TEXT NOT NULL CHECK (skill IN ('company_discovery', 'find_companies', 'find_people', 'research_company', 'research_person', 'score_company', 'score_person', 'draft_outreach')),
   status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
   input_json TEXT NOT NULL DEFAULT '{}',
   output_json TEXT NOT NULL DEFAULT '{}',

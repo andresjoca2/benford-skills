@@ -50,7 +50,8 @@ Returns campaign detail:
     "id": "campaign_fintech_latam",
     "name": "Fintech LATAM - Founders",
     "brief": {},
-    "runs": []
+    "runs": [],
+    "latestStrategy": null
   }
 }
 ```
@@ -113,9 +114,75 @@ Rules:
 - `reviewBatchSize` controls how many cached candidates become visible; current UI sends 10
 - `prefetchCompanies` asks OpenClaw for a larger batch so future review lots can be instant; current UI caps interactive company prefetches at 20 to keep reruns responsive
 - `people` briefs enqueue `find_people`
-- `companies` and `companies_then_people` briefs enqueue `find_companies`
+- `companies` and `companies_then_people` briefs enqueue `company_discovery`
 
 Returns `409` with `active_run_exists` when a run is already active.
+
+## Prospecting Strategy
+
+### `POST /api/prospecting/plan`
+
+Creates a strategy plan through OpenClaw and stores both JSON and Markdown.
+
+Body:
+
+```json
+{
+  "campaignId": "campaign_fintech_latam",
+  "query": "Founders fintech B2B LATAM"
+}
+```
+
+Returns:
+
+```json
+{
+  "plan": {
+    "id": "prospecting_plan_...",
+    "status": "draft",
+    "revision": 1,
+    "strategyMarkdown": "# Estrategia del agente...",
+    "markdownPath": "/absolute/path/apps/backoffice/.data/prospecting-strategies/...",
+    "estimatedCostCents": 500,
+    "maxCostCents": 2000
+  }
+}
+```
+
+### `GET /api/prospecting/plans/:id`
+
+Returns one stored prospecting strategy plan.
+
+### `POST /api/prospecting/plans/:id/feedback`
+
+Sends operator feedback back to OpenClaw, revises the plan, increments
+`revision`, and rewrites the Markdown file used by the UI and future runs.
+
+Body:
+
+```json
+{
+  "campaignId": "campaign_fintech_latam",
+  "feedback": "Para PyMEs mexicanas prueba DENUE antes de Apollo."
+}
+```
+
+### `POST /api/prospecting/plans/:id/execute`
+
+Executes a stored plan by creating the first queued campaign run. Known-cost
+sources are hard-stopped before execution when `estimatedCostCents` exceeds
+`maxCostCents`.
+
+Body:
+
+```json
+{
+  "replaceQueuedRun": true
+}
+```
+
+Returns `409` with `budget_limit_exceeded` when the plan estimate exceeds the
+configured run budget.
 
 ### Planned: `PUT /api/campaigns/:id/auto-search`
 
@@ -263,5 +330,6 @@ The next endpoints to add are:
 GET  /api/runs/:id/events/stream
 ```
 
-Worker integration for `find_companies` is operational. The remaining API work is
-the realtime SSE stream and clearer run retry/timeout controls.
+Worker integration for `company_discovery` and strategy execution is operational.
+The remaining API work is the realtime SSE stream, clearer run retry/timeout
+controls, and provider-specific execution endpoints after API keys are connected.

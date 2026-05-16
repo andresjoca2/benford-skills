@@ -68,6 +68,20 @@ const BackofficeAPI = {
     return this.postJson(`/api/campaigns/${encodeURIComponent(id)}/runs`, options);
   },
 
+  async createProspectingPlan(campaignId, query) {
+    const data = await this.postJson("/api/prospecting/plan", { campaignId, query });
+    return data.plan;
+  },
+
+  async giveProspectingPlanFeedback(planId, campaignId, feedback) {
+    const data = await this.postJson(`/api/prospecting/plans/${encodeURIComponent(planId)}/feedback`, { campaignId, feedback });
+    return data.plan;
+  },
+
+  async executeProspectingPlan(planId, options = {}) {
+    return this.postJson(`/api/prospecting/plans/${encodeURIComponent(planId)}/execute`, options);
+  },
+
   async revealCampaignCandidates(id, limit = 10) {
     return this.postJson(`/api/campaigns/${encodeURIComponent(id)}/candidates/reveal`, { limit });
   },

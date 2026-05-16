@@ -6,8 +6,10 @@ import {
   recordOpenClawResponded,
   setupDatabase,
 } from "./src/server/db.ts"
+import { loadBackofficeEnv } from "./src/server/env.ts"
 import { runOpenClawJob } from "./src/server/openclaw-adapter.ts"
 
+loadBackofficeEnv()
 const pollMs = Number(Bun.env.BENFORD_BACKOFFICE_WORKER_POLL_MS ?? 3000)
 const once = Bun.argv.includes("--once")
 

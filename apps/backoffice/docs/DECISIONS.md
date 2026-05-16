@@ -16,7 +16,7 @@ Reconsider when:
 
 ### Remote SQLite Is Operational Source Of Truth
 
-Decision: after the first `find_companies` milestone, the operational SQLite DB
+Decision: after the first `company_discovery` milestone, the operational SQLite DB
 lives on the OpenClaw host. The initial laptop/local test DB was deleted.
 
 Reason: the server and worker must share one real database while OpenClaw runs
@@ -50,19 +50,19 @@ Decision: keep OpenClaw prospecting skills under `apps/backoffice/openclaw-skill
 
 Reason: campaign discovery behavior, output schemas, source policy, and scoring rules must be reviewed and versioned with the backoffice contract.
 
-### Research Agent For Current Company Discovery
+### Prospecting Agent For Company Discovery
 
-Decision: current `find_companies` runs use `research-agent` through
-`OPENCLAW_FIND_COMPANIES_AGENT`.
+Decision: current `company_discovery` and strategy runs use `prospecting-agent` through
+`OPENCLAW_COMPANY_DISCOVERY_AGENT`.
 
-Reason: it has the web research behavior needed for this milestone. This is an
-operational routing choice, not a product decision that `prospecting-agent`
-should never own discovery.
+Reason: OpenClaw already has a registered `prospecting-agent` with workspace
+`/root/.openclaw/workspace-prospecting-agent`. The backoffice now syncs the CRM
+prospecting soul/tools and skills into that workspace instead of inventing a
+second agent id.
 
 Reconsider when:
 
-- `prospecting-agent` is configured to use web search reliably
-- a lighter dedicated `find-companies-fast` path exists
+- a lighter dedicated `company-discovery-fast` path exists
 - OpenClaw context size becomes the dominant latency bottleneck
 
 ### Person-Centered Outbound

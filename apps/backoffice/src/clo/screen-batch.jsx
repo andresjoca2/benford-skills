@@ -245,9 +245,9 @@ const emptyBrief = {
   minScoreThreshold: 75,
 };
 
-const COMPANY_LOG_SKILLS = ["find_companies", "research_company", "score_company"];
+const COMPANY_LOG_SKILLS = ["company_discovery", "research_company", "score_company"];
 const PEOPLE_LOG_SKILLS = ["find_people", "research_person", "score_person", "draft_outreach"];
-const COMPANY_LOG_MISSIONS = ["companies", "companies_then_people", "find_companies"];
+const COMPANY_LOG_MISSIONS = ["companies", "companies_then_people", "company_discovery"];
 const PEOPLE_LOG_MISSIONS = ["people", "find_people"];
 
 const runLogSkills = (run) => {
@@ -267,7 +267,7 @@ const runStatusKind = (status) => {
   if (status === "succeeded") return "done";
   if (status === "failed" || status === "cancelled") return "danger";
   if (status === "running") return "running";
-  if (status === "queued") return "warn";
+  if (status === "queued" || status === "waiting_review" || status === "blocked" || status === "stopped_for_budget") return "warn";
   return "empty";
 };
 
@@ -351,11 +351,23 @@ const BatchBusqueda = ({ b, onSaved }) => {
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [canceling, setCanceling] = React.useState("");
+  const [strategy, setStrategy] = React.useState(b.latestStrategy || null);
+  const [strategyBusy, setStrategyBusy] = React.useState(false);
+  const [strategyExecuting, setStrategyExecuting] = React.useState(false);
+  const [strategyFeedback, setStrategyFeedback] = React.useState("");
+  const [strategyNotice, setStrategyNotice] = React.useState("");
 
   React.useEffect(() => {
     setEditing(false);
     setSaving(false);
+    setStrategy(b.latestStrategy || null);
+    setStrategyFeedback("");
+    setStrategyNotice("");
   }, [b.id]);
+
+  React.useEffect(() => {
+    setStrategy(b.latestStrategy || null);
+  }, [b.latestStrategy?.id, b.latestStrategy?.revision, b.latestStrategy?.status]);
 
   const asNumber = (value) => {
     const parsed = Number(value);
@@ -404,6 +416,69 @@ const BatchBusqueda = ({ b, onSaved }) => {
       })
       .catch((error) => console.warn("No se pudo cancelar corrida", error))
       .finally(() => setCanceling(""));
+  };
+  const refreshCampaign = () => {
+    return window.BackofficeAPI?.campaign(b.id)
+      .then((campaign) => {
+        if (campaign) {
+          onSaved && onSaved(campaign);
+          setStrategy(campaign.latestStrategy || strategy);
+        }
+        return campaign;
+      });
+  };
+  const generateStrategy = () => {
+    if (strategyBusy) return;
+    setStrategyBusy(true);
+    setStrategyNotice("");
+    const query = brief.objective || b.criteria || b.name;
+    window.BackofficeAPI?.createProspectingPlan(b.id, query)
+      .then((plan) => {
+        setStrategy(plan);
+        setStrategyFeedback("");
+        setStrategyNotice("Estrategia generada por OpenClaw.");
+        return refreshCampaign();
+      })
+      .catch((error) => {
+        console.warn("No se pudo generar la estrategia", error);
+        setStrategyNotice("No se pudo generar la estrategia. Revisa OpenClaw o el mock local.");
+      })
+      .finally(() => setStrategyBusy(false));
+  };
+  const submitStrategyFeedback = () => {
+    const feedback = strategyFeedback.trim();
+    if (!strategy?.id || !feedback || strategyBusy) return;
+    setStrategyBusy(true);
+    setStrategyNotice("");
+    window.BackofficeAPI?.giveProspectingPlanFeedback(strategy.id, b.id, feedback)
+      .then((plan) => {
+        setStrategy(plan);
+        setStrategyFeedback("");
+        setStrategyNotice(`Plan actualizado a revisión ${plan.revision}.`);
+        return refreshCampaign();
+      })
+      .catch((error) => {
+        console.warn("No se pudo aplicar feedback al plan", error);
+        setStrategyNotice("No se pudo aplicar el feedback al plan.");
+      })
+      .finally(() => setStrategyBusy(false));
+  };
+  const executeStrategy = (mode = "manual") => {
+    if (!strategy?.id || strategyExecuting) return;
+    setStrategyExecuting(true);
+    setStrategyNotice("");
+    window.BackofficeAPI?.executeProspectingPlan(strategy.id, { replaceQueuedRun: true, mode })
+      .then((result) => {
+        if (result?.plan) setStrategy(result.plan);
+        if (result?.gate) setStrategyNotice(`Plan pausado: ${result.gate}.`);
+        else setStrategyNotice(result?.run ? (mode === "autopilot" ? "Autopilot iniciado con límites." : "Siguiente step enviado a ejecución.") : "Plan procesado.");
+        return refreshCampaign();
+      })
+      .catch((error) => {
+        console.warn("No se pudo ejecutar el plan", error);
+        setStrategyNotice("No se pudo ejecutar el plan. Revisa si el presupuesto o una corrida activa lo detuvo.");
+      })
+      .finally(() => setStrategyExecuting(false));
   };
 
   if (editing) {
@@ -515,6 +590,115 @@ const BatchBusqueda = ({ b, onSaved }) => {
           <div className="k">Señales positivas</div><div className="v">{brief.positiveSignals || "-"}</div>
           <div className="k">Señales negativas</div><div className="v" style={{color:"var(--fg-3)"}}>{brief.negativeSignals || "-"}</div>
         </div>
+      </div>
+    </div>
+    <div className="card" style={{marginTop:14}}>
+      <div className="card-head">
+        <div>
+          <div className="card-title">Estrategia del agente</div>
+        </div>
+        <div className="card-actions">
+          <button className="ghost-btn" onClick={generateStrategy} disabled={strategyBusy}>
+            <Icons.Sparkles size={13}/> {strategy ? "Re-generar plan" : "Generar plan"}
+          </button>
+          {strategy && (
+            <button className="ghost-btn" onClick={()=>executeStrategy("manual")} disabled={strategyExecuting || strategyBusy}>
+              <Icons.Play size={12}/> {strategyExecuting ? "Ejecutando" : "Ejecutar siguiente step"}
+            </button>
+          )}
+          {strategy && (
+            <button className="primary-btn" onClick={()=>executeStrategy("autopilot")} disabled={strategyExecuting || strategyBusy}>
+              <Icons.Activity size={12}/> Corre solo con límites
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{padding:"0 20px 18px"}}>
+        {strategyNotice && (
+          <div className="inline-alert" style={{marginBottom:12}}>
+            {strategyNotice}
+          </div>
+        )}
+        {!strategy && (
+          <div style={{padding:"18px 0", color:"var(--fg-3)", fontSize:13}}>
+            Sin estrategia guardada.
+          </div>
+        )}
+        {strategy && (
+          <>
+            <div style={{display:"flex", flexWrap:"wrap", gap:8, marginBottom:12}}>
+              <span className="entity"><Icons.Bot size={11}/>{strategy.status}</span>
+              <span className="entity">rev {strategy.revision}</span>
+              <span className="entity"><Icons.Database size={11}/>estimado ${(Number(strategy.estimatedCostCents || 0) / 100).toFixed(2)}</span>
+              <span className="entity">límite ${(Number(strategy.maxCostCents || 0) / 100).toFixed(2)}</span>
+            </div>
+            {strategy.markdownPath && (
+              <div className="mono" style={{fontSize:11.5, color:"var(--fg-3)", marginBottom:12, wordBreak:"break-all"}}>
+                {strategy.markdownPath}
+              </div>
+            )}
+            {Array.isArray(strategy.warnings) && strategy.warnings.length > 0 && (
+              <div style={{marginBottom:12, display:"grid", gap:6}}>
+                {strategy.warnings.map((warning, index) => (
+                  <div key={index} className="inline-alert" style={{marginBottom:0}}>{warning}</div>
+                ))}
+              </div>
+            )}
+            {Array.isArray(strategy.steps) && strategy.steps.length > 0 && (
+              <div style={{marginBottom:12, border:"1px solid var(--line)", borderRadius:8, overflow:"hidden"}}>
+                <table className="dt">
+                  <thead>
+                    <tr>
+                      <th>Step</th>
+                      <th>Fase</th>
+                      <th>Capability</th>
+                      <th>Estado</th>
+                      <th>Gate</th>
+                      <th className="right">Costo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {strategy.steps.map((step) => (
+                      <tr key={step.id}>
+                        <td className="num">{step.order}</td>
+                        <td>{step.phase || "-"}</td>
+                        <td>{step.capability || step.skill || "-"}</td>
+                        <td><window.StatusPill kind={runStatusKind(step.status)} label={step.status}/></td>
+                        <td style={{fontSize:12, color:"var(--fg-3)"}}>{step.stopReason || step.requiresReviewState || "-"}</td>
+                        <td className="right num">${(Number(step.estimatedCostCents || 0) / 100).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <pre className="mono" style={{whiteSpace:"pre-wrap", border:"1px solid var(--line)", borderRadius:8, padding:14, maxHeight:360, overflow:"auto", background:"var(--bg-2)", fontSize:12.5, lineHeight:1.6}}>
+              {strategy.strategyMarkdown || ""}
+            </pre>
+            <div style={{marginTop:14}}>
+              <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:8}}>
+                <div style={{fontSize:12, color:"var(--fg-3)", fontFamily:"var(--mono)", textTransform:"uppercase", letterSpacing:"0.06em"}}>
+                  Darle feedback al plan
+                </div>
+                {Array.isArray(strategy.feedback) && strategy.feedback.length > 0 && (
+                  <span style={{fontSize:12, color:"var(--fg-3)"}}>{strategy.feedback.length} feedback(s)</span>
+                )}
+              </div>
+              <textarea
+                className="ang-textarea"
+                rows={3}
+                value={strategyFeedback}
+                onChange={(event)=>setStrategyFeedback(event.target.value)}
+                placeholder="Ej. Para este ICP no uses Apollo primero; prueba DENUE y directorios locales antes de pagar enrichment."
+              />
+              <div style={{display:"flex", justifyContent:"flex-end", marginTop:10}}>
+                <button className="ghost-btn" onClick={submitStrategyFeedback} disabled={strategyBusy || !strategyFeedback.trim()}>
+                  <Icons.Send size={13}/> {strategyBusy ? "Actualizando" : "Enviar feedback"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
     <div className="card" style={{marginTop:14}}>

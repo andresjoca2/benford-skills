@@ -81,7 +81,7 @@ const EVENTS = [
   // ESTA SEMANA
   { day:"ESTA SEMANA", t:"danger", type:"smtp.fail",  text:<>SMTP devolvió <b>5xx</b> en 3 envíos consecutivos · pausa automática</>, time:"vie 06 11:30", actor:"sistema", source:"sistema" },
   { day:"ESTA SEMANA", t:"ok",    type:"corrida.done",   text:<>Batch <span className="entity"><Icons.Layers size={11}/>btc_8807</span> completado <span className="muted">— 71/96</span></>, time:"jue 05 17:55", actor:"Clo", source:"agente" },
-  { day:"ESTA SEMANA", t:"info",  type:"integration",  text:<>Integración <b>HubSpot</b> conectada</>, time:"mié 04 10:12", actor:"Manu", source:"sistema" },
+  { day:"ESTA SEMANA", t:"info",  type:"integration",  text:<>CRM interno listo para revisión humana</>, time:"mié 04 10:12", actor:"Manu", source:"sistema" },
   { day:"ESTA SEMANA", t:"info",  type:"context.train",  text:<>Contexto inicial cargado · <span className="entity"><Icons.Layers size={11}/>btc_8807</span></>, time:"lun 02 14:30", actor:"Iván", source:"manual" },
 ];
 

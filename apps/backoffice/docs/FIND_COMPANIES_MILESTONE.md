@@ -1,4 +1,4 @@
-# Find Companies Milestone
+# Company Discovery Milestone
 
 Status: first milestone operational on the OpenClaw host.
 
@@ -45,7 +45,7 @@ cd /root/benford/benford-skills
 OPENCLAW_SSH_TARGET= \
 OPENCLAW_COMMAND=/usr/bin/openclaw \
 BENFORD_BACKOFFICE_DB_PATH=apps/backoffice/.data/backoffice.sqlite \
-OPENCLAW_FIND_COMPANIES_AGENT=research-agent \
+OPENCLAW_COMPANY_DISCOVERY_AGENT=prospecting-agent \
 PATH=/root/.bun/bin:$PATH \
 bun run backoffice:worker
 ```
@@ -61,13 +61,13 @@ This is now the active milestone shape: server and worker both run remote, with
 no mounted SQLite over SSH. The local test SQLite database was deleted after the
 remote DB became the source of truth.
 
-When syncing the `find-companies` skill from inside the OpenClaw host, copy it
+When syncing the `company-discovery` skill from inside the OpenClaw host, copy it
 directly instead of using the SSH sync script:
 
 ```bash
 cd /root/benford/benford-skills
-rsync -az apps/backoffice/openclaw-skills/find-companies/ \
-  /root/.openclaw/workspace-prospecting-agent/skills/find-companies/
+rsync -az apps/backoffice/openclaw-skills/company-discovery/ \
+  /root/.openclaw/workspace-prospecting-agent/skills/company-discovery/
 ```
 
 ## Laptop Access
@@ -86,14 +86,14 @@ http://localhost:3000
 
 That browser session is local, but the API and SQLite writes are remote.
 
-## Find Companies Loop
+## Company Discovery Loop
 
 1. Open a campaign.
 2. Confirm `Modo` is `companies` or `companies_then_people`.
 3. Confirm `Máx. empresas` is `10`.
 4. Click `Re-ejecutar búsqueda`.
 5. If cached companies exist, the API reveals the next 10 immediately without calling OpenClaw.
-6. If the cache is empty, the API creates `agent_runs` and a `find_companies` row in `openclaw_jobs`.
+6. If the cache is empty, the API creates `agent_runs` and a `company_discovery` row in `openclaw_jobs`.
 7. The worker claims the job, calls OpenClaw in `fast_prefetch` mode, and expects JSON with up to 30 `companies`.
 8. The backend validates, dedupes, applies suppression, shows the first 10, and hides the rest in the review queue:
    - `companies`
@@ -149,7 +149,7 @@ The milestone works, but load/run latency is still too high. Current suspects:
 - large API payloads or expensive frontend rendering on detail screens
 - OpenClaw agent context size
 - web-search latency
-- too much work in one `find_companies` turn
+- too much work in one `company_discovery` turn
 
 This is the next optimization track. Do not confuse it with the old local SQLite
 prototype; the operational DB is remote and already working.

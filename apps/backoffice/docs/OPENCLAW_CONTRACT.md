@@ -39,7 +39,7 @@ For the current remote milestone, run the worker on the OpenClaw host with:
 
 ```bash
 OPENCLAW_COMMAND=/usr/bin/openclaw \
-OPENCLAW_FIND_COMPANIES_AGENT=research-agent \
+OPENCLAW_COMPANY_DISCOVERY_AGENT=prospecting-agent \
 BENFORD_BACKOFFICE_DB_PATH=apps/backoffice/.data/backoffice.sqlite \
 bun run backoffice:worker
 ```
@@ -58,16 +58,35 @@ Each job is sent with an explicit `--session-id` derived from the run/job id so 
 
 Current routing:
 
-- `find_companies`: `OPENCLAW_FIND_COMPANIES_AGENT`, defaulting to `research-agent` for web discovery.
+- `prospecting strategy`: `OPENCLAW_STRATEGIST_AGENT`, defaulting to `prospecting-agent`.
+- `company_discovery`: `OPENCLAW_COMPANY_DISCOVERY_AGENT`, defaulting to `prospecting-agent`.
 - Other skills: `OPENCLAW_AGENT`, defaulting to `prospecting-agent`.
-- `find_companies` thinking defaults to `off` through `OPENCLAW_FIND_COMPANIES_THINKING` to keep interactive prospecting runs fast.
+- `company_discovery` thinking defaults to `off` through `OPENCLAW_COMPANY_DISCOVERY_THINKING` to keep interactive prospecting runs fast.
+
+The backoffice no longer assumes a generic `research-agent`. The intended
+OpenClaw agent profile is:
+
+```text
+apps/backoffice/openclaw-agents/prospecting-agent/
+```
+
+That profile contains the soul and tool discipline for this CRM: prospecting
+strategy first, source selection, evidence discipline, dedupe, and budget stops.
+It syncs onto the existing OpenClaw agent id `prospecting-agent` and workspace
+`/root/.openclaw/workspace-prospecting-agent`.
 
 ## Skills
 
-The `find_companies` job should use the versioned OpenClaw skill:
+The `company_discovery` job should use the versioned OpenClaw skill:
 
 ```text
-apps/backoffice/openclaw-skills/find-companies/
+apps/backoffice/openclaw-skills/company-discovery/
+```
+
+Strategy planning should use:
+
+```text
+apps/backoffice/openclaw-skills/prospecting-strategist/
 ```
 
 Sync to the OpenClaw workspace:
@@ -79,7 +98,10 @@ bun run backoffice:sync-openclaw-skills
 Remote target:
 
 ```text
-/root/.openclaw/workspace-prospecting-agent/skills/find-companies
+/root/.openclaw/workspace-prospecting-agent/skills/company-discovery
+/root/.openclaw/workspace-prospecting-agent/skills/prospecting-strategist
+/root/.openclaw/workspace-prospecting-agent/SOUL.md
+/root/.openclaw/workspace-prospecting-agent/TOOLS.md
 ```
 
 ## Sync / Async
@@ -96,6 +118,57 @@ frontend polls or streams events
 
 The CLI invocation may block inside the worker until timeout or completion, but the user-facing API must not block waiting for OpenClaw.
 
+Exception: strategy planning endpoints intentionally call OpenClaw synchronously
+because they are operator-facing plan edits, not long-running provider searches.
+They must never execute paid source calls; they only return JSON and Markdown.
+
+## Strategy Output
+
+The strategy endpoint expects JSON matching:
+
+```text
+apps/backoffice/openclaw-skills/prospecting-strategist/references/strategy-plan-contract.json
+```
+
+Minimum required fields:
+
+- `strategy_markdown`
+- `plans`
+- `recommended_first_plan_id`
+- `budget_guard.run_budget_cents`
+- `budget_guard.estimated_total_cents`
+- `budget_guard.stop_before_exceeding_budget`
+
+The backend persists `strategy_markdown` to:
+
+```text
+apps/backoffice/.data/prospecting-strategies/<campaign-id>/<plan-id>.md
+```
+
+Operator feedback from the UI revises the same plan id, increments `revision`,
+and rewrites that Markdown file.
+
+## Budget Guard
+
+Known-cost sources are hard-stopped before execution if the stored strategy
+estimate exceeds the run budget. Source adapters write `prospecting_cost_ledger`
+reserve events before paid source calls when a step has an estimated cost.
+
+Unknown-cost sources should be avoided in unattended mode unless the operator
+explicitly approves them for that run.
+
+## Source Adapters
+
+Secrets live in `apps/backoffice/.env.local` and are never embedded in prompts,
+skill files, or committed docs.
+
+- Apollo can handle `company_discovery` and `find_people` when a step
+  `source_plan` includes `apollo`.
+- PDL is enrichment-only after person dedupe/search when `source_plan` includes
+  `pdl` or `people_data_labs`.
+- Explorium is registered as a configured paid source. Execution stays via
+  OpenClaw/MCP until the MCP endpoint is wired into the backend.
+
 ## Job Input
 
 `openclaw_jobs.input_json` is the source of truth.
@@ -104,7 +177,7 @@ Minimum shape:
 
 ```json
 {
-  "mission": "find_companies",
+  "mission": "company_discovery",
   "campaign": {
     "id": "campaign_fintech_latam",
     "name": "Fintech LATAM - Founders"
@@ -147,7 +220,7 @@ input is frozen in `openclaw_jobs.input_json` at creation time.
 
 The worker expects JSON. If OpenClaw returns prose around JSON, the worker should mark the job failed until an explicit parser is implemented.
 
-### `find_companies`
+### `company_discovery`
 
 Candidates can be formal companies, local businesses, professional practices, clinics, firms, or person-owned businesses when that is the actual buying unit. Directories should normally be discovery sources, not final candidates.
 
@@ -272,17 +345,17 @@ When added:
 
 ## Cost
 
-Cost tracking is deferred until OpenClaw can reliably return cost metadata.
+Provider costs are stored in USD cents. Defaults can be overridden in
+`apps/backoffice/.env.local`:
 
-Future output/event field:
-
-```json
-{
-  "cost_cents": 12
-}
+```text
+BACKOFFICE_APOLLO_ORG_SEARCH_COST_CENTS=1
+BACKOFFICE_APOLLO_PEOPLE_SEARCH_COST_CENTS=0
+BACKOFFICE_PDL_PERSON_ENRICH_COST_CENTS=28
 ```
 
-Do not enforce `run_budget_cents` as a hard stop until cost reporting exists. Treat it as an advisory budget in V1.
+Paid sources are blocked when `runBudgetCents = 0` unless
+`BACKOFFICE_PAID_SOURCES_REQUIRE_BUDGET=0`.
 
 ## Security
 
