@@ -55,6 +55,12 @@ bun install
 PORT=3000 BENFORD_BACKOFFICE_DB_PATH=apps/backoffice/.data/backoffice.sqlite bun run backoffice:dev
 ```
 
+When running inside the OpenClaw VPS, do not use `backoffice:worker:openclaw`
+for the server auto-worker. The dev server starts `backoffice:worker` by
+default so jobs call the local `/usr/bin/openclaw` binary. The `:openclaw`
+script is only for running a worker from a laptop that has `openclaw` in
+`~/.ssh/config`.
+
 En otra terminal de OpenClaw, para procesar jobs:
 
 ```bash

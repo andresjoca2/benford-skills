@@ -164,7 +164,8 @@ let devWorkerRunning = false
 function startDevOpenClawWorkerOnce() {
   if (Bun.env.BENFORD_BACKOFFICE_DISABLE_AUTO_WORKER === "1" || devWorkerRunning) return
   devWorkerRunning = true
-  const proc = Bun.spawn(["bun", "run", "backoffice:worker:openclaw", "--", "--once"], {
+  const workerScript = Bun.env.BENFORD_BACKOFFICE_AUTO_WORKER_SCRIPT || "backoffice:worker"
+  const proc = Bun.spawn(["bun", "run", workerScript, "--", "--once"], {
     cwd: path.resolve(appRoot, "..", ".."),
     stdout: "inherit",
     stderr: "inherit",
