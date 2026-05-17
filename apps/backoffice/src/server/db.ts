@@ -82,8 +82,11 @@ type PersonCandidateRow = {
   score: number
   rationale: string
   evidence_json: string
+  user_feedback: string
   name: string
   title: string
+  linkedin_url: string
+  email: string
   company_name: string
   industry: string
   country: string
@@ -1517,6 +1520,182 @@ export function reviewPersonCandidate(
   return reviewCandidate("person_candidate", candidateId, input)
 }
 
+export function createPeopleRunForCompanyCandidate(
+  companyCandidateId: string,
+  options: { replaceQueuedRun?: boolean; enrich?: boolean; feedback?: string; maxPeople?: number } = {},
+) {
+  const target = db
+    .query<
+      {
+        id: string
+        campaign_id: string
+        run_id: string | null
+        company_id: string
+        status: string
+        score: number
+        rationale: string
+        evidence_json: string
+        user_feedback: string
+        name: string
+        domain: string
+        linkedin_url: string
+        industry: string
+        country: string
+        city: string
+        campaign_name: string
+      },
+      [string]
+    >(`
+      SELECT
+        cc.id,
+        cc.campaign_id,
+        cc.run_id,
+        cc.company_id,
+        cc.status,
+        cc.score,
+        cc.rationale,
+        cc.evidence_json,
+        cc.user_feedback,
+        c.name,
+        c.domain,
+        c.linkedin_url,
+        c.industry,
+        c.country,
+        c.city,
+        ca.name AS campaign_name
+      FROM company_candidates cc
+      JOIN companies c ON c.id = cc.company_id
+      JOIN campaigns ca ON ca.id = cc.campaign_id
+      WHERE cc.id = ?
+      LIMIT 1
+    `)
+    .get(companyCandidateId)
+  if (!target) return null
+
+  const activeRows = db
+    .query<RunRow, [string, string]>(`
+      SELECT ar.id, ar.campaign_id, ar.mission, ar.status, ar.objective, ar.limits_json, ar.error, ar.created_at, ar.started_at, ar.finished_at
+      FROM agent_runs ar
+      JOIN openclaw_jobs oj ON oj.run_id = ar.id
+      WHERE ar.campaign_id = ?
+        AND ar.status IN ('queued', 'running')
+        AND oj.skill = 'find_people'
+        AND oj.input_json LIKE ?
+      ORDER BY ar.created_at DESC
+      LIMIT 1
+    `)
+    .all(target.campaign_id, `%${target.id}%`)
+  const active = activeRows[0]
+  if (active && (!options.replaceQueuedRun || active.status !== "queued")) {
+    return { error: "active_run_exists", run: formatRun(active) }
+  }
+
+  const campaign = getCampaignDetail(target.campaign_id)
+  if (!campaign) return null
+  const maxPeople = Math.min(Math.max(positiveInteger(options.maxPeople, campaign.brief.maxPeople || 5), 1), 25)
+  const timeoutSeconds = effectiveRunTimeoutSeconds("find_people", Math.min(campaign.brief.maxRuntimeSeconds || 300, 600))
+  const runId = uniqueId("run", `${target.campaign_id}_people_${target.company_id}`)
+  const jobId = uniqueId("job", `${runId}_find_people`)
+  const feedback = typeof options.feedback === "string" ? options.feedback.trim() : ""
+  const targetCompany = {
+    candidate_id: target.id,
+    company_id: target.company_id,
+    name: target.name,
+    domain: target.domain,
+    linkedin_url: target.linkedin_url,
+    industry: target.industry,
+    country: target.country,
+    city: target.city,
+    score: target.score,
+    rationale: target.rationale,
+  }
+  const step = {
+    phase: "people_mapping",
+    capability: "person-discovery",
+    playbook: "corporate-b2b",
+    mode: options.enrich ? "people_mapping_enrich_from_approved_company" : "people_mapping_from_approved_companies",
+    legacy_skill: "find_people",
+    source_key: options.enrich ? "web_search_enrich" : "web_search",
+    source_plan: options.enrich ? ["company_site", "web_search", "pdl"] : ["company_site", "web_search"],
+    requires_review_state: "approved_companies",
+    input_focus: `Personas relevantes en ${target.name}`,
+    expected_output: "people",
+    estimated_cost_cents: options.enrich ? sourcePlanDefaultCostCents(["pdl"]) : 0,
+  }
+  const context = {
+    campaign_id: target.campaign_id,
+    campaign_name: target.campaign_name,
+    target_company_candidate_id: target.id,
+    target_company_id: target.company_id,
+    target_company_name: target.name,
+  }
+  const jobInput = {
+    mission: "find_people",
+    executionMode: "manual",
+    plan: {
+      step,
+      sourceKey: step.source_key,
+      estimatedCostCents: step.estimated_cost_cents,
+    },
+    campaign: {
+      id: target.campaign_id,
+      name: target.campaign_name,
+    },
+    brief: {
+      ...campaign.brief,
+      maxPeople,
+      maxRuntimeSeconds: timeoutSeconds,
+    },
+    approvedCompanies: [targetCompany],
+    targetCompany,
+    reviewFeedback: feedback || target.user_feedback || "",
+    memory: campaignMemory(target.campaign_id),
+    outputContract: "Return only JSON matching person-discovery/references/output-contract.json.",
+  }
+
+  db.transaction(() => {
+    if (active?.status === "queued" && options.replaceQueuedRun) {
+      db.prepare(`
+        UPDATE agent_runs
+        SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'queued'
+      `).run(active.id)
+      db.prepare(`
+        UPDATE openclaw_jobs
+        SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE run_id = ? AND status = 'queued'
+      `).run(active.id)
+    }
+    db.prepare(`
+      INSERT INTO agent_runs (id, campaign_id, mission, status, objective, context_json, limits_json)
+      VALUES (?, ?, 'find_people', 'queued', ?, ?, ?)
+    `).run(
+      runId,
+      target.campaign_id,
+      `Buscar personas en ${target.name}`,
+      JSON.stringify(context),
+      JSON.stringify({ max_people: maxPeople, max_runtime_seconds: timeoutSeconds, target_company_candidate_id: target.id }),
+    )
+    db.prepare(`
+      INSERT INTO openclaw_jobs (id, run_id, campaign_id, skill, status, input_json, timeout_seconds)
+      VALUES (?, ?, ?, 'find_people', 'queued', ?, ?)
+    `).run(jobId, runId, target.campaign_id, JSON.stringify(jobInput), timeoutSeconds)
+    insertEvent({
+      campaignId: target.campaign_id,
+      runId,
+      jobId,
+      subjectType: "company_candidate",
+      subjectId: target.id,
+      level: "info",
+      eventType: options.enrich ? "people.enrich_queued" : "people.search_queued",
+      message: options.enrich ? `Enrichment de personas encolado para ${target.name}.` : `Búsqueda de personas encolada para ${target.name}.`,
+      payload: { companyId: target.company_id, maxPeople, feedback },
+    })
+  })()
+
+  return { run: getRun(runId) }
+}
+
 export function recordOpenClawRequested(job: { id: string; runId: string; campaignId: string; skill: string; timeoutSeconds: number }) {
   insertEvent({
     campaignId: job.campaignId,
@@ -1827,8 +2006,11 @@ export function listCampaignPeople(campaignId: string) {
         pc.score,
         pc.rationale,
         pc.evidence_json,
+        pc.user_feedback,
         p.name,
         p.title,
+        p.linkedin_url,
+        p.email,
         COALESCE(c.name, p.company_name, '') AS company_name,
         COALESCE(c.industry, '') AS industry,
         p.country,
@@ -1854,6 +2036,9 @@ export function listCampaignPeople(campaignId: string) {
     company: row.company_name || "Sin empresa",
     industry: row.industry,
     country: row.country,
+    email: row.email,
+    linkedinUrl: row.linkedin_url,
+    phone: "",
     seniority: row.seniority || seniorityFromTitle(row.title),
     function: row.function,
     tenure: "-",
@@ -1864,6 +2049,9 @@ export function listCampaignPeople(campaignId: string) {
     review: reviewState(row.status),
     rationale: row.rationale,
     evidence: parseJson(row.evidence_json, []),
+    userFeedback: row.user_feedback,
+    angleHint: row.function || row.seniority || "",
+    sourceProvider: "OpenClaw",
     lastTouch: "-",
     batch: row.campaign_id,
     owner: { i: "M", c: colorFor(row.campaign_id) },

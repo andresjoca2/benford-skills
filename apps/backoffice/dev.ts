@@ -9,6 +9,7 @@ import {
   createCampaign,
   createCampaignRun,
   createCompany,
+  createPeopleRunForCompanyCandidate,
   createProspect,
   dbPath,
   getCampaignDetail,
@@ -401,6 +402,22 @@ async function serveApi(request: Request, url: URL) {
     )
     if (!candidate) return json({ error: "Company candidate not found" }, { status: 404 })
     return json({ candidate })
+  }
+
+  const companyPeopleRunMatch = url.pathname.match(/^\/api\/company-candidates\/([^/]+)\/people-runs$/)
+  if (companyPeopleRunMatch) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 })
+    const body = await readJson(request)
+    const result = createPeopleRunForCompanyCandidate(companyPeopleRunMatch[1] ?? "", {
+      replaceQueuedRun: body.replaceQueuedRun === true,
+      enrich: body.enrich === true,
+      feedback: typeof body.feedback === "string" ? body.feedback : undefined,
+      maxPeople: numberBodyValue(body, "maxPeople"),
+    })
+    if (!result) return json({ error: "Company candidate not found" }, { status: 404 })
+    if ("error" in result) return json(result, { status: 409 })
+    startDevOpenClawWorkerOnce()
+    return json(result, { status: 201 })
   }
 
   if (url.pathname === "/api/campaigns") {

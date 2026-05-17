@@ -106,6 +106,10 @@ const BackofficeAPI = {
     return data.candidate;
   },
 
+  async createPeopleRunForCompanyCandidate(candidateId, options = {}) {
+    return this.postJson(`/api/company-candidates/${encodeURIComponent(candidateId)}/people-runs`, options);
+  },
+
   async updateCompanyCandidateStatus(candidateId, status) {
     return this.reviewCompanyCandidate(candidateId, status);
   },
